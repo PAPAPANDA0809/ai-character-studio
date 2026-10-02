@@ -312,6 +312,19 @@ $('#ref-file').onchange = async e => {
   if (VIEW === 'project') render();
 };
 
+// read "1 picture", "three photos", "a 10 second video" etc. from the idea and set the controls to match
+const NUMS = {a: 1, an: 1, one: 1, single: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12};
+function detectAsk(text) {
+  const t = text.toLowerCase(), num = w => NUMS[w] ?? parseInt(w);
+  let m = t.match(/\b(\d+|a|an|one|single|two|three|four|five|six|seven|eight|nine|ten|twelve)\s+(?:\w+\s+)?(pictures?|images?|photos?|pics?|stills?|carousel slides?)\b/);
+  if (m && num(m[1]) >= 1) { NEW.mode = 'images'; $('#nkf').value = Math.min(12, num(m[1])); syncCreate(); return `Set to ${$('#nkf').value} image${num(m[1]) > 1 ? 's' : ''}`; }
+  m = t.match(/\b(\d+)\s*(?:-|\s)?(?:s|sec|secs|seconds?)\b(?:\s+\w+)?\s+(?:video|clip|reel)/) || t.match(/\b(?:video|clip|reel)\s+(?:of\s+)?(\d+)\s*(?:s|sec|seconds?)\b/);
+  if (m) { const secs = +m[1], clips = Math.max(1, Math.min(7, Math.round(secs / 5))); NEW.mode = NEW.mode === 'images' ? 'video' : NEW.mode;
+    $('#nkf').value = NEW.mode === 't2v' ? clips : clips + 1; syncCreate(); return `Set to a ${clips * 5}s video`; }
+  return '';
+}
+$('#idea').addEventListener('blur', () => { const r = detectAsk($('#idea').value); if (r) $('#enh-by').textContent = '· ' + r; });
+
 $('#btn-enh').onclick = async () => {
   const idea = $('#idea').value.trim();
   if (!idea) return $('#idea').focus();
@@ -324,6 +337,7 @@ $('#btn-enh').onclick = async () => {
 };
 
 $('#btn-plan').onclick = async () => {
+  detectAsk($('#idea').value);
   const idea = $('#idea2').value.trim() || $('#idea').value.trim();
   if (!idea) return $('#idea').focus();
   $('#btn-plan').disabled = true; $('#plan-msg').style.display = 'flex';
