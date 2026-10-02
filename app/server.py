@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import auth
 import comfy
+import llm
 import pipeline
 
 STATIC = os.path.join(pipeline.APP_DIR, "static")
@@ -204,6 +205,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "you can't delete yourself"}, 400)
                 auth.delete_user(b.get("user"))
                 return self.send_json({"ok": True})
+            if path == "/api/enhance":
+                text, engine = llm.enhance(pipeline.load_config()["llm"], b.get("idea", ""), b.get("mode", "video"),
+                                           b.get("style", ""), b.get("character", ""))
+                return self.send_json({"text": text, "engine": engine})
             if path == "/api/plan":
                 p = pipeline.create_project(u, b["idea"], b.get("keyframes", 4), b.get("style", ""),
                                             b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),

@@ -6,6 +6,7 @@ Providers (set "llm.provider" in config.json):
   template - no model at all; builds a simple plan from the idea text
 """
 import json
+import os
 import re
 import urllib.request
 
@@ -65,6 +66,61 @@ def chat(cfg, system, user, want_json=True):
         out = _post(cfg["openai_base_url"].rstrip("/") + "/chat/completions", body, headers)
         return out["choices"][0]["message"]["content"]
     raise ValueError("unknown llm provider: " + p)
+
+
+ENHANCE_SYSTEM = """You turn a rough social media post idea into a stronger creative brief for an AI image/video generator.
+Keep the user's intent, characters and language. Make it specific and visual: who the character is, what happens
+(a clear beginning, middle and payoff), the setting, mood, lighting, camera feel and the hook for the post.
+Write 3-6 sentences of plain prose. No headings, no lists, no preamble - return only the improved brief."""
+
+
+def _secret(name):
+    """Keys live in app/secrets.json (never committed), e.g. {"claude_api_key": "sk-ant-..."}."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "secrets.json"), encoding="utf-8") as f:
+            return json.load(f).get(name, "")
+    except (FileNotFoundError, json.JSONDecodeError):
+        return ""
+
+
+def enhance(cfg, idea, mode="video", style="", character=""):
+    """Rewrite a rough idea into a richer brief. Uses Claude when an API key is configured, else the local LLM.
+    Returns (text, engine_label)."""
+    what = {"images": "a photo set / carousel", "t2v": "a short text-to-video", "video": "a short video built from keyframes"}
+    user = f"Idea: {idea}\nFormat: {what.get(mode, 'a short video')}\n"
+    if style:
+        user += f"Visual style: {style}\n"
+    if character:
+        user += f"Character: {character}\n"
+    key = os.environ.get("ANTHROPIC_API_KEY") or _secret("claude_api_key")
+    if key:
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        model = cfg.get("claude_model", "claude-opus-5-5")
+        try:
+            resp = client.beta.messages.create(
+                model=model, max_tokens=2000, system=ENHANCE_SYSTEM,
+                messages=[{"role": "user", "content": user}],
+                output_config={"effort": "low"},
+                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+            )
+        except anthropic.AuthenticationError:
+            raise RuntimeError("Claude API key was rejected; check claude_api_key in app/secrets.json")
+        except anthropic.RateLimitError:
+            raise RuntimeError("Claude is rate-limited right now; try again in a minute")
+        except anthropic.APIStatusError as e:
+            raise RuntimeError(f"Claude API error {e.status_code}: {e.message}")
+        except anthropic.APIConnectionError:
+            raise RuntimeError("couldn't reach the Claude API (no internet?)")
+        if resp.stop_reason == "refusal":
+            raise RuntimeError("Claude declined to rewrite this idea")
+        text = "".join(b.text for b in resp.content if b.type == "text").strip()
+        return text, f"Claude ({resp.model})"
+    if cfg["provider"] == "template":
+        return idea, "no AI configured"
+    text = chat(cfg, ENHANCE_SYSTEM, user, want_json=False)
+    text = text.split("</think>")[-1].strip()  # small local models sometimes leak their reasoning
+    return text, f"local {cfg.get('ollama_model') if cfg['provider'] == 'ollama' else cfg.get('openai_model')}"
 
 
 def _extract_json(text):
