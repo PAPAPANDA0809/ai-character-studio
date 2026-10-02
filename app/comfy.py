@@ -124,7 +124,7 @@ IMAGE_ENGINES = {
     "flux2-klein-9b": {"label": "FLUX.2 klein 9B (character picture OK, 30 s to 5+ min on 32 GB RAM, non-commercial licence)",
                        "files": ["unet/flux-2-klein-9b-Q4_K_M.gguf", "text_encoders/qwen_3_8b_fp8mixed.safetensors",
                                  "vae/flux2-vae.safetensors"]},
-    "qwen-image-21": {"label": "Qwen-Image 2.1 (newest, Sep 2026, slow, character picture OK, research licence)",
+    "qwen-image-21": {"label": "Qwen-Image 2.1 (newest, ~30 s, ~4 min with character picture, research licence)",
                       "files": ["diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
                                 "text_encoders/qwen3vl_8b_int8_convrot.safetensors", "vae/qwen_image_2.1_vae_bf16.safetensors"]},
 }
