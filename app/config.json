@@ -27,7 +27,9 @@
     "sdxl_checkpoint": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
     "sdxl_steps": 30,
     "sdxl_cfg": 5.0,
-    "kontext_ref_megapixels": 0.4
+    "kontext_ref_megapixels": 0.4,
+    "hq_steps": 28,
+    "upscaler": "4x-UltraSharp.safetensors"
   },
   "video": {
     "unet_high": "Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf",
@@ -90,5 +92,19 @@
     "cfg": 5.0,
     "shift": 8.0
   },
-  "default_t2v_engine": "ltxv-2b"
+  "default_t2v_engine": "ltxv-2b",
+  "hires_sizes": {
+    "portrait": [
+      896,
+      1600
+    ],
+    "landscape": [
+      1600,
+      896
+    ],
+    "square": [
+      1216,
+      1216
+    ]
+  }
 }

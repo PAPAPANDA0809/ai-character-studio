@@ -23,3 +23,4 @@ C:\Users\Andy\AICharacterStudio\models\vae\hunyuanvideo15_vae_fp16.safetensors|h
 C:\Users\Andy\AICharacterStudio\models\clip_vision\sigclip_vision_patch14_384.safetensors|https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/clip_vision/sigclip_vision_patch14_384.safetensors
 C:\Users\Andy\AICharacterStudio\models\unet\Wan2.2-TI2V-5B-Q5_K_M.gguf|https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/Wan2.2-TI2V-5B-Q5_K_M.gguf
 C:\Users\Andy\AICharacterStudio\models\vae\wan2.2_vae.safetensors|https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors
+C:\Users\Andy\AICharacterStudio\models\upscale_models\4x-UltraSharp.safetensors|https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors

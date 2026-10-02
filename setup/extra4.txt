@@ -1,0 +1,1 @@
+C:\Users\Andy\AICharacterStudio\models\upscale_models\4x-UltraSharp.safetensors|https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors

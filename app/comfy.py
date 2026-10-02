@@ -152,7 +152,18 @@ def t2v_workflow(cfg, engine, prompt, width, height, seed, prefix):
     }
 
 
-def image_workflow(cfg, engine, prompt, width, height, seed, prefix):
+def add_upscale(cfg, wf):
+    """Insert a 4x-UltraSharp pass (then halve it => 2x sharper output) right before the SaveImage node."""
+    save = next(k for k, n in wf.items() if n["class_type"] == "SaveImage")
+    src = wf[save]["inputs"]["images"]
+    wf["90"] = {"class_type": "UpscaleModelLoader", "inputs": {"model_name": cfg["image"]["upscaler"]}}
+    wf["91"] = {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["90", 0], "image": src}}
+    wf["92"] = {"class_type": "ImageScaleBy", "inputs": {"image": ["91", 0], "upscale_method": "lanczos", "scale_by": 0.5}}
+    wf[save]["inputs"]["images"] = ["92", 0]
+    return wf
+
+
+def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None):
     c = cfg["image"]
     if engine == "flux-schnell":
         return flux_workflow(cfg, prompt, width, height, seed, prefix, unet=c["schnell_unet"], steps=c["schnell_steps"])
@@ -160,7 +171,7 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix):
         return sdxl_workflow(cfg, prompt, width, height, seed, prefix)
     if engine == "qwen-image":
         return qwen_image_workflow(cfg, prompt, width, height, seed, prefix)
-    return flux_workflow(cfg, prompt, width, height, seed, prefix)
+    return flux_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)
 
 
 def video_workflow(cfg, engine, prompt, start_name, end_name, width, height, seed, prefix):
@@ -265,7 +276,7 @@ def flux_workflow(cfg, prompt, width, height, seed, prefix, unet=None, steps=Non
     }
 
 
-def kontext_workflow(cfg, prompt, ref_name, width, height, seed, prefix):
+def kontext_workflow(cfg, prompt, ref_name, width, height, seed, prefix, steps=None):
     """FLUX.1 Kontext: generate a new scene that keeps the character from the reference image."""
     c = cfg["image"]
     return {
@@ -286,7 +297,7 @@ def kontext_workflow(cfg, prompt, ref_name, width, height, seed, prefix):
         "6": {"class_type": "EmptySD3LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
         "7": {"class_type": "KSampler",
               "inputs": {"model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0], "latent_image": ["6", 0],
-                         "seed": seed, "steps": c["kontext_steps"], "cfg": 1.0, "sampler_name": "euler",
+                         "seed": seed, "steps": steps or c["kontext_steps"], "cfg": 1.0, "sampler_name": "euler",
                          "scheduler": "simple", "denoise": 1.0}},
         "9": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["8", 0]}},
         "10": {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": prefix}},

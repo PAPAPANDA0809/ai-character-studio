@@ -12,3 +12,4 @@ aicharacterstudio:
   loras: loras
   checkpoints: checkpoints
   clip_vision: clip_vision
+  upscale_models: upscale_models

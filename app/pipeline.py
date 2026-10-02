@@ -161,6 +161,37 @@ def log(p, msg):
 
 jobs = queue.Queue()
 current = {"pid": None, "task": None}
+cancelled = set()
+
+
+class Cancelled(Exception):
+    pass
+
+
+def check_cancel(p):
+    if p["id"] in cancelled:
+        raise Cancelled()
+
+
+def cancel(pid):
+    """Stop a project's running job (interrupting ComfyUI) and drop its queued jobs."""
+    with jobs.mutex:
+        kept = [j for j in jobs.queue if j[0] != pid]
+        dropped = len(jobs.queue) - len(kept)
+        jobs.queue.clear()
+        jobs.queue.extend(kept)
+    running = current["pid"] == pid
+    if running:
+        cancelled.add(pid)
+        try:
+            comfy.Comfy(load_config()["comfy_url"])._post("/interrupt", {})
+        except Exception:
+            pass
+    if dropped and not running:
+        p = load(pid)
+        p["status"] = "stopped:" + p["status"].split(":", 1)[-1]
+        log(p, "stopped by user")
+    return running or bool(dropped)
 
 
 def enqueue(pid, task, **kw):
@@ -184,10 +215,15 @@ def worker():
             log(p, f"{task} finished")
         except Exception as e:
             p = load(pid)
-            p["status"] = "error:" + task
-            log(p, f"ERROR in {task}: {e}")
+            if isinstance(e, Cancelled) or pid in cancelled:
+                p["status"] = "stopped:" + task
+                log(p, "stopped by user")
+            else:
+                p["status"] = "error:" + task
+                log(p, f"ERROR in {task}: {e}")
             traceback.print_exc()
         finally:
+            cancelled.discard(pid)
             current.update(pid=None, task=None)
 
 
@@ -210,7 +246,7 @@ threading.Thread(target=worker, daemon=True).start()
 # ---------------------------------------------------------------- steps
 
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
-                   image_engine=None, video_engine=None, mode="video"):
+                   image_engine=None, video_engine=None, mode="video", quality=None):
     cfg = load_config()
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
@@ -226,7 +262,7 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "reference": reference,
         "image_engine": image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
-        "clip_fps": {}, "mode": mode,
+        "clip_fps": {}, "mode": mode, "quality": quality or ("high" if mode == "images" else "standard"),
         "t2v_engine": cfg.get("default_t2v_engine", "wan22-5b"),
     }
     save(p)
@@ -253,8 +289,10 @@ def engines():
     }
 
 
-def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None):
+def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None):
     p = load(pid)
+    if quality in ("standard", "high"):
+        p["quality"] = quality
     if t2v_engine in comfy.T2V_ENGINES:
         p["t2v_engine"] = t2v_engine
     if mode in ("images", "video", "t2v"):
@@ -313,7 +351,9 @@ def do_keyframes(p, indices=None, reseed=False):
     c = comfy.Comfy(cfg["comfy_url"])
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
-    w, h = size(cfg, p)
+    hq = p.get("quality", "standard") == "high"
+    w, h = (cfg["hires_sizes"].get(p.get("aspect", "portrait")) if hq else None) or size(cfg, p)
+    steps = cfg["image"]["hq_steps"] if hq else None
     n = len(p["plan"]["keyframes"])
     indices = list(range(n)) if indices is None else [int(i) for i in indices]
     ref = p.get("reference")
@@ -321,6 +361,7 @@ def do_keyframes(p, indices=None, reseed=False):
         ref_name = c.upload_image(os.path.join(char_dir(user_of(p["id"])), ref),
                                   "aics_ref_" + re.sub(r"[^\w.\-]", "_", user_of(p["id"]) + "_" + ref))
     for i in indices:
+        check_cancel(p)
         key = str(i)
         if reseed or key not in p["keyframe_seeds"]:
             # one shared seed for the first pass helps keep the character consistent
@@ -329,10 +370,12 @@ def do_keyframes(p, indices=None, reseed=False):
         t = time.time()
         prefix = f"aics/{p['id']}/kf{i:02d}"
         if ref:
-            wf = comfy.kontext_workflow(cfg, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key], prefix)
+            wf = comfy.kontext_workflow(cfg, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key], prefix, steps)
         else:
             wf = comfy.image_workflow(cfg, p.get("image_engine", "flux-dev"), keyframe_prompt(p, i), w, h,
-                                      p["keyframe_seeds"][key], prefix)
+                                      p["keyframe_seeds"][key], prefix, steps)
+        if hq:
+            wf = comfy.add_upscale(cfg, wf)
         out = c.run(wf)
         img = next(o["images"][0] for o in out.values() if o.get("images"))
         with open(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), "wb") as f:
@@ -358,6 +401,7 @@ def do_animate(p, only=None):
     c.free()  # drop Flux from VRAM before loading Wan
     clips = range(n - 1) if only is None else [int(only)]
     for i in clips:
+        check_cancel(p)
         log(p, f"clip {i + 1}/{n - 1}: uploading keyframes")
         a = c.upload_image(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), f"aics_{p['id']}_kf{i:02d}.png")
         b = c.upload_image(pdir(p["id"], "keyframes", f"kf_{i + 1:02d}.png"), f"aics_{p['id']}_kf{i + 1:02d}.png")
@@ -396,6 +440,7 @@ def do_t2v(p, only=None):
     n = len(p["plan"]["keyframes"])
     c.free()
     for i in (range(n) if only is None else [int(only)]):
+        check_cancel(p)
         prompt = ". ".join(x for x in [p.get("style", ""), p["plan"]["keyframes"][i]["image_prompt"],
                                        p["plan"].get("character", ""), p["plan"].get("setting", "")] if x)
         t = time.time()
