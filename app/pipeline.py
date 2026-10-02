@@ -216,6 +216,7 @@ def log(p, msg):
 
 jobs = queue.Queue()
 current = {"pid": None, "task": None}
+last_engine = [None]  # picture engine ComfyUI last ran for us (video jobs free memory themselves)
 cancelled = set()
 
 
@@ -530,6 +531,9 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p / 2K / 4K
             ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
             wf = comfy.add_final_size(wf, ow, oh)
+        if last_engine[0] != use:  # unload the previous engine's models first: 32 GB RAM can't cache several big ones
+            c.free()
+            last_engine[0] = use
         try:
             out = c.run(wf)
             img = next(o["images"][0] for o in out.values() if o.get("images"))
@@ -562,6 +566,7 @@ def do_animate(p, only=None):
         if not os.path.exists(pdir(p["id"], "keyframes", f"kf_{i:02d}.png")):
             raise RuntimeError(f"keyframe {i + 1} is missing; generate keyframes first")
     c.free()  # drop Flux from VRAM before loading Wan
+    last_engine[0] = None
     clips = range(n - 1) if only is None else [int(only)]
     for i in clips:
         check_cancel(p)
@@ -593,6 +598,7 @@ def do_t2v(p, only=None):
     fps = engine_fps(cfg, engine)
     n = len(p["plan"]["keyframes"])
     c.free()
+    last_engine[0] = None
     for i in (range(n) if only is None else [int(only)]):
         check_cancel(p)
         prompt = ". ".join(x for x in [p.get("style", ""), p["plan"]["keyframes"][i]["image_prompt"],
@@ -654,6 +660,7 @@ def do_animate_image(p, index, motion=""):
     fps = engine_fps(cfg, engine)
     w, h = video_size(cfg, p)
     c.free()
+    last_engine[0] = None
     a = c.upload_image(src, f"aics_{p['id']}_kf{i:02d}.png")
     k = p["plan"]["keyframes"][i]
     prompt = ". ".join(x for x in [motion or "natural subtle movement, gentle breathing and hair motion, slow cinematic camera push-in",
