@@ -4,6 +4,7 @@ import mimetypes
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # embedded Python doesn't add the script dir
@@ -92,6 +93,15 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if path == "/api/projects":
                 return self.send_json(pipeline.list_projects())
+            if path == "/api/characters":
+                return self.send_json(pipeline.list_characters())
+            if path == "/api/engines":
+                return self.send_json(pipeline.engines())
+            if m := re.fullmatch(r"/characters/([^/]+)", path):
+                name = urllib.parse.unquote(m.group(1))
+                if name not in pipeline.list_characters():
+                    return self.send_json({"error": "not found"}, 404)
+                return self.send_file(os.path.join(pipeline.CHARACTERS, name))
             if m := re.fullmatch(r"/api/projects/([\w\-]+)", path):
                 return self.send_json(pipeline.load(m.group(1)))
             if m := re.fullmatch(r"/files/([\w\-]+)/(.+)", path):
@@ -106,11 +116,22 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
         try:
+            if path == "/api/characters":  # raw image bytes, ?name=file.png
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                if not data:
+                    return self.send_json({"error": "empty upload"}, 400)
+                return self.send_json({"name": pipeline.save_character(q.get("name", ["character.png"])[0], data)})
             b = self.body()
             if path == "/api/plan":
                 p = pipeline.create_project(b["idea"], b.get("keyframes", 4), b.get("style", ""),
-                                            b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"))
+                                            b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),
+                                            b.get("reference", ""), b.get("image_engine"), b.get("video_engine"))
                 return self.send_json(p)
+            if m := re.fullmatch(r"/api/projects/([\w\-]+)/engines", path):
+                return self.send_json(pipeline.set_engines(m.group(1), b.get("image_engine"), b.get("video_engine")))
+            if m := re.fullmatch(r"/api/projects/([\w\-]+)/reference", path):
+                return self.send_json(pipeline.set_reference(m.group(1), b.get("reference", "")))
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/plan", path):
                 return self.send_json(pipeline.update_plan(m.group(1), b["plan"]))
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/keyframes", path):

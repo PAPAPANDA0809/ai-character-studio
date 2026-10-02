@@ -18,7 +18,8 @@ N keyframes give N-1 clips of 5 s (81 frames at 16 fps).
 | Path | What |
 |---|---|
 | `ComfyUI_windows_portable\` | ComfyUI 0.38 portable + ComfyUI-GGUF node |
-| `D:\AICharacterStudio\models\` | all model files (wired in via `ComfyUI\extra_model_paths.yaml`) |
+| `models\` | all model files (wired in via `ComfyUI\extra_model_paths.yaml`) |
+| `app\characters\` | master character pictures you upload |
 | `app\` | the web app (stdlib Python, no extra packages) |
 | `app\config.json` | model names, steps, sizes, LLM provider |
 | `start_comfyui.bat` | ComfyUI only (UI at http://127.0.0.1:8188) |
@@ -26,6 +27,7 @@ N keyframes give N-1 clips of 5 s (81 frames at 16 fps).
 ## Models
 
 - Image: FLUX.1-dev Q4_K_S GGUF, T5-XXL Q5_K_M GGUF, CLIP-L, Flux VAE. 20 steps.
+- Image with a master character picture: FLUX.1 Kontext dev Q4_K_S GGUF (same encoders/VAE). Pick or upload the picture in the app; every keyframe then keeps that character.
 - Video: Wan 2.2 I2V A14B high-noise + low-noise Q4_K_S GGUF with the lightx2v 4-step LoRAs, UMT5-XXL Q5_K_M GGUF, Wan 2.1 VAE. Uses ComfyUI's `WanFirstLastFrameToVideo`.
 - Text: Ollama `qwen3:4b` (unloaded after each call so the GPU is free).
 
@@ -40,5 +42,5 @@ No restart needed; config is re-read on every request.
 
 ## Speed tips
 
-- Models live on the D: hard drive; first load of each is slow. Moving `D:\AICharacterStudio\models` to an SSD and updating `extra_model_paths.yaml` speeds that up.
+- ComfyUI runs with `--disable-pinned-memory --cache-ram 6` so the 14B video model doesn't push Windows into heavy paging on 32 GB RAM.
 - Close GPU-heavy apps (browsers with many tabs, games) before animating: the 8 GB card is tight.

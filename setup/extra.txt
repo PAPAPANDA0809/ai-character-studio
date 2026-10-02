@@ -1,0 +1,3 @@
+C:\Users\Andy\AICharacterStudio\models\unet\flux1-schnell-Q4_K_S.gguf|https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_K_S.gguf
+C:\Users\Andy\AICharacterStudio\models\checkpoints\Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors|https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors
+C:\Users\Andy\AICharacterStudio\models\checkpoints\ltxv-2b-0.9.8-distilled.safetensors|https://huggingface.co/Lightricks/LTX-Video/resolve/main/ltxv-2b-0.9.8-distilled.safetensors

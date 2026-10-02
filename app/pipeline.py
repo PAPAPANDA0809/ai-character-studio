@@ -16,7 +16,26 @@ import llm
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECTS = os.path.join(APP_DIR, "projects")
+CHARACTERS = os.path.join(APP_DIR, "characters")
+MODELS = os.path.join(os.path.dirname(APP_DIR), "models")
 os.makedirs(PROJECTS, exist_ok=True)
+os.makedirs(CHARACTERS, exist_ok=True)
+
+IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def list_characters():
+    return sorted(f for f in os.listdir(CHARACTERS) if f.lower().endswith(IMG_EXT))
+
+
+def save_character(name, data):
+    base, ext = os.path.splitext(name)
+    base = re.sub(r"[^\w\- ]+", "", base).strip() or "character"
+    ext = ext.lower() if ext.lower() in IMG_EXT else ".png"
+    fname = base + ext
+    with open(os.path.join(CHARACTERS, fname), "wb") as f:
+        f.write(data)
+    return fname
 
 
 def load_config():
@@ -109,15 +128,30 @@ def worker():
             current.update(pid=None, task=None)
 
 
+def _reset_stale():
+    """Jobs don't survive a restart; mark anything left queued/running as interrupted."""
+    for d in os.listdir(PROJECTS):
+        try:
+            p = load(d)
+            if p["status"].startswith(("queued", "running")):
+                p["status"] = "interrupted:" + p["status"].split(":", 1)[1]
+                save(p)
+        except Exception:
+            pass
+
+
+_reset_stale()
 threading.Thread(target=worker, daemon=True).start()
 
 
 # ---------------------------------------------------------------- steps
 
-def create_project(idea, n_keyframes, style, character, aspect, seed=None):
+def create_project(idea, n_keyframes, style, character, aspect, seed=None, reference="",
+                   image_engine=None, video_engine=None):
     cfg = load_config()
     n_keyframes = max(2, min(int(n_keyframes), 8))
-    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character)
+    reference = reference if reference in list_characters() else ""
+    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=bool(reference))
     pid = time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
     os.makedirs(pdir(pid, "keyframes"))
     os.makedirs(pdir(pid, "clips"))
@@ -125,9 +159,44 @@ def create_project(idea, n_keyframes, style, character, aspect, seed=None):
         "id": pid, "created": time.time(), "idea": idea, "style": style, "aspect": aspect,
         "seed": int(seed) if seed not in (None, "") else random.randint(1, 2**31 - 1),
         "plan": plan, "keyframe_seeds": {}, "status": "planned", "log": [],
+        "reference": reference,
+        "image_engine": image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
+        "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
+        "clip_fps": {},
     }
     save(p)
     log(p, f"planned {n_keyframes} keyframes with {cfg['llm']['provider']}")
+    return p
+
+
+def engines():
+    def entry(key, e):
+        return {"id": key, "label": e["label"],
+                "installed": all(os.path.exists(os.path.join(MODELS, f)) for f in e["files"])}
+    cfg = load_config()
+    return {
+        "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()],
+        "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
+        "reference": entry("flux-kontext", comfy.REFERENCE_ENGINE),
+        "default_image": cfg.get("default_image_engine", "flux-dev"),
+        "default_video": cfg.get("default_video_engine", "wan22-14b"),
+    }
+
+
+def set_engines(pid, image_engine=None, video_engine=None):
+    p = load(pid)
+    if image_engine in comfy.IMAGE_ENGINES:
+        p["image_engine"] = image_engine
+    if video_engine in comfy.VIDEO_ENGINES:
+        p["video_engine"] = video_engine
+    save(p)
+    return p
+
+
+def set_reference(pid, reference):
+    p = load(pid)
+    p["reference"] = reference if reference in list_characters() else ""
+    save(p)
     return p
 
 
@@ -148,6 +217,17 @@ def keyframe_prompt(p, i):
     return ". ".join(s.strip().rstrip(".") for s in parts if s and s.strip())
 
 
+def reference_prompt(p, i):
+    """Kontext prompt: describe the new scene and tell it to keep the reference character unchanged."""
+    pl = p["plan"]
+    scene = ". ".join(s.strip().rstrip(".") for s in [pl["keyframes"][i]["image_prompt"], pl.get("setting", "")]
+                      if s and s.strip())
+    style = p.get("style", "").strip()
+    return (f"Place the exact same character from the reference image into a new scene: {scene}. "
+            f"Keep the character's face, body proportions, colors and outfit identical to the reference. "
+            + (f"Style: {style}." if style else ""))
+
+
 def size(cfg, p):
     return cfg["sizes"].get(p.get("aspect", "portrait"), cfg["sizes"]["portrait"])
 
@@ -160,15 +240,23 @@ def do_keyframes(p, indices=None, reseed=False):
     w, h = size(cfg, p)
     n = len(p["plan"]["keyframes"])
     indices = list(range(n)) if indices is None else [int(i) for i in indices]
+    ref = p.get("reference")
+    if ref:
+        ref_name = c.upload_image(os.path.join(CHARACTERS, ref), "aics_ref_" + re.sub(r"[^\w.\-]", "_", ref))
     for i in indices:
         key = str(i)
         if reseed or key not in p["keyframe_seeds"]:
             # one shared seed for the first pass helps keep the character consistent
             p["keyframe_seeds"][key] = random.randint(1, 2**31 - 1) if reseed else p["seed"]
-        log(p, f"keyframe {i + 1}/{n}: generating")
+        log(p, f"keyframe {i + 1}/{n}: generating with {'flux-kontext' if ref else p.get('image_engine', 'flux-dev')}")
         t = time.time()
-        out = c.run(comfy.flux_workflow(cfg, keyframe_prompt(p, i), w, h, p["keyframe_seeds"][key],
-                                        f"aics/{p['id']}/kf{i:02d}"))
+        prefix = f"aics/{p['id']}/kf{i:02d}"
+        if ref:
+            wf = comfy.kontext_workflow(cfg, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key], prefix)
+        else:
+            wf = comfy.image_workflow(cfg, p.get("image_engine", "flux-dev"), keyframe_prompt(p, i), w, h,
+                                      p["keyframe_seeds"][key], prefix)
+        out = c.run(wf)
         img = next(o["images"][0] for o in out.values() if o.get("images"))
         with open(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), "wb") as f:
             f.write(c.fetch(img))
@@ -183,7 +271,8 @@ def do_animate(p, only=None):
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     w, h = size(cfg, p)
-    fps = cfg["video"]["fps"]
+    engine = p.get("video_engine", "wan22-14b")
+    fps = {"ltxv-2b": cfg["ltxv"]["fps"], "hunyuan15": cfg["hunyuan15"]["fps"]}.get(engine, cfg["video"]["fps"])
     n = len(p["plan"]["keyframes"])
     for i in range(n):
         if not os.path.exists(pdir(p["id"], "keyframes", f"kf_{i:02d}.png")):
@@ -196,9 +285,8 @@ def do_animate(p, only=None):
         b = c.upload_image(pdir(p["id"], "keyframes", f"kf_{i + 1:02d}.png"), f"aics_{p['id']}_kf{i + 1:02d}.png")
         prompt = ". ".join(x for x in [p["plan"]["motions"][i], p["plan"].get("character", ""), p.get("style", "")] if x)
         t = time.time()
-        log(p, f"clip {i + 1}/{n - 1}: animating (this is the slow part)")
-        out = c.run(comfy.wan_flf_workflow(cfg, prompt, a, b, w, h, p["seed"] + i, f"aics/{p['id']}/clip{i:02d}"),
-                    on_progress=None)
+        log(p, f"clip {i + 1}/{n - 1}: animating with {engine} (this is the slow part)")
+        out = c.run(comfy.video_workflow(cfg, engine, prompt, a, b, w, h, p["seed"] + i, f"aics/{p['id']}/clip{i:02d}"))
         frames = next(o["images"] for o in out.values() if o.get("images"))
         fdir = pdir(p["id"], "clips", f"frames_{i:02d}")
         shutil.rmtree(fdir, ignore_errors=True)
@@ -208,6 +296,7 @@ def do_animate(p, only=None):
                 f.write(c.fetch(fr))
         run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(fdir, "%04d.png"), *H264,
                         pdir(p["id"], "clips", f"clip_{i:02d}.mp4")])
+        p.setdefault("clip_fps", {})[str(i)] = fps
         p["clips_version"] = time.time()
         log(p, f"clip {i + 1}/{n - 1}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
     if all(glob.glob(pdir(p["id"], "clips", f"frames_{i:02d}", "*.png")) for i in range(n - 1)):
@@ -236,8 +325,9 @@ def srt_time(s):
 
 
 def stitch(p, cfg, ff):
-    fps = cfg["video"]["fps"]
     n = len(p["plan"]["keyframes"])
+    clip_fps = [p.get("clip_fps", {}).get(str(i), cfg["video"]["fps"]) for i in range(n - 1)]
+    fps = max(clip_fps)  # clips from different engines are retimed to the fastest frame rate
     log(p, "stitching clips")
     seq = pdir(p["id"], "clips", "all_frames")
     shutil.rmtree(seq, ignore_errors=True)
@@ -248,6 +338,9 @@ def stitch(p, cfg, ff):
         files = sorted(glob.glob(pdir(p["id"], "clips", f"frames_{i:02d}", "*.png")))
         if not files:
             raise RuntimeError(f"clip {i + 1} has no frames; animate it first")
+        if clip_fps[i] != fps:  # repeat frames so the clip keeps its real duration
+            files = [files[min(len(files) - 1, int(j * clip_fps[i] / fps))]
+                     for j in range(round(len(files) * fps / clip_fps[i]))]
         if i > 0:
             files = files[1:]  # first frame duplicates the previous clip's last frame (same keyframe)
         start = k
@@ -272,7 +365,9 @@ def stitch(p, cfg, ff):
 
     pl = p["plan"]
     with open(pdir(p["id"], "caption.txt"), "w", encoding="utf-8") as f:
-        f.write(pl.get("caption", "").strip() + "\n\n" + " ".join(pl.get("hashtags", [])) + "\n")
+        caption = pl.get("caption", "").strip()
+        tags = [t for t in pl.get("hashtags", []) if t.lower() not in caption.lower()]
+        f.write(caption + ("\n\n" + " ".join(tags) if tags else "") + "\n")
 
     run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(seq, "%05d.png"), *H264, "final.mp4"],
                cwd=pdir(p["id"]))

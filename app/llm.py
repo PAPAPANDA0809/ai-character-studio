@@ -88,19 +88,35 @@ def template_plan(idea, n, character=""):
     }
 
 
-def plan(cfg, idea, n_keyframes, style="", character=""):
+REFERENCE_RULE = ("IMPORTANT: the character's appearance comes from a reference picture. In image_prompt and motions, "
+                  "call them only 'the character' and NEVER describe their face, fur, hair, body, clothing, hats, "
+                  "glasses or accessories; describe only pose, action, expression, framing, location and lighting. "
+                  "Set \"character\" to an empty string.")
+
+
+def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False):
     if cfg["provider"] == "template":
-        return template_plan(idea, n_keyframes, character)
+        p = template_plan(idea, n_keyframes, "" if has_reference else character)
+        if has_reference:
+            for k in p["keyframes"]:
+                k["image_prompt"] = "the character: " + k["image_prompt"]
+        return p
     user = f"Post idea: {idea}\nNumber of keyframes: {n_keyframes}\n"
     if style:
         user += f"Visual style: {style}\n"
-    if character:
+    if has_reference:
+        user += REFERENCE_RULE + "\n"
+        if character:
+            user += f"(Who the character is, for context only: {character})\n"
+    elif character:
         user += f"The character must look like this: {character}\n"
     last_err = None
     for _ in range(3):
         try:
             data = _extract_json(chat(cfg, PLAN_SYSTEM, user))
-            return normalize_plan(data, n_keyframes, idea, character)
+            if has_reference:
+                data["character"] = ""
+            return normalize_plan(data, n_keyframes, idea, "" if has_reference else character)
         except Exception as e:  # retry on malformed output
             last_err = e
     raise RuntimeError(f"planning failed: {last_err}")

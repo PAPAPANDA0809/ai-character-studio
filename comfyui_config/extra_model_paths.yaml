@@ -1,5 +1,5 @@
 aicharacterstudio:
-  base_path: D:/AICharacterStudio/models
+  base_path: C:/Users/Andy/AICharacterStudio/models
   diffusion_models: |
     unet
     diffusion_models
@@ -10,3 +10,5 @@ aicharacterstudio:
     text_encoders
   vae: vae
   loras: loras
+  checkpoints: checkpoints
+  clip_vision: clip_vision

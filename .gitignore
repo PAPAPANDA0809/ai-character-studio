@@ -7,3 +7,5 @@ __pycache__/
 *.gguf
 *.mp4
 *.png
+app/characters/
+models/

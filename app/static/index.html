@@ -54,7 +54,14 @@
     <div class="card">
       <label>Post idea</label>
       <textarea id="idea" rows="4" placeholder="e.g. Our mascot fox tries surfing for the first time and wipes out"></textarea>
-      <label>Character (optional, keeps the look fixed)</label>
+      <label>Master character picture (keyframes keep this character)</label>
+      <div class="row" style="flex-wrap:nowrap">
+        <img id="ref-thumb" style="width:48px;height:48px;object-fit:cover;border-radius:6px;background:#0c0e12;display:none">
+        <select id="ref" style="flex:1"></select>
+        <label class="ghost" style="margin:0;cursor:pointer;border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:var(--text)">Upload
+          <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" style="display:none"></label>
+      </div>
+      <label>Character description (optional)</label>
       <textarea id="character" rows="2" placeholder="e.g. a small orange fox with a teal scarf and round glasses"></textarea>
       <label>Visual style</label>
       <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
@@ -63,6 +70,8 @@
         <div style="flex:1"><label>Format</label>
           <select id="aspect"><option value="portrait">Portrait 9:16</option><option value="landscape">Landscape 16:9</option><option value="square">Square</option></select></div>
       </div>
+      <label>Image engine</label><select id="img-eng"></select>
+      <label>Video engine</label><select id="vid-eng"></select>
       <div style="margin-top:10px" class="row"><button id="btn-plan">Plan scenes</button><span id="plan-msg" class="status"></span></div>
     </div>
     <div class="projects" id="projects"></div>
@@ -100,7 +109,32 @@ async function refreshProjects() {
   document.querySelectorAll('.proj').forEach(el => el.onclick = () => openProject(el.dataset.id));
 }
 
-async function openProject(id) { dirty = false; P = await api('/api/projects/' + id); render(); refreshProjects(); }
+let CHARS = [], ENG = null;
+const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label)}${e.installed ? '' : ' (not installed)'}</option>`).join('');
+async function refreshEngines() {
+  ENG = await api('/api/engines');
+  $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
+  $('#vid-eng').innerHTML = engOptions(ENG.video, $('#vid-eng').value || ENG.default_video);
+}
+const refOptions = sel => `<option value="">None (text only)</option>` +
+  CHARS.map(c => `<option value="${esc(c)}" ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('');
+function showThumb(img, name) { img.style.display = name ? '' : 'none'; if (name) img.src = '/characters/' + encodeURIComponent(name); }
+async function refreshChars(select) {
+  CHARS = await api('/api/characters');
+  const cur = select ?? $('#ref').value;
+  $('#ref').innerHTML = refOptions(cur);
+  showThumb($('#ref-thumb'), $('#ref').value);
+}
+$('#ref').onchange = () => showThumb($('#ref-thumb'), $('#ref').value);
+$('#ref-file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = await fetch('/api/characters?name=' + encodeURIComponent(f.name), {method:'POST', body:f});
+  const j = await r.json(); if (j.error) return alert(j.error);
+  await refreshChars(j.name); e.target.value = '';
+  if (P) render();
+};
+
+async function openProject(id) { dirty = false; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); render(); refreshProjects(); }
 
 function collectPlan() {
   const pl = structuredClone(P.plan);
@@ -134,6 +168,17 @@ function render() {
   });
   $('#view').innerHTML = `
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(pl.title)}</h2><span class="status">${esc(P.status)} · ${esc(P.message || '')}</span></div>
+    <div class="row" style="flex-wrap:nowrap;margin-top:8px">
+      ${P.reference ? `<img src="/characters/${encodeURIComponent(P.reference)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px">` : ''}
+      <div style="flex:1"><label style="margin-top:0">Master character picture (FLUX Kontext keeps this character in every keyframe)</label>
+      <select id="f-ref" ${busy ? 'disabled' : ''}>${refOptions(P.reference)}</select></div>
+    </div>
+    <div class="row">
+      <div style="flex:1"><label>Image engine ${P.reference ? '(using FLUX Kontext because a character picture is set)' : ''}</label>
+        <select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select></div>
+      <div style="flex:1"><label>Video engine</label>
+        <select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
+    </div>
     <label>Title</label><input id="f-title" value="${esc(pl.title)}">
     <div class="row"><div style="flex:1"><label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea></div>
     <div style="flex:1"><label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea></div></div>
@@ -156,6 +201,11 @@ function render() {
     <h2>Log</h2><div class="log" id="log">${esc((P.log || []).join('\n'))}</div>`;
   $('#log').scrollTop = 1e9;
   $('#view').querySelectorAll('input,textarea').forEach(el => el.oninput = () => dirty = true);
+  $('#f-ref').onchange = async e => {
+    await savePlan(); P = await api(`/api/projects/${P.id}/reference`, {reference: e.target.value}); render(); };
+  const setEng = async () => { P = await api(`/api/projects/${P.id}/engines`,
+      {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value}); render(); };
+  $('#f-img-eng').onchange = setEng; $('#f-vid-eng').onchange = setEng;
   $('#btn-save').onclick = () => savePlan().then(render).catch(alert);
   $('#btn-kf').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/keyframes`, {}); poll(); };
   $('#btn-anim').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/animate`, {}); poll(); };
@@ -183,14 +233,15 @@ $('#btn-plan').onclick = async () => {
   if (!idea) return;
   $('#btn-plan').disabled = true; $('#plan-msg').textContent = 'Planning with the local LLM…';
   try {
-    P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value,
+    P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, reference: $('#ref').value,
+                                image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value,
                                 keyframes: +$('#nkf').value, aspect: $('#aspect').value});
     dirty = false; render(); refreshProjects(); $('#plan-msg').textContent = '';
   } catch (e) { $('#plan-msg').textContent = e.message; }
   $('#btn-plan').disabled = false;
 };
 
-refreshStatus(); refreshProjects(); setInterval(refreshStatus, 5000);
+refreshStatus(); refreshProjects(); refreshChars(''); refreshEngines(); setInterval(refreshStatus, 5000);
 </script>
 </body>
 </html>
