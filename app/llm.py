@@ -5,9 +5,12 @@ Providers (set "llm.provider" in config.json):
   openai   - any OpenAI-compatible endpoint (LM Studio, llama.cpp server, OpenAI, OpenRouter...)
   template - no model at all; builds a simple plan from the idea text
 """
+import glob
 import json
 import os
 import re
+import shutil
+import subprocess
 import urllib.request
 
 PLAN_SYSTEM = """You are a creative director for short social media videos featuring a recurring character.
@@ -83,8 +86,18 @@ def _secret(name):
         return ""
 
 
+def _claude_cli():
+    """Path to the Claude Code CLI: a standalone install on PATH, else the copy bundled with the Claude desktop app."""
+    found = shutil.which("claude") or next(iter(glob.glob(os.path.expanduser(r"~\.local\bin\claude.exe"))), None)
+    if found:
+        return found
+    bundled = sorted(glob.glob(os.path.expandvars(r"%APPDATA%\Claude\claude-code\*\*\claude.exe")), key=os.path.getmtime)
+    return bundled[-1] if bundled else None
+
+
 def enhance(cfg, idea, mode="video", style="", character=""):
-    """Rewrite a rough idea into a richer brief. Uses Claude when an API key is configured, else the local LLM.
+    """Rewrite a rough idea into a richer brief: Claude Code on this PC (owner's login), else a Claude API key,
+    else the local LLM.
     Returns (text, engine_label)."""
     what = {"images": "a photo set / carousel", "t2v": "a short text-to-video", "video": "a short video built from keyframes"}
     user = f"Idea: {idea}\nFormat: {what.get(mode, 'a short video')}\n"
@@ -92,6 +105,16 @@ def enhance(cfg, idea, mode="video", style="", character=""):
         user += f"Visual style: {style}\n"
     if character:
         user += f"Character: {character}\n"
+    cli = _claude_cli()
+    if cli:  # Claude Code on this PC, signed in with the owner's Claude account
+        r = subprocess.run([cli, "-p", "--output-format", "text", "--max-turns", "1"],
+                           input=ENHANCE_SYSTEM + "\n\n" + user, capture_output=True, text=True, encoding="utf-8",
+                           timeout=180, cwd=os.path.dirname(os.path.abspath(__file__)))
+        out = (r.stdout or "").strip()
+        if r.returncode == 0 and out:
+            return out, "Claude (your Claude login)"
+        if "log" not in (out + (r.stderr or "")).lower():  # anything other than "not logged in" is a real error
+            raise RuntimeError("Claude Code failed: " + (r.stderr or out)[-300:])
     key = os.environ.get("ANTHROPIC_API_KEY") or _secret("claude_api_key")
     if key:
         import anthropic
