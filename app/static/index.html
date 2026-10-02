@@ -95,6 +95,9 @@
   .scene { padding:12px; display:flex; flex-direction:column; gap:8px; }
   .scene .media { border-radius:12px; overflow:hidden; aspect-ratio:var(--ar,9/16); background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; cursor:pointer; position:relative; }
   .scene .media img, .scene .media video { width:100%; height:100%; object-fit:cover; display:block; }
+  .gen { display:flex; flex-direction:column; align-items:center; gap:10px; color:var(--mint); font-weight:600; }
+  .gen .spin { width:28px; height:28px; border-width:3px; }
+  .gen.dim { color:var(--muted); font-weight:500; }
   .scene .num { position:absolute; top:8px; left:8px; font:600 12px var(--display); padding:3px 8px; border-radius:99px; background:rgba(0,0,0,.6); color:var(--text); }
   .scene label { margin:4px 0 2px; }
   .scene textarea { font-size:13px; }
@@ -384,10 +387,15 @@ function render() {
   const hasKf = P.keyframes_version, isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
   const word = isImg ? 'Image' : isT2V ? 'Scene' : 'Keyframe';
   const refOpts = `<option value="">No character picture</option>` + CHARS.map(c => `<option value="${esc(c)}" ${c === P.reference ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  // which card is being made right now, from the job message ("keyframe 2/3: ...", "scene 1/2: ...", "clip 1/2: ...")
+  const cur = busy && /(keyframe|scene) (\d+)\//.exec(P.message || '');
+  const curIdx = cur ? +cur[2] - 1 : -1, queued = busy && /^queued/.test(P.status);
+  const waitLabel = i => i === curIdx ? '<div class="gen"><i class="spin"></i>Generating…</div>'
+    : (busy && (queued || i > curIdx) && /keyframes|t2v/.test(P.status)) ? '<div class="gen dim">Queued</div>' : 'not generated yet';
   const cards = pl.keyframes.map((k, i) => {
     const media = isT2V
-      ? (P.clips_version ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}#t=0.1" controls loop muted playsinline onerror="this.remove()"></video>` : 'not generated yet')
-      : (hasKf ? `<img src="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" onerror="this.replaceWith('not generated yet')" data-full="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}">` : 'not generated yet');
+      ? (P.clips_version && i !== curIdx ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}#t=0.1" controls loop muted playsinline onerror="this.outerHTML=this.dataset.w" data-w='${waitLabel(i)}'></video>` : waitLabel(i))
+      : (hasKf && i !== curIdx ? `<img src="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" onerror="this.outerHTML=this.dataset.w" data-w='${waitLabel(i)}' data-full="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}">` : waitLabel(i));
     const motion = isVid && i < n - 1 ? `<div class="motion"><label>Motion to ${word.toLowerCase()} ${i + 2} · clip ${i + 1}</label>
         ${P.clips_version ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}#t=0.1" controls loop muted playsinline onerror="this.remove()"></video>` : ''}
         <textarea id="mo${i}" rows="3">${esc(pl.motions[i])}</textarea>
