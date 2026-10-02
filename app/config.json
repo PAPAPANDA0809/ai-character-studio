@@ -63,7 +63,7 @@
     "fps": 24,
     "steps": 8
   },
-  "default_image_engine": "flux-dev",
+  "default_image_engine": "z-image",
   "default_video_engine": "wan22-14b",
   "qwen_image": {
     "unet": "qwen-image-Q3_K_M.gguf",
@@ -208,5 +208,12 @@
         960
       ]
     }
+  },
+  "zimage": {
+    "unet": "z_image_turbo-Q8_0.gguf",
+    "text_encoder": "qwen_3_4b_fp8_mixed.safetensors",
+    "vae": "ae.safetensors",
+    "steps": 9,
+    "shift": 3.0
   }
 }

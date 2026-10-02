@@ -1,0 +1,2 @@
+C:\Users\Andy\AICharacterStudio\models\unet\z_image_turbo-Q8_0.gguf|https://huggingface.co/jayn7/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf
+C:\Users\Andy\AICharacterStudio\models\text_encoders\qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors

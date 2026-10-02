@@ -77,6 +77,8 @@ class Comfy:
 
 # Engines shown in the app's dropdowns. "files" are checked against the models folder to mark what's installed.
 IMAGE_ENGINES = {
+    "z-image": {"label": "Z-Image Turbo (best photoreal, ~30s)",
+                "files": ["unet/z_image_turbo-Q8_0.gguf", "text_encoders/qwen_3_4b_fp8_mixed.safetensors"]},
     "flux-dev": {"label": "FLUX.1 dev (best quality, ~50s)", "files": ["unet/flux1-dev-Q4_K_S.gguf"]},
     "flux-schnell": {"label": "FLUX.1 schnell (fast drafts, ~20s)", "files": ["unet/flux1-schnell-Q4_K_S.gguf"]},
     "sdxl-juggernaut": {"label": "Juggernaut XL (SDXL photoreal, ~30s)",
@@ -181,6 +183,8 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None)
         return sdxl_workflow(cfg, prompt, width, height, seed, prefix)
     if engine == "qwen-image":
         return qwen_image_workflow(cfg, prompt, width, height, seed, prefix)
+    if engine == "z-image":
+        return zimage_workflow(cfg, prompt, width, height, seed, prefix)
     return flux_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)
 
 
@@ -190,6 +194,25 @@ def video_workflow(cfg, engine, prompt, start_name, end_name, width, height, see
     if engine == "hunyuan15":
         return hunyuan15_i2v_workflow(cfg, prompt, start_name, width, height, seed, prefix)
     return wan_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix)
+
+
+def zimage_workflow(cfg, prompt, width, height, seed, prefix):
+    z = cfg["zimage"]
+    return {
+        "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": z["unet"]}},
+        "2": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["1", 0], "shift": z["shift"], "sampling": "flow"}},
+        "3": {"class_type": "CLIPLoader", "inputs": {"clip_name": z["text_encoder"], "type": "lumina2", "device": "default"}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["3", 0]}},
+        "5": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["4", 0]}},
+        "6": {"class_type": "EmptySD3LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        "7": {"class_type": "KSampler",
+              "inputs": {"model": ["2", 0], "positive": ["4", 0], "negative": ["5", 0], "latent_image": ["6", 0],
+                         "seed": seed, "steps": z["steps"], "cfg": 1.0, "sampler_name": "res_multistep",
+                         "scheduler": "simple", "denoise": 1.0}},
+        "8": {"class_type": "VAELoader", "inputs": {"vae_name": z["vae"]}},
+        "9": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["8", 0]}},
+        "10": {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": prefix}},
+    }
 
 
 def qwen_image_workflow(cfg, prompt, width, height, seed, prefix):
