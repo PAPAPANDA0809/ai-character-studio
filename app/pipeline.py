@@ -11,6 +11,7 @@ import threading
 import time
 import traceback
 
+import cloud
 import comfy
 import llm
 
@@ -285,6 +286,7 @@ def engines():
         "t2v": [entry(k, e) for k, e in comfy.T2V_ENGINES.items()],
         "default_t2v": cfg.get("default_t2v_engine", "wan22-5b"),
         "reference": entry("flux-kontext", comfy.REFERENCE_ENGINE),
+        "gpt_image": cloud.available(),
         "default_image": cfg.get("default_image_engine", "flux-dev"),
         "default_video": cfg.get("default_video_engine", "wan22-14b"),
     }
@@ -353,7 +355,7 @@ def size(cfg, p):
     return cfg["sizes"].get(p.get("aspect", "portrait"), cfg["sizes"]["portrait"])
 
 
-def do_keyframes(p, indices=None, reseed=False):
+def do_keyframes(p, indices=None, reseed=False, engine=None):
     cfg = load_config()
     c = comfy.Comfy(cfg["comfy_url"])
     if not c.alive():
@@ -375,8 +377,18 @@ def do_keyframes(p, indices=None, reseed=False):
         if reseed or key not in p["keyframe_seeds"]:
             # one shared seed for the first pass helps keep the character consistent
             p["keyframe_seeds"][key] = random.randint(1, 2**31 - 1) if reseed else p["seed"]
-        log(p, f"keyframe {i + 1}/{n}: generating with {'flux-kontext' if ref else p.get('image_engine', 'flux-dev')}")
+        use = engine or ("flux-kontext" if ref else p.get("image_engine", "flux-dev"))
+        log(p, f"keyframe {i + 1}/{n}: generating with {use}")
         t = time.time()
+        out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
+        if use == "gpt-image":  # cloud, pay-per-use: only when picked for this picture
+            data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
+            with open(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), "wb") as f:
+                f.write(data)
+            p.setdefault("keyframe_engines", {})[key] = "gpt-image"
+            p["keyframes_version"] = time.time()
+            log(p, f"keyframe {i + 1}/{n}: done with GPT-image in {time.time() - t:.0f}s")
+            continue
         prefix = f"aics/{p['id']}/kf{i:02d}"
         if ref:
             wf = comfy.kontext_workflow(cfg, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key], prefix, steps)
@@ -388,10 +400,20 @@ def do_keyframes(p, indices=None, reseed=False):
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p
             ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
             wf = comfy.add_final_size(wf, ow, oh)
-        out = c.run(wf)
-        img = next(o["images"][0] for o in out.values() if o.get("images"))
+        try:
+            out = c.run(wf)
+            img = next(o["images"][0] for o in out.values() if o.get("images"))
+            data = c.fetch(img)
+        except Exception as e:
+            if p["id"] in cancelled or not cloud.available():
+                raise
+            # last resort: the local engine failed, so make this one picture with GPT-image
+            log(p, f"keyframe {i + 1}/{n}: local engine failed ({str(e)[:80]}), using GPT-image instead")
+            data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
+            use = "gpt-image"
         with open(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), "wb") as f:
-            f.write(c.fetch(img))
+            f.write(data)
+        p.setdefault("keyframe_engines", {})[key] = use
         p["keyframes_version"] = time.time()
         log(p, f"keyframe {i + 1}/{n}: done in {time.time() - t:.0f}s")
     write_caption(p)

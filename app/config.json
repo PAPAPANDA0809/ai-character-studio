@@ -215,5 +215,9 @@
     "vae": "ae.safetensors",
     "steps": 9,
     "shift": 3.0
+  },
+  "gpt_image": {
+    "model": "gpt-image-2",
+    "quality": "high"
   }
 }

@@ -430,7 +430,8 @@ function render() {
       <label>Prompt</label><textarea id="kp${i}" rows="4">${esc(k.image_prompt)}</textarea>
       <label>On-screen text</label><input id="ks${i}" value="${esc(k.subtitle)}">
       <div class="row">${isT2V ? `<button data-rescene="${i}" ${busy ? 'disabled' : ''}>↻ Regenerate scene</button>`
-        : `<button data-regen="${i}" ${busy ? 'disabled' : ''}>↻ New version</button>`}
+        : `<button data-regen="${i}" ${busy ? 'disabled' : ''}>↻ New version</button>
+           ${ENG && ENG.gpt_image ? `<button data-gpt="${i}" ${busy ? 'disabled' : ''} title="Pay-per-use, about $0.17">✦ Redo with GPT-image</button>` : ''}`}
         ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png"><button>⤓ Save</button></a>` : ''}</div>
       ${motion}</div>`;
   }).join('');
@@ -510,6 +511,8 @@ function render() {
   if ($('#btn-stitch')) $('#btn-stitch').onclick = async () => { dirty = true; await run('stitch')(); };
   $$('[data-regen]').forEach(b => b.onclick = run('keyframes', {indices: [+b.dataset.regen], reseed: true}));
   $$('[data-reanim]').forEach(b => b.onclick = run('animate', {only: +b.dataset.reanim}));
+  $$('[data-gpt]').forEach(b => b.onclick = async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
+    await run('keyframes', {indices: [+b.dataset.gpt], engine: 'gpt-image'})(); });
   $$('[data-rescene]').forEach(b => b.onclick = run('t2v', {only: +b.dataset.rescene}));
   $$('.scene img[data-full]').forEach(img => img.onclick = () => lightbox('images', {project: P.id, path: img.dataset.full.split('/files/' + P.id + '/')[1].split('?')[0], mtime: P.keyframes_version, label: pl.title}));
 }
