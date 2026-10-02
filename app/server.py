@@ -239,6 +239,8 @@ class Handler(BaseHTTPRequestHandler):
             if action == "animate_image":
                 pipeline.enqueue(pid, "animate_image", index=int(b.get("index", 0)), motion=b.get("motion", ""))
                 return self.send_json({"ok": True})
+            if action == "use_version":
+                return self.send_json(pipeline.use_version(pid, b.get("index", 0), b.get("name", "")))
             if action == "stitch":
                 pipeline.enqueue(pid, "stitch")
                 return self.send_json({"ok": True})

@@ -138,6 +138,10 @@ def gallery(kind, user):
             for f in sorted(glob.glob(pdir(d, "keyframes", "kf_*.png"))):
                 items.append({"project": d, "title": title, "path": "keyframes/" + os.path.basename(f),
                               "mtime": os.path.getmtime(f), "label": f"{title} #{int(f[-6:-4]) + 1}"})
+            for f in sorted(glob.glob(pdir(d, "keyframes", "history", "kf_*.png"))):
+                n_ = int(os.path.basename(f)[3:5]) + 1
+                items.append({"project": d, "title": title, "path": "keyframes/history/" + os.path.basename(f),
+                              "mtime": os.path.getmtime(f), "label": f"{title} #{n_} (older version)"})
         else:
             finals = [f for f in ("final_subtitled.mp4", "final.mp4") if os.path.exists(pdir(d, f))]
             if finals:
@@ -360,6 +364,39 @@ def size(cfg, p):
     return cfg["sizes"].get(p.get("aspect", "portrait"), cfg["sizes"]["portrait"])
 
 
+def save_keyframe(p, i, data):
+    """Write picture i; an existing picture is kept in keyframes/history so "New version" never loses it."""
+    cur = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
+    if os.path.exists(cur):
+        hist = pdir(p["id"], "keyframes", "history")
+        os.makedirs(hist, exist_ok=True)
+        name = f"kf_{i:02d}_{int(time.time() * 1000)}.png"
+        os.replace(cur, os.path.join(hist, name))
+        p.setdefault("versions", {}).setdefault(str(i), []).append(name)
+    with open(cur, "wb") as f:
+        f.write(data)
+
+
+def use_version(pid, index, name):
+    """Make an older version the current picture (the current one becomes a version)."""
+    p = load(pid)
+    i = int(index)
+    vers = p.get("versions", {}).get(str(i), [])
+    if name not in vers:
+        raise ValueError("unknown version")
+    hist = pdir(pid, "keyframes", "history")
+    cur = pdir(pid, "keyframes", f"kf_{i:02d}.png")
+    swap = f"kf_{i:02d}_{int(time.time() * 1000)}.png"
+    if os.path.exists(cur):
+        os.replace(cur, os.path.join(hist, swap))
+        vers.append(swap)
+    os.replace(os.path.join(hist, name), cur)
+    vers.remove(name)
+    p["keyframes_version"] = time.time()
+    save(p)
+    return p
+
+
 def do_keyframes(p, indices=None, reseed=False, engine=None):
     cfg = load_config()
     c = comfy.Comfy(cfg["comfy_url"])
@@ -388,8 +425,7 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
         if use == "gpt-image":  # cloud, pay-per-use: only when picked for this picture
             data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
-            with open(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), "wb") as f:
-                f.write(data)
+            save_keyframe(p, i, data)
             p.setdefault("keyframe_engines", {})[key] = "gpt-image"
             p["keyframes_version"] = time.time()
             log(p, f"keyframe {i + 1}/{n}: done with GPT-image in {time.time() - t:.0f}s")
@@ -416,8 +452,7 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
             log(p, f"keyframe {i + 1}/{n}: local engine failed ({str(e)[:80]}), using GPT-image instead")
             data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
             use = "gpt-image"
-        with open(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), "wb") as f:
-            f.write(data)
+        save_keyframe(p, i, data)
         p.setdefault("keyframe_engines", {})[key] = use
         p["keyframes_version"] = time.time()
         log(p, f"keyframe {i + 1}/{n}: done in {time.time() - t:.0f}s")

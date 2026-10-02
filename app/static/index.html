@@ -96,6 +96,9 @@
   .scene .media { border-radius:12px; overflow:hidden; aspect-ratio:var(--ar,9/16); background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; cursor:pointer; position:relative; }
   .scene .media img, .scene .media video { width:100%; height:100%; object-fit:cover; display:block; }
   .stop { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
+  .vers { display:flex; gap:6px; align-items:center; overflow-x:auto; padding:2px 0; }
+  .vers span { font-size:11px; color:var(--muted); margin-right:2px; flex:none; }
+  .vers img { width:44px; height:58px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:pointer; flex:none; }
   .gen { display:flex; flex-direction:column; align-items:center; gap:10px; color:var(--mint); font-weight:600; }
   .gen .spin { width:28px; height:28px; border-width:3px; }
   .gen.dim { color:var(--muted); font-weight:500; }
@@ -427,10 +430,12 @@ function render() {
         <textarea id="mo${i}" rows="3">${esc(pl.motions[i])}</textarea>
         ${P.clips_version ? `<button data-reanim="${i}" ${busy ? 'disabled' : ''}>↻ Re-animate clip ${i + 1}</button>` : ''}</div>` : '';
     return `<div class="glass scene"><div class="media" style="--ar:${ar}"><span class="num">${word} ${i + 1}</span>${media}</div>
+      ${((P.versions || {})[i] || []).length ? `<div class="vers"><span>Versions</span>${(P.versions[i]).slice().reverse().map(v =>
+        `<img src="${file('keyframes/history/' + v, 1)}" data-ver="${esc(v)}" data-vi="${i}" title="Tap to view or switch back">`).join('')}</div>` : ''}
       <label>Prompt</label><textarea id="kp${i}" rows="4">${esc(k.image_prompt)}</textarea>
       <label>On-screen text</label><input id="ks${i}" value="${esc(k.subtitle)}">
       <div class="row">${isT2V ? `<button data-rescene="${i}" ${busy ? 'disabled' : ''}>↻ Regenerate scene</button>`
-        : `<button data-regen="${i}" ${busy ? 'disabled' : ''}>↻ New version</button>
+        : `<button data-regen="${i}" ${busy ? 'disabled' : ''} title="Makes another take; the current one is kept under Versions">↻ New version</button>
            ${ENG && ENG.gpt_image ? `<button data-gpt="${i}" ${busy ? 'disabled' : ''} title="Pay-per-use, about $0.17">✦ Redo with GPT-image</button>` : ''}`}
         ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png"><button>⤓ Save</button></a>
           <button data-animg="${i}" ${busy ? 'disabled' : ''}>▶ Make video</button>` : ''}</div>
@@ -515,6 +520,15 @@ function render() {
   if ($('#btn-stitch')) $('#btn-stitch').onclick = async () => { dirty = true; await run('stitch')(); };
   $$('[data-regen]').forEach(b => b.onclick = run('keyframes', {indices: [+b.dataset.regen], reseed: true}));
   $$('[data-reanim]').forEach(b => b.onclick = run('animate', {only: +b.dataset.reanim}));
+  $$('[data-ver]').forEach(img => img.onclick = () => {
+    const src = file('keyframes/history/' + img.dataset.ver, 1), i = +img.dataset.vi;
+    $('#lb').innerHTML = `<img src="${src}"><div style="color:var(--muted);font-size:13px">Older version of picture ${i + 1}</div>
+      <div class="row"><button class="primary" id="lb-use">Use this one</button><a href="${src}" download><button>⤓ Save</button></a><button id="lb-close">Close</button></div>`;
+    $('#lb').classList.add('on');
+    const close = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
+    $('#lb-close').onclick = close;
+    $('#lb-use').onclick = async () => { await savePlan(); P = await api(`/api/projects/${P.id}/use_version`, {index: i, name: img.dataset.ver}); close(); render(); };
+  });
   $$('[data-animg]').forEach(b => b.onclick = async () => {
     const motion = prompt('How should it move? (leave empty for gentle natural motion)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
     if (motion === null) return;
