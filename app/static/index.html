@@ -498,7 +498,10 @@ function render() {
         <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V ? 'disabled' : ''}>${refOpts}</select></div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
           ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine${P.reference ? ' · Kontext (picture set)' : ''}</label><select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select></div>
+        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine</label><select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${P.reference
+          ? `<option>FLUX Kontext (needed to copy your character picture)</option>`
+          : (ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : '')}</select>
+          ${P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">To use Z-Image, set Character picture to "No character picture"</div>` : ''}</div>
         <div><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
           ${['480p', '720p'].map(v => `<option value="${v}" ${(P.video_res || '480p') === v ? 'selected' : ''}>${v}${v === '720p' ? ' · ~2-3× slower' : ''}</option>`).join('')}</select></div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
