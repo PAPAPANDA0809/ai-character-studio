@@ -53,7 +53,14 @@ class Handler(BaseHTTPRequestHandler):
                 start = int(m.group(1))
                 end = int(m.group(2)) if m.group(2) else size - 1
             elif m.group(2):
-                start = size - int(m.group(2))
+                start = max(0, size - int(m.group(2)))
+            end = min(end, size - 1)
+            if start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             self.send_response(206)
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         else:
@@ -155,8 +162,9 @@ class Handler(BaseHTTPRequestHandler):
             if m := re.fullmatch(r"/files/([\w\-]+)/(.+)", path):
                 if not self.owns(u, m.group(1)):
                     return self.send_json({"error": "not found"}, 404)
+                root = os.path.normpath(pipeline.pdir(m.group(1)))
                 full = os.path.normpath(pipeline.pdir(m.group(1), *m.group(2).split("/")))
-                if not full.startswith(os.path.normpath(pipeline.pdir(m.group(1)))):
+                if not full.startswith(root + os.sep):  # the separator stops "al/../alice/..." passing as "al"
                     return self.send_json({"error": "bad path"}, 400)
                 return self.send_file(full)
             self.send_json({"error": "not found"}, 404)

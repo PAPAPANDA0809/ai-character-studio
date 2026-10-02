@@ -64,8 +64,12 @@ def find_ffmpeg(name):
 # ---------------------------------------------------------------- storage
 
 # Project ids look like "<user>--<timestamp-title>" and live in projects/<user>/<timestamp-title>.
+PID_RE = re.compile(r"[a-z0-9_]{2,20}--[\w\-]+")
+
+
 def user_of(pid):
-    return pid.split("--", 1)[0]
+    """Owner of a project id; None for anything malformed (e.g. "bob--../alice/x"), so it never matches a user."""
+    return pid.split("--", 1)[0] if isinstance(pid, str) and PID_RE.fullmatch(pid) else None
 
 
 def pdir(pid, *parts):
@@ -255,8 +259,8 @@ def worker():
     while True:
         pid, task, kw = jobs.get()
         current.update(pid=pid, task=task)
-        p = load(pid)
         try:
+            p = load(pid)
             p["status"] = "running:" + task
             save(p)
             {"keyframes": do_keyframes, "animate": do_animate, "stitch": restitch, "t2v": do_t2v,
@@ -265,14 +269,17 @@ def worker():
             p["status"] = "done:" + task
             log(p, f"{task} finished")
         except Exception as e:
-            p = load(pid)
+            traceback.print_exc()
+            try:
+                p = load(pid)
+            except Exception:  # project deleted while queued: nothing to report into, keep the worker alive
+                continue
             if isinstance(e, Cancelled) or pid in cancelled:
                 p["status"] = "stopped:" + task
                 log(p, "stopped by user")
             else:
                 p["status"] = "error:" + task
                 log(p, f"ERROR in {task}: {e}")
-            traceback.print_exc()
         finally:
             cancelled.discard(pid)
             current.update(pid=None, task=None)
@@ -357,6 +364,8 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
         if mode == "video" and len(p["plan"]["keyframes"]) < 2:
             raise ValueError("a video needs at least 2 keyframes; add one first")
         p["mode"] = mode
+        if mode == "video":  # image/t2v plans have no motions; animate needs one per transition
+            fit_motions(p["plan"])
     if image_engine in comfy.IMAGE_ENGINES:
         p["image_engine"] = image_engine
     if video_engine in comfy.VIDEO_ENGINES:
@@ -374,12 +383,17 @@ def set_reference(pid, reference):
     return p
 
 
-def update_plan(pid, plan):
-    p = load(pid)
+def fit_motions(plan):
+    """Exactly one motion per transition (keyframes - 1), padding with a neutral one."""
     n = len(plan["keyframes"])
     plan["motions"] = (plan.get("motions") or [])[: max(0, n - 1)]
     while len(plan["motions"]) < n - 1:
         plan["motions"].append("smooth natural movement, gentle camera motion")
+
+
+def update_plan(pid, plan):
+    p = load(pid)
+    fit_motions(plan)
     p["plan"] = plan
     save(p)
     return p

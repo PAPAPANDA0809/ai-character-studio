@@ -86,6 +86,10 @@ def _secret(name):
         return ""
 
 
+# Text in, text out: no tools (any signed-in user's idea reaches this prompt), no saved session per call.
+CLI_ARGS = ["-p", "--output-format", "text", "--max-turns", "1", "--tools", "", "--no-session-persistence"]
+
+
 def _claude_cli():
     """Path to the Claude Code CLI: a standalone install on PATH, else the copy bundled with the Claude desktop app."""
     found = shutil.which("claude") or next(iter(glob.glob(os.path.expanduser(r"~\.local\bin\claude.exe"))), None)
@@ -113,7 +117,7 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
                  "clothing, glasses or accessories. Describe only the scene, pose, action, expression, mood and camera.\n")
     cli = _claude_cli()
     if cli:  # Claude Code on this PC, signed in with the owner's Claude account
-        r = subprocess.run([cli, "-p", "--output-format", "text", "--max-turns", "1"],
+        r = subprocess.run([cli, *CLI_ARGS],
                            input=ENHANCE_SYSTEM + "\n\n" + user, capture_output=True, text=True, encoding="utf-8",
                            timeout=180, cwd=os.path.dirname(os.path.abspath(__file__)))
         out = (r.stdout or "").strip()
@@ -214,7 +218,7 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
     cli = _claude_cli() if cfg.get("claude_planner", True) else None
     if cli:  # Claude on this PC plans the scenes too, so the plan matches the improved prompt
         try:
-            r = subprocess.run([cli, "-p", "--output-format", "text", "--max-turns", "1"],
+            r = subprocess.run([cli, *CLI_ARGS],
                                input=PLAN_SYSTEM + "\n\n" + user, capture_output=True, text=True, encoding="utf-8",
                                timeout=240, cwd=os.path.dirname(os.path.abspath(__file__)))
             if r.returncode == 0 and r.stdout.strip():
