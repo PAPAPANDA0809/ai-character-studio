@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Character Studio</title>
+<style>
+  :root { --bg:#111317; --panel:#1a1d23; --line:#2a2e37; --text:#e7e9ee; --muted:#9097a5; --accent:#7c9cff; --ok:#4cc38a; --err:#ff6b6b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui, Segoe UI, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; align-items:center; gap:16px; padding:12px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; }
+  .pill { font-size:12px; padding:2px 8px; border-radius:99px; background:var(--line); color:var(--muted); }
+  .pill.ok { color:var(--ok); } .pill.bad { color:var(--err); }
+  main { display:grid; grid-template-columns:320px 1fr; min-height:calc(100vh - 50px); }
+  aside { border-right:1px solid var(--line); padding:16px; display:flex; flex-direction:column; gap:10px; }
+  section { padding:16px 24px; overflow:auto; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  input, textarea, select { width:100%; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 9px; font:inherit; }
+  textarea { resize:vertical; }
+  button { background:var(--accent); color:#0b0d12; border:0; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; font:inherit; font-weight:600; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); font-weight:500; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .projects { overflow:auto; flex:1; margin-top:8px; }
+  .proj { padding:8px; border-radius:6px; cursor:pointer; border:1px solid transparent; }
+  .proj:hover { background:var(--panel); } .proj.active { border-color:var(--accent); }
+  .proj small { color:var(--muted); display:block; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .strip { display:flex; gap:10px; overflow-x:auto; align-items:stretch; padding-bottom:8px; }
+  .kf { width:250px; flex:none; display:flex; flex-direction:column; gap:6px; }
+  .kf .img { background:#0c0e12; border-radius:6px; aspect-ratio:var(--ar,9/16); display:flex; align-items:center; justify-content:center; color:var(--muted); overflow:hidden; }
+  .kf img, .kf video { width:100%; height:100%; object-fit:contain; }
+  .motion { width:220px; flex:none; display:flex; flex-direction:column; gap:6px; justify-content:center; }
+  .motion .arrow { color:var(--muted); text-align:center; font-size:12px; }
+  .status { color:var(--muted); font-size:13px; }
+  .log { font:12px/1.4 Consolas, monospace; color:var(--muted); max-height:180px; overflow:auto; white-space:pre-wrap; }
+  .final { display:flex; gap:16px; flex-wrap:wrap; }
+  .final video { max-height:520px; max-width:100%; border-radius:8px; background:#000; }
+  h2 { font-size:15px; margin:18px 0 8px; } h2:first-child { margin-top:0; }
+  a { color:var(--accent); }
+  @media (max-width:800px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI Character Studio</h1>
+  <span id="st-comfy" class="pill">ComfyUI …</span>
+  <span id="st-llm" class="pill">LLM …</span>
+  <span id="st-busy" class="status"></span>
+</header>
+<main>
+  <aside>
+    <div class="card">
+      <label>Post idea</label>
+      <textarea id="idea" rows="4" placeholder="e.g. Our mascot fox tries surfing for the first time and wipes out"></textarea>
+      <label>Character (optional, keeps the look fixed)</label>
+      <textarea id="character" rows="2" placeholder="e.g. a small orange fox with a teal scarf and round glasses"></textarea>
+      <label>Visual style</label>
+      <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
+      <div class="row">
+        <div style="flex:1"><label>Keyframes</label><input id="nkf" type="number" min="2" max="8" value="3"></div>
+        <div style="flex:1"><label>Format</label>
+          <select id="aspect"><option value="portrait">Portrait 9:16</option><option value="landscape">Landscape 16:9</option><option value="square">Square</option></select></div>
+      </div>
+      <div style="margin-top:10px" class="row"><button id="btn-plan">Plan scenes</button><span id="plan-msg" class="status"></span></div>
+    </div>
+    <div class="projects" id="projects"></div>
+  </aside>
+  <section id="view"><p class="status">Write a post idea and press <b>Plan scenes</b>, or open a project on the left.</p></section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let P = null, dirty = false;
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j;
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const running = () => P && /^(queued|running)/.test(P.status);
+
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+    $('#st-comfy').textContent = 'ComfyUI ' + (s.comfy ? 'online' : 'offline');
+    $('#st-comfy').className = 'pill ' + (s.comfy ? 'ok' : 'bad');
+    $('#st-llm').textContent = s.llm + (s.ollama === false ? ' (offline)' : '');
+    $('#st-llm').className = 'pill ' + (s.ollama === false ? 'bad' : 'ok');
+    $('#st-busy').textContent = s.busy.pid ? `Working: ${s.busy.task} (${s.queued} queued)` : '';
+  } catch (e) {}
+}
+
+async function refreshProjects() {
+  const list = await api('/api/projects');
+  $('#projects').innerHTML = list.map(p => `<div class="proj ${P && P.id === p.id ? 'active' : ''}" data-id="${p.id}">
+      ${esc(p.title)}<small>${esc(p.status)} · ${new Date(p.created * 1000).toLocaleString()}</small></div>`).join('');
+  document.querySelectorAll('.proj').forEach(el => el.onclick = () => openProject(el.dataset.id));
+}
+
+async function openProject(id) { dirty = false; P = await api('/api/projects/' + id); render(); refreshProjects(); }
+
+function collectPlan() {
+  const pl = structuredClone(P.plan);
+  pl.title = $('#f-title').value; pl.character = $('#f-character').value; pl.setting = $('#f-setting').value;
+  pl.keyframes.forEach((k, i) => { k.image_prompt = $('#kp' + i).value; k.subtitle = $('#ks' + i).value; });
+  pl.motions = pl.motions.map((m, i) => $('#mo' + i).value);
+  pl.caption = $('#f-caption').value;
+  pl.hashtags = $('#f-tags').value.split(/\s+/).filter(Boolean);
+  return pl;
+}
+async function savePlan() { if (!dirty) return; P = await api(`/api/projects/${P.id}/plan`, {plan: collectPlan()}); dirty = false; }
+
+function file(rel, ver) { return `/files/${P.id}/${rel}?v=${ver || 0}`; }
+
+function render() {
+  const pl = P.plan, n = pl.keyframes.length, busy = running();
+  const ar = {portrait:'9/16', landscape:'16/9', square:'1/1'}[P.aspect] || '9/16';
+  const hasKf = P.keyframes_version, hasFinal = P.final_version;
+  let strip = '';
+  pl.keyframes.forEach((k, i) => {
+    strip += `<div class="kf card">
+      <div class="img" style="--ar:${ar}">${hasKf ? `<img src="${file(`keyframes/kf_${String(i).padStart(2,'0')}.png`, P.keyframes_version)}" onerror="this.replaceWith('not generated')">` : 'not generated'}</div>
+      <label>Keyframe ${i + 1} prompt</label><textarea id="kp${i}" rows="5">${esc(k.image_prompt)}</textarea>
+      <label>On-screen line</label><input id="ks${i}" value="${esc(k.subtitle)}">
+      <button class="ghost" data-regen="${i}" ${busy ? 'disabled' : ''}>Regenerate (new seed)</button></div>`;
+    if (i < n - 1) strip += `<div class="motion">
+      <div class="arrow">clip ${i + 1} · 5s →</div>
+      ${P.clips_version ? `<video src="${file(`clips/clip_${String(i).padStart(2,'0')}.mp4`, P.clips_version)}" controls loop muted onerror="this.remove()"></video>` : ''}
+      <textarea id="mo${i}" rows="5">${esc(pl.motions[i])}</textarea>
+      ${P.clips_version ? `<button class="ghost" data-reanim="${i}" ${busy ? 'disabled' : ''}>Re-animate this clip</button>` : ''}</div>`;
+  });
+  $('#view').innerHTML = `
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(pl.title)}</h2><span class="status">${esc(P.status)} · ${esc(P.message || '')}</span></div>
+    <label>Title</label><input id="f-title" value="${esc(pl.title)}">
+    <div class="row"><div style="flex:1"><label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea></div>
+    <div style="flex:1"><label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea></div></div>
+    <h2>Keyframes and motions</h2>
+    <div class="strip">${strip}</div>
+    <div class="row" style="margin:10px 0">
+      <button id="btn-kf" ${busy ? 'disabled' : ''}>1. Generate keyframes</button>
+      <button id="btn-anim" ${busy || !hasKf ? 'disabled' : ''}>2. Animate &amp; stitch</button>
+      <button class="ghost" id="btn-save">Save edits</button>
+      <button class="ghost" id="btn-stitch" ${busy || !P.clips_version ? 'disabled' : ''}>Re-stitch (after caption edits)</button>
+    </div>
+    <h2>Caption</h2>
+    <textarea id="f-caption" rows="3">${esc(pl.caption)}</textarea>
+    <label>Hashtags</label><input id="f-tags" value="${esc((pl.hashtags || []).join(' '))}">
+    ${hasFinal ? `<h2>Final video</h2><div class="final">
+      <div><video src="${file('final_subtitled.mp4', P.final_version)}" controls onerror="this.parentElement.remove()"></video><br><a href="${file('final_subtitled.mp4', P.final_version)}" download>With on-screen text</a></div>
+      <div><video src="${file('final.mp4', P.final_version)}" controls></video><br><a href="${file('final.mp4', P.final_version)}" download>Clean (no text)</a> ·
+      <a href="${file('caption.txt', P.final_version)}" target="_blank">caption.txt</a> · <a href="${file('subtitles.srt', P.final_version)}" download>subtitles.srt</a></div></div>
+      <p class="status">Files are in app\\projects\\${esc(P.id)}</p>` : ''}
+    <h2>Log</h2><div class="log" id="log">${esc((P.log || []).join('\n'))}</div>`;
+  $('#log').scrollTop = 1e9;
+  $('#view').querySelectorAll('input,textarea').forEach(el => el.oninput = () => dirty = true);
+  $('#btn-save').onclick = () => savePlan().then(render).catch(alert);
+  $('#btn-kf').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/keyframes`, {}); poll(); };
+  $('#btn-anim').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/animate`, {}); poll(); };
+  $('#btn-stitch').onclick = async () => { dirty = true; await savePlan(); await api(`/api/projects/${P.id}/stitch`, {}); poll(); };
+  document.querySelectorAll('[data-regen]').forEach(b => b.onclick = async () => {
+    await savePlan(); await api(`/api/projects/${P.id}/keyframes`, {indices:[+b.dataset.regen], reseed:true}); poll(); });
+  document.querySelectorAll('[data-reanim]').forEach(b => b.onclick = async () => {
+    await savePlan(); await api(`/api/projects/${P.id}/animate`, {only:+b.dataset.reanim}); poll(); });
+}
+
+let pollTimer = null;
+async function poll() {
+  clearTimeout(pollTimer);
+  if (!P) return;
+  const fresh = await api('/api/projects/' + P.id);
+  const changed = JSON.stringify([fresh.status, fresh.log?.length, fresh.keyframes_version, fresh.clips_version, fresh.final_version]) !==
+                  JSON.stringify([P.status, P.log?.length, P.keyframes_version, P.clips_version, P.final_version]);
+  if (changed && !dirty) { P = fresh; render(); refreshProjects(); }
+  else if (changed) { P.status = fresh.status; P.log = fresh.log; P.message = fresh.message; }
+  if (/^(queued|running)/.test(fresh.status)) pollTimer = setTimeout(poll, 3000);
+}
+
+$('#btn-plan').onclick = async () => {
+  const idea = $('#idea').value.trim();
+  if (!idea) return;
+  $('#btn-plan').disabled = true; $('#plan-msg').textContent = 'Planning with the local LLM…';
+  try {
+    P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value,
+                                keyframes: +$('#nkf').value, aspect: $('#aspect').value});
+    dirty = false; render(); refreshProjects(); $('#plan-msg').textContent = '';
+  } catch (e) { $('#plan-msg').textContent = e.message; }
+  $('#btn-plan').disabled = false;
+};
+
+refreshStatus(); refreshProjects(); setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>

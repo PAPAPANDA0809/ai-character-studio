@@ -1,0 +1,43 @@
+{
+  "comfy_url": "http://127.0.0.1:8188",
+  "app_port": 7860,
+  "ffmpeg": "ffmpeg",
+
+  "llm": {
+    "provider": "ollama",
+    "ollama_url": "http://127.0.0.1:11434",
+    "ollama_model": "qwen3:4b",
+    "openai_base_url": "http://127.0.0.1:1234/v1",
+    "openai_api_key": "",
+    "openai_model": "gpt-4o-mini",
+    "temperature": 0.7
+  },
+
+  "image": {
+    "unet": "flux1-dev-Q4_K_S.gguf",
+    "t5": "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+    "clip_l": "clip_l.safetensors",
+    "vae": "ae.safetensors",
+    "steps": 20,
+    "guidance": 3.5
+  },
+
+  "video": {
+    "unet_high": "Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf",
+    "unet_low": "Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf",
+    "lora_high": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+    "lora_low": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+    "text_encoder": "umt5-xxl-encoder-Q5_K_M.gguf",
+    "vae": "wan_2.1_vae.safetensors",
+    "frames": 81,
+    "fps": 16,
+    "steps": 4,
+    "shift": 5.0
+  },
+
+  "sizes": {
+    "portrait": [480, 832],
+    "landscape": [832, 480],
+    "square": [624, 624]
+  }
+}

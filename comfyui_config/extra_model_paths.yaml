@@ -1,0 +1,12 @@
+aicharacterstudio:
+  base_path: D:/AICharacterStudio/models
+  diffusion_models: |
+    unet
+    diffusion_models
+  unet: unet
+  text_encoders: text_encoders
+  clip: |
+    clip
+    text_encoders
+  vae: vae
+  loras: loras

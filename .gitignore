@@ -1,0 +1,9 @@
+ComfyUI_windows_portable/
+downloads/
+app/projects/
+*.log
+__pycache__/
+*.safetensors
+*.gguf
+*.mp4
+*.png
