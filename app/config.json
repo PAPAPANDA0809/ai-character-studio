@@ -89,5 +89,5 @@
     "cfg": 5.0,
     "shift": 8.0
   },
-  "default_t2v_engine": "wan22-5b"
+  "default_t2v_engine": "ltxv-2b"
 }

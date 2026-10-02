@@ -78,21 +78,21 @@ class Comfy:
 # Engines shown in the app's dropdowns. "files" are checked against the models folder to mark what's installed.
 IMAGE_ENGINES = {
     "flux-dev": {"label": "FLUX.1 dev (best quality, ~50s)", "files": ["unet/flux1-dev-Q4_K_S.gguf"]},
-    "flux-schnell": {"label": "FLUX.1 schnell (fast drafts, ~15s)", "files": ["unet/flux1-schnell-Q4_K_S.gguf"]},
-    "sdxl-juggernaut": {"label": "Juggernaut XL (SDXL photoreal, ~20s)",
+    "flux-schnell": {"label": "FLUX.1 schnell (fast drafts, ~20s)", "files": ["unet/flux1-schnell-Q4_K_S.gguf"]},
+    "sdxl-juggernaut": {"label": "Juggernaut XL (SDXL photoreal, ~30s)",
                         "files": ["checkpoints/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"]},
-    "qwen-image": {"label": "Qwen-Image (best prompt following + text in image, slow)",
+    "qwen-image": {"label": "Qwen-Image (best prompt following + text in image, ~1.5 min)",
                    "files": ["unet/qwen-image-Q3_K_M.gguf", "loras/Qwen-Image-Lightning-8steps-V2.0-bf16.safetensors",
                              "text_encoders/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", "vae/qwen_image_vae.safetensors"]},
 }
 REFERENCE_ENGINE = {"label": "FLUX.1 Kontext (uses the master character picture)",
                     "files": ["unet/flux1-kontext-dev-Q4_K_S.gguf"]}
 VIDEO_ENGINES = {
-    "wan22-14b": {"label": "Wan 2.2 14B first+last frame (best quality, slow)",
+    "wan22-14b": {"label": "Wan 2.2 14B first+last frame (best quality, ~20 min/clip)",
                   "files": ["unet/Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf", "unet/Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf"]},
-    "ltxv-2b": {"label": "LTX-Video 2B first+last frame (fast, lower quality)",
+    "ltxv-2b": {"label": "LTX-Video 2B first+last frame (fast, ~1 min/clip)",
                 "files": ["checkpoints/ltxv-2b-0.9.8-distilled.safetensors"]},
-    "hunyuan15": {"label": "HunyuanVideo 1.5 480p (start frame only; won't land on the next keyframe)",
+    "hunyuan15": {"label": "HunyuanVideo 1.5 480p (~8 min/clip, start frame only)",
                   "files": ["diffusion_models/hunyuanvideo1.5_480p_i2v_step_distilled_fp8_scaled.safetensors",
                             "text_encoders/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
                             "text_encoders/byt5_small_glyphxl_fp16.safetensors",
@@ -102,10 +102,10 @@ VIDEO_ENGINES = {
 
 
 T2V_ENGINES = {
-    "wan22-5b": {"label": "Wan 2.2 5B text-to-video (better quality)",
+    "wan22-5b": {"label": "Wan 2.2 5B text-to-video (experimental, ~6 min, weak at 9:16)",
                  "files": ["unet/Wan2.2-TI2V-5B-Q5_K_M.gguf", "vae/wan2.2_vae.safetensors",
                            "text_encoders/umt5-xxl-encoder-Q5_K_M.gguf"]},
-    "ltxv-2b": {"label": "LTX-Video 2B text-to-video (fast)",
+    "ltxv-2b": {"label": "LTX-Video 2B text-to-video (fast, ~40s)",
                 "files": ["checkpoints/ltxv-2b-0.9.8-distilled.safetensors"]},
 }
 
