@@ -24,16 +24,22 @@ os.makedirs(CHARACTERS, exist_ok=True)
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 
 
-def list_characters():
-    return sorted(f for f in os.listdir(CHARACTERS) if f.lower().endswith(IMG_EXT))
+def char_dir(user):
+    d = os.path.join(CHARACTERS, user)
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
-def save_character(name, data):
+def list_characters(user):
+    return sorted(f for f in os.listdir(char_dir(user)) if f.lower().endswith(IMG_EXT))
+
+
+def save_character(user, name, data):
     base, ext = os.path.splitext(name)
     base = re.sub(r"[^\w\- ]+", "", base).strip() or "character"
     ext = ext.lower() if ext.lower() in IMG_EXT else ".png"
     fname = base + ext
-    with open(os.path.join(CHARACTERS, fname), "wb") as f:
+    with open(os.path.join(char_dir(user), fname), "wb") as f:
         f.write(data)
     return fname
 
@@ -56,8 +62,39 @@ def find_ffmpeg(name):
 
 # ---------------------------------------------------------------- storage
 
+# Project ids look like "<user>--<timestamp-title>" and live in projects/<user>/<timestamp-title>.
+def user_of(pid):
+    return pid.split("--", 1)[0]
+
+
 def pdir(pid, *parts):
-    return os.path.join(PROJECTS, pid, *parts)
+    user, _, rest = pid.partition("--")
+    return os.path.join(PROJECTS, user, rest, *parts)
+
+
+def project_ids(user=None):
+    users = [user] if user else [u for u in os.listdir(PROJECTS) if os.path.isdir(os.path.join(PROJECTS, u))]
+    out = []
+    for u in users:
+        d = os.path.join(PROJECTS, u)
+        if os.path.isdir(d):
+            out += [f"{u}--{x}" for x in os.listdir(d) if os.path.exists(os.path.join(d, x, "project.json"))]
+    return out
+
+
+def migrate_legacy(user):
+    """Move projects/characters made before sign-in existed into this user's folders."""
+    for d in os.listdir(PROJECTS):
+        src = os.path.join(PROJECTS, d)
+        if os.path.exists(os.path.join(src, "project.json")):
+            os.makedirs(os.path.join(PROJECTS, user), exist_ok=True)
+            os.replace(src, os.path.join(PROJECTS, user, d))
+            p = load(f"{user}--{d}")
+            p["id"] = f"{user}--{d}"
+            save(p)
+    for f in os.listdir(CHARACTERS):
+        if f.lower().endswith(IMG_EXT):
+            os.replace(os.path.join(CHARACTERS, f), os.path.join(char_dir(user), f))
 
 
 def load(pid):
@@ -76,9 +113,9 @@ def save(p):
         os.replace(tmp, pdir(p["id"], "project.json"))
 
 
-def list_projects():
+def list_projects(user):
     out = []
-    for d in sorted(os.listdir(PROJECTS), reverse=True):
+    for d in sorted(project_ids(user), reverse=True):
         try:
             p = load(d)
             out.append({"id": p["id"], "title": p["plan"]["title"], "status": p["status"], "created": p["created"]})
@@ -87,10 +124,10 @@ def list_projects():
     return out
 
 
-def gallery(kind):
+def gallery(kind, user):
     """Every generated image (kind='images') or finished/clip video (kind='videos'), newest first."""
     items = []
-    for d in os.listdir(PROJECTS):
+    for d in project_ids(user):
         try:
             p = load(d)
         except Exception:
@@ -156,7 +193,7 @@ def worker():
 
 def _reset_stale():
     """Jobs don't survive a restart; mark anything left queued/running as interrupted."""
-    for d in os.listdir(PROJECTS):
+    for d in project_ids():
         try:
             p = load(d)
             if p["status"].startswith(("queued", "running")):
@@ -172,14 +209,14 @@ threading.Thread(target=worker, daemon=True).start()
 
 # ---------------------------------------------------------------- steps
 
-def create_project(idea, n_keyframes, style, character, aspect, seed=None, reference="",
+def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
                    image_engine=None, video_engine=None, mode="video"):
     cfg = load_config()
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
-    reference = reference if reference in list_characters() else ""
+    reference = reference if reference in list_characters(user) else ""
     plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=bool(reference), mode=mode)
-    pid = time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
+    pid = user + "--" + time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
     os.makedirs(pdir(pid, "keyframes"))
     os.makedirs(pdir(pid, "clips"))
     p = {
@@ -234,7 +271,7 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
 
 def set_reference(pid, reference):
     p = load(pid)
-    p["reference"] = reference if reference in list_characters() else ""
+    p["reference"] = reference if reference in list_characters(user_of(pid)) else ""
     save(p)
     return p
 
@@ -281,7 +318,8 @@ def do_keyframes(p, indices=None, reseed=False):
     indices = list(range(n)) if indices is None else [int(i) for i in indices]
     ref = p.get("reference")
     if ref:
-        ref_name = c.upload_image(os.path.join(CHARACTERS, ref), "aics_ref_" + re.sub(r"[^\w.\-]", "_", ref))
+        ref_name = c.upload_image(os.path.join(char_dir(user_of(p["id"])), ref),
+                                  "aics_ref_" + re.sub(r"[^\w.\-]", "_", user_of(p["id"]) + "_" + ref))
     for i in indices:
         key = str(i)
         if reseed or key not in p["keyframe_seeds"]:

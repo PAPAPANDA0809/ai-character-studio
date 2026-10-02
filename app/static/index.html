@@ -143,6 +143,7 @@
   <div class="chips">
     <span class="chip"><i class="dot" id="d-comfy"></i><span class="t">Engine</span></span>
     <span class="chip"><i class="dot" id="d-llm"></i><span class="t" id="t-llm">Planner</span></span>
+    <button class="chip" id="me-chip" style="cursor:pointer;color:var(--text)">👤 <span id="me-name"></span></button>
   </div>
 </header>
 <nav class="tabs" id="tabs"></nav>
@@ -199,6 +200,7 @@
 
 <nav class="bnav" id="bnav"></nav>
 <div class="lb" id="lb"></div>
+<div class="lb" id="acct"></div>
 
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -226,6 +228,7 @@ function show(v) {
 
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  if (r.status === 401) { location.href = '/login'; throw new Error('signed out'); }
   const j = await r.json();
   if (!r.ok || j.error) throw new Error(j.error || r.statusText);
   return j;
@@ -461,7 +464,46 @@ async function poll() {
   if (/^(queued|running)/.test(fresh.status)) pollTimer = setTimeout(poll, 3000);
 }
 
-syncCreate(); refreshStatus(); refreshChars(); refreshEngines(); show('create');
+/* ---------- account ---------- */
+let ME = null;
+async function loadMe() {
+  ME = await api('/api/me');
+  if (!ME.user) return location.href = '/login';
+  $('#me-name').textContent = ME.user;
+}
+async function openAccount() {
+  const users = ME.admin ? await api('/api/users') : [];
+  $('#acct').innerHTML = `<div class="glass pad" style="width:100%;max-width:420px;max-height:88vh;overflow:auto">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">👤 ${esc(ME.user)}</h2><button id="ac-close">✕</button></div>
+    <p style="color:var(--muted);font-size:13px;margin:4px 0 0">Your projects, pictures and videos are private to your account.</p>
+    ${ME.admin ? `<h3>People</h3>
+      ${users.map(x => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)">
+        <span>${esc(x.user)}${x.admin ? ' <span class="badge done">admin</span>' : ''}</span>
+        ${x.user !== ME.user ? `<button data-del="${esc(x.user)}">Remove</button>` : ''}</div>`).join('')}
+      <label>Add a person or reset their password</label>
+      <input id="nu-name" placeholder="username (e.g. wife)" autocapitalize="none">
+      <input id="nu-pass" type="password" placeholder="password (min 6)" style="margin-top:8px">
+      <button class="primary" id="nu-add" style="margin-top:8px;width:100%">Save person</button>` : ''}
+    <h3>Change my password</h3>
+    <input id="pw-old" type="password" placeholder="current password">
+    <input id="pw-new" type="password" placeholder="new password (min 6)" style="margin-top:8px">
+    <button id="pw-save" style="margin-top:8px;width:100%">Change password</button>
+    <div id="ac-msg" style="color:var(--mint);font-size:13px;min-height:18px;margin-top:8px"></div>
+    <button id="ac-out" style="width:100%;margin-top:6px">Sign out</button></div>`;
+  $('#acct').classList.add('on');
+  const msg = (t, bad) => { $('#ac-msg').style.color = bad ? 'var(--err)' : 'var(--mint)'; $('#ac-msg').textContent = t; };
+  $('#ac-close').onclick = () => $('#acct').classList.remove('on');
+  $('#ac-out').onclick = async () => { await api('/api/logout', {}); location.href = '/login'; };
+  $('#pw-save').onclick = async () => { try { await api('/api/password', {old: $('#pw-old').value, new: $('#pw-new').value}); msg('Password changed'); } catch (e) { msg(e.message, 1); } };
+  if (ME.admin) {
+    $('#nu-add').onclick = async () => { try { await api('/api/users', {user: $('#nu-name').value.trim().toLowerCase(), password: $('#nu-pass').value}); await openAccount(); msg('Saved'); } catch (e) { msg(e.message, 1); } };
+    $$('[data-del]').forEach(b => b.onclick = async () => { if (confirm(`Remove ${b.dataset.del}? Their files stay on the PC.`)) { await api('/api/users/delete', {user: b.dataset.del}); openAccount(); } });
+  }
+}
+$('#me-chip').onclick = openAccount;
+$('#acct').onclick = e => { if (e.target.id === 'acct') $('#acct').classList.remove('on'); };
+
+loadMe().then(() => { syncCreate(); refreshStatus(); refreshChars(); refreshEngines(); show('create'); });
 setInterval(refreshStatus, 6000);
 </script>
 </body>

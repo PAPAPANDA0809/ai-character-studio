@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reelmint · Sign in</title>
+<link rel="icon" href="/static/reelmint-32.png">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#07090d">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#07090d; --line:rgba(255,255,255,.09); --text:#eef1f6; --muted:#8b93a3; --mint:#2ef2b5; --err:#ff6b8a;
+          --grad:linear-gradient(120deg,#2ef2b5,#3ad7ff 55%,#8a5cff); }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+         background:var(--bg); color:var(--text); font:15px/1.45 Inter,system-ui,sans-serif; }
+  body::before { content:""; position:fixed; inset:-20vmax; z-index:-1;
+    background:radial-gradient(40vmax 30vmax at 15% 10%,rgba(46,242,181,.16),transparent 60%),
+               radial-gradient(40vmax 30vmax at 90% 80%,rgba(138,92,255,.18),transparent 60%); }
+  .card { width:100%; max-width:360px; padding:28px 24px; border-radius:22px; background:rgba(255,255,255,.045);
+          border:1px solid var(--line); backdrop-filter:blur(14px); text-align:center; }
+  img { width:72px; height:72px; border-radius:20px; box-shadow:0 0 40px rgba(46,242,181,.35); }
+  h1 { font:700 28px 'Space Grotesk',Inter,sans-serif; margin:14px 0 4px; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  p { color:var(--muted); margin:0 0 20px; font-size:14px; }
+  input { width:100%; margin-bottom:12px; background:rgba(0,0,0,.35); color:var(--text); border:1px solid var(--line);
+          border-radius:12px; padding:13px 14px; font:inherit; outline:none; }
+  input:focus { border-color:rgba(46,242,181,.6); box-shadow:0 0 0 3px rgba(46,242,181,.12); }
+  button { width:100%; padding:14px; border:0; border-radius:14px; background:var(--grad); color:#041014;
+           font:600 16px Inter,sans-serif; cursor:pointer; box-shadow:0 6px 24px rgba(46,242,181,.25); }
+  #err { color:var(--err); min-height:20px; font-size:13px; margin-top:10px; }
+</style>
+</head>
+<body>
+  <form class="card" id="f">
+    <img src="/static/reelmint-192.png" alt="">
+    <h1>Reelmint</h1>
+    <p id="sub">Sign in to your studio</p>
+    <input id="u" placeholder="Username" autocomplete="username" autocapitalize="none" required>
+    <input id="p" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button id="b">Sign in</button>
+    <div id="err"></div>
+  </form>
+<script>
+let setup = false;
+fetch('/api/me').then(r => r.json()).then(me => {
+  if (me.user) location.href = '/';
+  setup = me.setup;
+  if (setup) {
+    document.getElementById('sub').textContent = 'First time here: create the admin account';
+    document.getElementById('b').textContent = 'Create account';
+    document.getElementById('p').autocomplete = 'new-password';
+  }
+});
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  const r = await fetch(setup ? '/api/setup' : '/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({user: document.getElementById('u').value.trim().toLowerCase(), password: document.getElementById('p').value})});
+  const j = await r.json();
+  if (j.ok) location.href = '/'; else document.getElementById('err').textContent = j.error || 'Sign in failed';
+};
+</script>
+</body>
+</html>
