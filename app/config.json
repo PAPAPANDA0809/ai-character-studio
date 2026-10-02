@@ -219,5 +219,9 @@
   "gpt_image": {
     "model": "gpt-image-2",
     "quality": "high"
+  },
+  "kontext_polish": {
+    "enabled": true,
+    "denoise": 0.4
   }
 }

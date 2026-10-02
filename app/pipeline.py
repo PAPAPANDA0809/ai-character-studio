@@ -479,6 +479,10 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         prefix = f"aics/{p['id']}/kf{i:02d}"
         if ref:
             wf = comfy.kontext_workflow(cfg, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key], prefix, steps)
+            pol = cfg.get("kontext_polish", {})
+            if pol.get("enabled", True) and os.path.exists(os.path.join(MODELS, "unet", cfg["zimage"]["unet"])):
+                wf = comfy.add_zimage_polish(cfg, wf, "photo, " + keyframe_prompt(p, i), p["keyframe_seeds"][key],
+                                             pol.get("denoise", 0.4))
         else:
             wf = comfy.image_workflow(cfg, p.get("image_engine", "flux-dev"), keyframe_prompt(p, i), w, h,
                                       p["keyframe_seeds"][key], prefix, steps)

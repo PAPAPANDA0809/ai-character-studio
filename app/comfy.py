@@ -200,6 +200,30 @@ def video_workflow(cfg, engine, prompt, start_name, end_name, width, height, see
     return wan_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix)
 
 
+def add_zimage_polish(cfg, wf, prompt, seed, denoise):
+    """Second pass: re-render the picture with Z-Image at low denoise. Keeps the character and composition
+    from the first engine (e.g. FLUX Kontext) but gives Z-Image's photographic skin, hair and light."""
+    z = cfg["zimage"]
+    save = next(k for k, n in wf.items() if n["class_type"] == "SaveImage")
+    src = wf[save]["inputs"]["images"]
+    vae = next(["%s" % k, 0] for k, n in wf.items() if n["class_type"] == "VAELoader")
+    wf.update({
+        "60": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": z["unet"]}},
+        "61": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["60", 0], "shift": z["shift"], "sampling": "flow"}},
+        "62": {"class_type": "CLIPLoader", "inputs": {"clip_name": z["text_encoder"], "type": "lumina2", "device": "default"}},
+        "63": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["62", 0]}},
+        "64": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["63", 0]}},
+        "65": {"class_type": "VAEEncode", "inputs": {"pixels": src, "vae": vae}},
+        "66": {"class_type": "KSampler",
+               "inputs": {"model": ["61", 0], "positive": ["63", 0], "negative": ["64", 0], "latent_image": ["65", 0],
+                          "seed": seed, "steps": z["steps"], "cfg": 1.0, "sampler_name": "res_multistep",
+                          "scheduler": "simple", "denoise": denoise}},
+        "67": {"class_type": "VAEDecode", "inputs": {"samples": ["66", 0], "vae": vae}},
+    })
+    wf[save]["inputs"]["images"] = ["67", 0]
+    return wf
+
+
 def zimage_workflow(cfg, prompt, width, height, seed, prefix):
     z = cfg["zimage"]
     return {
