@@ -144,6 +144,10 @@ def gallery(kind, user):
                 f = pdir(d, finals[0])
                 items.append({"project": d, "title": title, "path": finals[0], "mtime": os.path.getmtime(f),
                               "label": title, "final": True})
+            elif p.get("mode") == "images":
+                for f in sorted(glob.glob(pdir(d, "clips", "img_*.mp4"))):
+                    items.append({"project": d, "title": title, "path": "clips/" + os.path.basename(f),
+                                  "mtime": os.path.getmtime(f), "label": f"{title} #{int(f[-6:-4]) + 1}"})
             else:  # unfinished video projects still show their clips
                 for f in sorted(glob.glob(pdir(d, "clips", "clip_*.mp4"))):
                     items.append({"project": d, "title": title, "path": "clips/" + os.path.basename(f),
@@ -210,7 +214,8 @@ def worker():
         try:
             p["status"] = "running:" + task
             save(p)
-            {"keyframes": do_keyframes, "animate": do_animate, "stitch": restitch, "t2v": do_t2v}[task](p, **kw)
+            {"keyframes": do_keyframes, "animate": do_animate, "stitch": restitch, "t2v": do_t2v,
+             "animate_image": do_animate_image}[task](p, **kw)
             p = load(pid)
             p["status"] = "done:" + task
             log(p, f"{task} finished")
@@ -498,6 +503,44 @@ def save_clip_frames(p, c, ff, i, frames, fps):
                     pdir(p["id"], "clips", f"clip_{i:02d}.mp4")])
     p.setdefault("clip_fps", {})[str(i)] = fps
     p["clips_version"] = time.time()
+
+
+def do_animate_image(p, index, motion=""):
+    """Images-only projects: turn one finished picture into a 5-second clip."""
+    cfg = load_config()
+    ff = find_ffmpeg(cfg["ffmpeg"])
+    c = comfy.Comfy(cfg["comfy_url"])
+    if not c.alive():
+        raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
+    i = int(index)
+    src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
+    if not os.path.exists(src):
+        raise RuntimeError(f"picture {i + 1} isn't generated yet")
+    engine = p.get("video_engine", "wan22-14b")
+    fps = {"ltxv-2b": cfg["ltxv"]["fps"], "hunyuan15": cfg["hunyuan15"]["fps"]}.get(engine, cfg["video"]["fps"])
+    w, h = video_size(cfg, p)
+    c.free()
+    a = c.upload_image(src, f"aics_{p['id']}_kf{i:02d}.png")
+    k = p["plan"]["keyframes"][i]
+    prompt = ". ".join(x for x in [motion or "natural subtle movement, gentle breathing and hair motion, slow cinematic camera push-in",
+                                   k["image_prompt"]] if x)
+    log(p, f"picture {i + 1}: animating with {engine}")
+    t = time.time()
+    out = c.run(comfy.video_workflow(cfg, engine, prompt, a, None, w, h, p["seed"] + 100 + i, f"aics/{p['id']}/img{i:02d}"))
+    frames = next(o["images"] for o in out.values() if o.get("images"))
+    fdir = pdir(p["id"], "clips", f"imgframes_{i:02d}")
+    shutil.rmtree(fdir, ignore_errors=True)
+    os.makedirs(fdir)
+    for n_, fr in enumerate(frames):
+        with open(os.path.join(fdir, f"{n_:04d}.png"), "wb") as f:
+            f.write(c.fetch(fr))
+    vw, vh = video_size(cfg, p)
+    run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(fdir, "%04d.png"),
+                    "-vf", f"scale={vw}:{vh}:flags=lanczos,setsar=1", *H264, pdir(p["id"], "clips", f"img_{i:02d}.mp4")])
+    shutil.rmtree(fdir, ignore_errors=True)
+    p.setdefault("image_clips", {})[str(i)] = time.time()
+    p["clips_version"] = time.time()
+    log(p, f"picture {i + 1}: video done in {time.time() - t:.0f}s")
 
 
 def restitch(p):

@@ -432,7 +432,11 @@ function render() {
       <div class="row">${isT2V ? `<button data-rescene="${i}" ${busy ? 'disabled' : ''}>↻ Regenerate scene</button>`
         : `<button data-regen="${i}" ${busy ? 'disabled' : ''}>↻ New version</button>
            ${ENG && ENG.gpt_image ? `<button data-gpt="${i}" ${busy ? 'disabled' : ''} title="Pay-per-use, about $0.17">✦ Redo with GPT-image</button>` : ''}`}
-        ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png"><button>⤓ Save</button></a>` : ''}</div>
+        ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png"><button>⤓ Save</button></a>
+          <button data-animg="${i}" ${busy ? 'disabled' : ''}>▶ Make video</button>` : ''}</div>
+      ${isImg && (P.image_clips || {})[i] ? `<div class="motion"><label>Video of picture ${i + 1}</label>
+        <video src="${file(`clips/img_${pad(i)}.mp4`, (P.image_clips || {})[i])}#t=0.1" controls loop playsinline></video>
+        <a href="${file(`clips/img_${pad(i)}.mp4`, (P.image_clips || {})[i])}" download><button>⤓ Save video</button></a></div>` : ''}
       ${motion}</div>`;
   }).join('');
   const finalBlock = P.final_version && !isImg ? `<h3>Final video</h3><div class="final">
@@ -452,9 +456,9 @@ function render() {
         <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
           ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Image engine${P.reference ? ' · Kontext (picture set)' : ''}</label><select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select></div>
-        <div style="${isImg ? 'display:none' : ''}"><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
+        <div><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
           ${['480p', '720p'].map(v => `<option value="${v}" ${(P.video_res || '480p') === v ? 'selected' : ''}>${v}${v === '720p' ? ' · ~2-3× slower' : ''}</option>`).join('')}</select></div>
-        <div style="${isVid ? '' : 'display:none'}"><label>Video engine</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
+        <div style="${isT2V ? 'display:none' : ''}"><label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
         <div style="${isT2V ? '' : 'display:none'}"><label>Text-to-video engine</label><select id="f-t2v-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select></div>
       </div>
       <details><summary>Title, character and setting</summary>
@@ -511,6 +515,10 @@ function render() {
   if ($('#btn-stitch')) $('#btn-stitch').onclick = async () => { dirty = true; await run('stitch')(); };
   $$('[data-regen]').forEach(b => b.onclick = run('keyframes', {indices: [+b.dataset.regen], reseed: true}));
   $$('[data-reanim]').forEach(b => b.onclick = run('animate', {only: +b.dataset.reanim}));
+  $$('[data-animg]').forEach(b => b.onclick = async () => {
+    const motion = prompt('How should it move? (leave empty for gentle natural motion)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
+    if (motion === null) return;
+    await run('animate_image', {index: +b.dataset.animg, motion})(); });
   $$('[data-gpt]').forEach(b => b.onclick = async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
     await run('keyframes', {indices: [+b.dataset.gpt], engine: 'gpt-image'})(); });
   $$('[data-rescene]').forEach(b => b.onclick = run('t2v', {only: +b.dataset.rescene}));

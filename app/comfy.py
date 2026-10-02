@@ -339,6 +339,17 @@ def kontext_workflow(cfg, prompt, ref_name, width, height, seed, prefix, steps=N
 
 def ltxv_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix):
     """LTX-Video 2B distilled with the two keyframes as guides at the first and last frame."""
+    wf = _ltxv_flf(cfg, prompt, start_name, end_name or start_name, width, height, seed, prefix)
+    if not end_name:  # single picture: guide only the first frame
+        for k in ("6", "8", "11"):
+            wf.pop(k)
+        wf["12"]["inputs"].update(positive=["10", 0], negative=["10", 1])
+        wf["13"]["inputs"]["latent"] = ["10", 2]
+        wf["15"]["inputs"]["latent_image"] = ["10", 2]
+    return wf
+
+
+def _ltxv_flf(cfg, prompt, start_name, end_name, width, height, seed, prefix):
     v = cfg["ltxv"]
     w, h = width // 32 * 32, height // 32 * 32
     return {
@@ -379,6 +390,14 @@ WAN_NEGATIVE = ("blurry, low quality, distorted face, deformed hands, extra limb
 
 
 def wan_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix):
+    wf = _wan_flf(cfg, prompt, start_name, end_name or start_name, width, height, seed, prefix)
+    if not end_name:  # single picture: plain image-to-video
+        wf.pop("12")
+        wf["13"]["inputs"].pop("end_image")
+    return wf
+
+
+def _wan_flf(cfg, prompt, start_name, end_name, width, height, seed, prefix):
     v = cfg["video"]
     steps = v["steps"]
     half = steps // 2
