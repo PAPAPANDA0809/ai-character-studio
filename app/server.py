@@ -261,8 +261,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": str(e)}, 500)
 
 
+class Server(ThreadingHTTPServer):
+    allow_reuse_address = False  # on Windows reuse lets a second copy share the port; it must fail instead
+
+
 if __name__ == "__main__":
     cfg = pipeline.load_config()
     port = cfg.get("app_port", 7860)
+    srv = Server(("127.0.0.1", port), Handler)  # raises "address in use" if another copy is running
+    pipeline.start()
     print(f"Reelmint running at http://127.0.0.1:{port}")
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    srv.serve_forever()

@@ -305,9 +305,11 @@ def _clear_comfy_orphans():
         pass  # ComfyUI not running yet: nothing to clear
 
 
-_reset_stale()
-threading.Thread(target=_clear_comfy_orphans, daemon=True).start()
-threading.Thread(target=worker, daemon=True).start()
+def start():
+    """Called by the server once it owns its port: a second copy that fails to start must not touch jobs."""
+    _reset_stale()
+    threading.Thread(target=_clear_comfy_orphans, daemon=True).start()
+    threading.Thread(target=worker, daemon=True).start()
 
 
 # ---------------------------------------------------------------- steps
