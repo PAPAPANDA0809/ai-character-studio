@@ -91,7 +91,10 @@ def _claude_cli():
     found = shutil.which("claude") or next(iter(glob.glob(os.path.expanduser(r"~\.local\bin\claude.exe"))), None)
     if found:
         return found
-    bundled = sorted(glob.glob(os.path.expandvars(r"%APPDATA%\Claude\claude-code\*\*\claude.exe")), key=os.path.getmtime)
+    # the desktop app is a packaged (MSIX) app, so outside it the copy lives under LocalCache
+    bundled = sorted(glob.glob(os.path.expandvars(r"%APPDATA%\Claude\claude-code\*\*\claude.exe")) +
+                     glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\*\*\claude.exe")),
+                     key=os.path.getmtime)
     return bundled[-1] if bundled else None
 
 
