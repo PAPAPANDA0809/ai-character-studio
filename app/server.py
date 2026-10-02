@@ -1,4 +1,4 @@
-"""AI Character Studio - local web app. Run: python server.py  (then open http://127.0.0.1:7860)"""
+"""Reelmint - local web app. Run: python server.py  (then open http://127.0.0.1:7860)"""
 import json
 import mimetypes
 import os
@@ -82,6 +82,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/":
                 return self.send_file(os.path.join(STATIC, "index.html"))
+            if m := re.fullmatch(r"/static/([\w\-.]+\.(?:png|json|svg|ico))", path):
+                return self.send_file(os.path.join(STATIC, m.group(1)))
             if path == "/api/status":
                 cfg = pipeline.load_config()
                 return self.send_json({
@@ -156,5 +158,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     cfg = pipeline.load_config()
     port = cfg.get("app_port", 7860)
-    print(f"AI Character Studio running at http://127.0.0.1:{port}")
+    print(f"Reelmint running at http://127.0.0.1:{port}")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

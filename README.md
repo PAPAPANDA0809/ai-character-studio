@@ -1,4 +1,4 @@
-# AI Character Studio
+# Reelmint
 
 Local pipeline: post idea → scene plan (local LLM) → Flux keyframes → Wan 2.2 first-last-frame clips (5 s each) → stitched MP4 + caption + subtitles.
 

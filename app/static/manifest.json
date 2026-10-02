@@ -1,0 +1,14 @@
+{
+  "name": "Reelmint",
+  "short_name": "Reelmint",
+  "description": "Images and videos of your character from a post idea",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111317",
+  "theme_color": "#2ed6aa",
+  "icons": [
+    {"src": "/static/reelmint-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/reelmint-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "/static/reelmint-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
