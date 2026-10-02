@@ -106,5 +106,107 @@
       1216,
       1216
     ]
+  },
+  "sharp_sizes": {
+    "portrait": [
+      640,
+      1120
+    ],
+    "landscape": [
+      1120,
+      640
+    ],
+    "square": [
+      832,
+      832
+    ]
+  },
+  "output_sizes": {
+    "standard": {
+      "portrait": [
+        360,
+        640
+      ],
+      "landscape": [
+        640,
+        360
+      ],
+      "square": [
+        480,
+        480
+      ]
+    },
+    "sharp": {
+      "portrait": [
+        720,
+        1280
+      ],
+      "landscape": [
+        1280,
+        720
+      ],
+      "square": [
+        1080,
+        1080
+      ]
+    },
+    "high": {
+      "portrait": [
+        1080,
+        1920
+      ],
+      "landscape": [
+        1920,
+        1080
+      ],
+      "square": [
+        1440,
+        1440
+      ]
+    },
+    "ultra": {
+      "portrait": [
+        2160,
+        3840
+      ],
+      "landscape": [
+        3840,
+        2160
+      ],
+      "square": [
+        2880,
+        2880
+      ]
+    }
+  },
+  "video_sizes": {
+    "480p": {
+      "portrait": [
+        480,
+        832
+      ],
+      "landscape": [
+        832,
+        480
+      ],
+      "square": [
+        624,
+        624
+      ]
+    },
+    "720p": {
+      "portrait": [
+        720,
+        1280
+      ],
+      "landscape": [
+        1280,
+        720
+      ],
+      "square": [
+        960,
+        960
+      ]
+    }
   }
 }

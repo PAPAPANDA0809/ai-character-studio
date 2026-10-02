@@ -152,14 +152,24 @@ def t2v_workflow(cfg, engine, prompt, width, height, seed, prefix):
     }
 
 
-def add_upscale(cfg, wf):
+def add_upscale(cfg, wf, full=False):
     """Insert a 4x-UltraSharp pass (then halve it => 2x sharper output) right before the SaveImage node."""
     save = next(k for k, n in wf.items() if n["class_type"] == "SaveImage")
     src = wf[save]["inputs"]["images"]
     wf["90"] = {"class_type": "UpscaleModelLoader", "inputs": {"model_name": cfg["image"]["upscaler"]}}
     wf["91"] = {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["90", 0], "image": src}}
-    wf["92"] = {"class_type": "ImageScaleBy", "inputs": {"image": ["91", 0], "upscale_method": "lanczos", "scale_by": 0.5}}
+    wf["92"] = {"class_type": "ImageScaleBy", "inputs": {"image": ["91", 0], "upscale_method": "lanczos",
+                                                         "scale_by": 1.0 if full else 0.5}}
     wf[save]["inputs"]["images"] = ["92", 0]
+    return wf
+
+
+def add_final_size(wf, width, height):
+    """Resize (center-crop if needed) right before saving, to an exact delivery size like 1080x1920."""
+    save = next(k for k, n in wf.items() if n["class_type"] == "SaveImage")
+    wf["95"] = {"class_type": "ImageScale", "inputs": {"image": wf[save]["inputs"]["images"], "upscale_method": "lanczos",
+                                                       "width": width, "height": height, "crop": "center"}}
+    wf[save]["inputs"]["images"] = ["95", 0]
     return wf
 
 

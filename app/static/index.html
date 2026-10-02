@@ -186,8 +186,11 @@
             <div class="seg small" id="aspect-seg"><button data-aspect="portrait">9:16</button><button data-aspect="landscape">16:9</button><button data-aspect="square">1:1</button></div></div>
         </div>
         <p id="nkf-hint" style="color:var(--muted);font-size:12px;margin:8px 0 0"></p>
-        <label>Picture quality</label>
-        <div class="seg small" id="q-seg" style="grid-template-columns:1fr 1fr"><button data-q="standard">Standard · fast</button><button data-q="high">High · sharp, ~3× slower</button></div>
+        <label>Picture resolution</label>
+        <div class="seg small" id="q-seg" style="grid-template-columns:repeat(4,1fr)"><button data-q="standard">360p</button><button data-q="sharp">720p</button><button data-q="high">1080p</button><button data-q="ultra">4K</button></div>
+        <p style="color:var(--muted);font-size:12px;margin:6px 0 0">Per picture with FLUX: 360p ~1 min · 720p ~1.5 min · 1080p ~3 min · 4K ~3.5 min (Qwen-Image is much slower)</p>
+        <div id="vres-wrap"><label>Video resolution</label>
+        <div class="seg small" id="vres-seg" style="grid-template-columns:1fr 1fr"><button data-v="480p">480p</button><button data-v="720p">720p · ~2-3× slower</button></div></div>
         <label>Visual style</label>
         <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
         <div class="presets" id="presets"></div>
@@ -220,7 +223,7 @@
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let P = null, dirty = false, CHARS = [], ENG = null, VIEW = 'create';
-const NEW = {mode: 'video', aspect: 'portrait', ref: '', quality: ''};
+const NEW = {mode: 'video', aspect: 'portrait', ref: '', quality: '', vres: '480p'};
 const ICON = {
   create: '<path d="M12 3v18M3 12h18"/>',
   projects: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/>',
@@ -275,8 +278,10 @@ function syncCreate() {
   const m = NEW.mode;
   $$('#mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   $$('#aspect-seg button').forEach(b => b.classList.toggle('on', b.dataset.aspect === NEW.aspect));
-  const q = NEW.quality || (m === 'images' ? 'high' : 'standard');
+  const q = NEW.quality || (m === 'images' ? 'sharp' : 'standard');
   $$('#q-seg button').forEach(b => b.classList.toggle('on', b.dataset.q === q));
+  $$('#vres-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === NEW.vres));
+  $('#vres-wrap').style.display = m === 'images' ? 'none' : '';
   $('#nkf-label').textContent = {images: 'Images', t2v: 'Scenes'}[m] || 'Keyframes';
   const min = m === 'video' ? 2 : 1, max = m === 'images' ? 12 : 8;
   $('#nkf').min = min; $('#nkf').max = max;
@@ -291,6 +296,7 @@ function syncCreate() {
 $$('#mode-seg button').forEach(b => b.onclick = () => { NEW.mode = b.dataset.mode; syncCreate(); });
 $$('#aspect-seg button').forEach(b => b.onclick = () => { NEW.aspect = b.dataset.aspect; syncCreate(); });
 $$('#q-seg button').forEach(b => b.onclick = () => { NEW.quality = b.dataset.q; syncCreate(); });
+$$('#vres-seg button').forEach(b => b.onclick = () => { NEW.vres = b.dataset.v; syncCreate(); });
 $$('[data-step]').forEach(b => b.onclick = () => { $('#nkf').value = +$('#nkf').value + +b.dataset.step; syncCreate(); });
 $('#nkf').oninput = syncCreate;
 
@@ -350,7 +356,7 @@ $('#btn-plan').onclick = async () => {
   try {
     P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, reference: NEW.ref,
       mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value,
-      keyframes: +$('#nkf').value, aspect: NEW.aspect, quality: NEW.quality || (NEW.mode === 'images' ? 'high' : 'standard')});
+      keyframes: +$('#nkf').value, aspect: NEW.aspect, quality: NEW.quality || (NEW.mode === 'images' ? 'sharp' : 'standard'), video_res: NEW.vres});
     dirty = false; show('project'); render();
   } catch (e) { alert(e.message); }
   $('#btn-plan').disabled = false; $('#plan-msg').style.display = 'none';
@@ -442,10 +448,11 @@ function render() {
       <div class="grid2">
         <div><label style="margin-top:0">Make</label><select id="f-mode" ${busy ? 'disabled' : ''}>${[['video', 'Images + video'], ['t2v', 'Video only'], ['images', 'Images only']].map(([v, l]) => `<option value="${v}" ${(P.mode || 'video') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V ? 'disabled' : ''}>${refOpts}</select></div>
-        <div style="${isT2V ? 'display:none' : ''}"><label>Picture quality</label><select id="f-quality" ${busy ? 'disabled' : ''}>
-          <option value="standard" ${P.quality !== 'high' ? 'selected' : ''}>Standard · fast</option>
-          <option value="high" ${P.quality === 'high' ? 'selected' : ''}>High · sharp, ~3× slower</option></select></div>
+        <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
+          ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Image engine${P.reference ? ' · Kontext (picture set)' : ''}</label><select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select></div>
+        <div style="${isImg ? 'display:none' : ''}"><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
+          ${['480p', '720p'].map(v => `<option value="${v}" ${(P.video_res || '480p') === v ? 'selected' : ''}>${v}${v === '720p' ? ' · ~2-3× slower' : ''}</option>`).join('')}</select></div>
         <div style="${isVid ? '' : 'display:none'}"><label>Video engine</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
         <div style="${isT2V ? '' : 'display:none'}"><label>Text-to-video engine</label><select id="f-t2v-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select></div>
       </div>
@@ -480,10 +487,10 @@ function render() {
   const setEng = async () => {
     await savePlan();
     try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value,
-      mode: $('#f-mode').value, t2v_engine: $('#f-t2v-eng').value, quality: $('#f-quality').value}); } catch (e) { alert(e.message); }
+      mode: $('#f-mode').value, t2v_engine: $('#f-t2v-eng').value, quality: $('#f-quality').value, video_res: $('#f-vres').value}); } catch (e) { alert(e.message); }
     render();
   };
-  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality'].forEach(s => $(s).onchange = setEng);
+  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres'].forEach(s => $(s).onchange = setEng);
   const resize = async delta => {
     const pl2 = collectPlan();
     if (delta > 0) pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});

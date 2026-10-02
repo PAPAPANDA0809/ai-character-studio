@@ -246,7 +246,7 @@ threading.Thread(target=worker, daemon=True).start()
 # ---------------------------------------------------------------- steps
 
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
-                   image_engine=None, video_engine=None, mode="video", quality=None):
+                   image_engine=None, video_engine=None, mode="video", quality=None, video_res=None):
     cfg = load_config()
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
@@ -262,7 +262,8 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "reference": reference,
         "image_engine": image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
-        "clip_fps": {}, "mode": mode, "quality": quality or ("high" if mode == "images" else "standard"),
+        "clip_fps": {}, "mode": mode, "quality": quality or ("sharp" if mode == "images" else "standard"),
+        "video_res": video_res if video_res in ("480p", "720p") else "480p",
         "t2v_engine": cfg.get("default_t2v_engine", "wan22-5b"),
     }
     save(p)
@@ -289,10 +290,12 @@ def engines():
     }
 
 
-def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None):
+def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None, video_res=None):
     p = load(pid)
-    if quality in ("standard", "high"):
+    if quality in ("standard", "sharp", "high", "ultra"):
         p["quality"] = quality
+    if video_res in ("480p", "720p"):
+        p["video_res"] = video_res
     if t2v_engine in comfy.T2V_ENGINES:
         p["t2v_engine"] = t2v_engine
     if mode in ("images", "video", "t2v"):
@@ -342,6 +345,10 @@ def reference_prompt(p, i):
             + (f"Style: {style}." if style else ""))
 
 
+def video_size(cfg, p):
+    return cfg["video_sizes"].get(p.get("video_res", "480p"), cfg["video_sizes"]["480p"])[p.get("aspect", "portrait")]
+
+
 def size(cfg, p):
     return cfg["sizes"].get(p.get("aspect", "portrait"), cfg["sizes"]["portrait"])
 
@@ -351,9 +358,11 @@ def do_keyframes(p, indices=None, reseed=False):
     c = comfy.Comfy(cfg["comfy_url"])
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
-    hq = p.get("quality", "standard") == "high"
-    w, h = (cfg["hires_sizes"].get(p.get("aspect", "portrait")) if hq else None) or size(cfg, p)
-    steps = cfg["image"]["hq_steps"] if hq else None
+    q = p.get("quality", "standard")
+    hq = q in ("high", "sharp", "ultra")  # upscale pass; "high"/"ultra" also render bigger with more steps
+    table = {"high": "hires_sizes", "ultra": "hires_sizes", "sharp": "sharp_sizes"}.get(q)
+    w, h = (cfg[table].get(p.get("aspect", "portrait")) if table else None) or size(cfg, p)
+    steps = cfg["image"]["hq_steps"] if q in ("high", "ultra") else None
     n = len(p["plan"]["keyframes"])
     indices = list(range(n)) if indices is None else [int(i) for i in indices]
     ref = p.get("reference")
@@ -375,7 +384,10 @@ def do_keyframes(p, indices=None, reseed=False):
             wf = comfy.image_workflow(cfg, p.get("image_engine", "flux-dev"), keyframe_prompt(p, i), w, h,
                                       p["keyframe_seeds"][key], prefix, steps)
         if hq:
-            wf = comfy.add_upscale(cfg, wf)
+            wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))
+        if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p
+            ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
+            wf = comfy.add_final_size(wf, ow, oh)
         out = c.run(wf)
         img = next(o["images"][0] for o in out.values() if o.get("images"))
         with open(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"), "wb") as f:
@@ -391,7 +403,7 @@ def do_animate(p, only=None):
     c = comfy.Comfy(cfg["comfy_url"])
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
-    w, h = size(cfg, p)
+    w, h = video_size(cfg, p)
     engine = p.get("video_engine", "wan22-14b")
     fps = {"ltxv-2b": cfg["ltxv"]["fps"], "hunyuan15": cfg["hunyuan15"]["fps"]}.get(engine, cfg["video"]["fps"])
     n = len(p["plan"]["keyframes"])
@@ -434,7 +446,7 @@ def do_t2v(p, only=None):
     c = comfy.Comfy(cfg["comfy_url"])
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
-    w, h = size(cfg, p)
+    w, h = video_size(cfg, p)
     engine = p.get("t2v_engine", "wan22-5b")
     fps = cfg["ltxv"]["fps"] if engine == "ltxv-2b" else cfg["wan5b"]["fps"]
     n = len(p["plan"]["keyframes"])
@@ -536,7 +548,9 @@ def stitch(p, cfg, ff):
 
     write_caption(p)
 
-    run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(seq, "%05d.png"), *H264, "final.mp4"],
+    vw, vh = video_size(cfg, p)  # engines round sizes differently (LTX: multiples of 32); deliver the exact size
+    run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(seq, "%05d.png"),
+                    "-vf", f"scale={vw}:{vh}:flags=lanczos,setsar=1", *H264, "final.mp4"],
                cwd=pdir(p["id"]))
     if cues:
         style = "Fontname=Arial,Fontsize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=40"
