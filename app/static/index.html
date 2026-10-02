@@ -65,13 +65,15 @@
       <textarea id="character" rows="2" placeholder="e.g. a small orange fox with a teal scarf and round glasses"></textarea>
       <label>Visual style</label>
       <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
+      <label>What to make</label>
+      <select id="mode"><option value="video">Video (keyframes animated into 5s clips)</option><option value="images">Images only (photo set / carousel)</option></select>
       <div class="row">
-        <div style="flex:1"><label>Keyframes</label><input id="nkf" type="number" min="2" max="8" value="3"></div>
+        <div style="flex:1"><label id="nkf-label">Keyframes</label><input id="nkf" type="number" min="2" max="8" value="3"></div>
         <div style="flex:1"><label>Format</label>
           <select id="aspect"><option value="portrait">Portrait 9:16</option><option value="landscape">Landscape 16:9</option><option value="square">Square</option></select></div>
       </div>
       <label>Image engine</label><select id="img-eng"></select>
-      <label>Video engine</label><select id="vid-eng"></select>
+      <div id="vid-eng-wrap"><label>Video engine</label><select id="vid-eng"></select></div>
       <div style="margin-top:10px" class="row"><button id="btn-plan">Plan scenes</button><span id="plan-msg" class="status"></span></div>
     </div>
     <div class="projects" id="projects"></div>
@@ -109,6 +111,14 @@ async function refreshProjects() {
   document.querySelectorAll('.proj').forEach(el => el.onclick = () => openProject(el.dataset.id));
 }
 
+function syncMode() {
+  const img = $('#mode').value === 'images';
+  $('#nkf-label').textContent = img ? 'Number of images' : 'Keyframes (clips = keyframes - 1)';
+  $('#nkf').min = img ? 1 : 2; $('#nkf').max = img ? 12 : 8;
+  if (!img && +$('#nkf').value < 2) $('#nkf').value = 2;
+  $('#vid-eng-wrap').style.display = img ? 'none' : '';
+}
+$('#mode').onchange = syncMode;
 let CHARS = [], ENG = null;
 const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label)}${e.installed ? '' : ' (not installed)'}</option>`).join('');
 async function refreshEngines() {
@@ -140,7 +150,7 @@ function collectPlan() {
   const pl = structuredClone(P.plan);
   pl.title = $('#f-title').value; pl.character = $('#f-character').value; pl.setting = $('#f-setting').value;
   pl.keyframes.forEach((k, i) => { k.image_prompt = $('#kp' + i).value; k.subtitle = $('#ks' + i).value; });
-  pl.motions = pl.motions.map((m, i) => $('#mo' + i).value);
+  pl.motions = pl.motions.map((m, i) => $('#mo' + i) ? $('#mo' + i).value : m);
   pl.caption = $('#f-caption').value;
   pl.hashtags = $('#f-tags').value.split(/\s+/).filter(Boolean);
   return pl;
@@ -152,15 +162,17 @@ function file(rel, ver) { return `/files/${P.id}/${rel}?v=${ver || 0}`; }
 function render() {
   const pl = P.plan, n = pl.keyframes.length, busy = running();
   const ar = {portrait:'9/16', landscape:'16/9', square:'1/1'}[P.aspect] || '9/16';
-  const hasKf = P.keyframes_version, hasFinal = P.final_version;
+  const hasKf = P.keyframes_version, hasFinal = P.final_version, isImg = P.mode === 'images';
+  const word = isImg ? 'Image' : 'Keyframe';
   let strip = '';
   pl.keyframes.forEach((k, i) => {
     strip += `<div class="kf card">
       <div class="img" style="--ar:${ar}">${hasKf ? `<img src="${file(`keyframes/kf_${String(i).padStart(2,'0')}.png`, P.keyframes_version)}" onerror="this.replaceWith('not generated')">` : 'not generated'}</div>
-      <label>Keyframe ${i + 1} prompt</label><textarea id="kp${i}" rows="5">${esc(k.image_prompt)}</textarea>
+      ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${String(i).padStart(2,'0')}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png">Download</a>` : ''}
+      <label>${word} ${i + 1} prompt</label><textarea id="kp${i}" rows="5">${esc(k.image_prompt)}</textarea>
       <label>On-screen line</label><input id="ks${i}" value="${esc(k.subtitle)}">
       <button class="ghost" data-regen="${i}" ${busy ? 'disabled' : ''}>Regenerate (new seed)</button></div>`;
-    if (i < n - 1) strip += `<div class="motion">
+    if (!isImg && i < n - 1) strip += `<div class="motion">
       <div class="arrow">clip ${i + 1} · 5s →</div>
       ${P.clips_version ? `<video src="${file(`clips/clip_${String(i).padStart(2,'0')}.mp4`, P.clips_version)}" controls loop muted onerror="this.remove()"></video>` : ''}
       <textarea id="mo${i}" rows="5">${esc(pl.motions[i])}</textarea>
@@ -174,26 +186,31 @@ function render() {
       <select id="f-ref" ${busy ? 'disabled' : ''}>${refOptions(P.reference)}</select></div>
     </div>
     <div class="row">
+      <div style="flex:1"><label>What to make</label>
+        <select id="f-mode" ${busy ? 'disabled' : ''}><option value="video" ${isImg ? '' : 'selected'}>Video</option><option value="images" ${isImg ? 'selected' : ''}>Images only</option></select></div>
       <div style="flex:1"><label>Image engine ${P.reference ? '(using FLUX Kontext because a character picture is set)' : ''}</label>
         <select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select></div>
-      <div style="flex:1"><label>Video engine</label>
+      <div style="flex:1;${isImg ? 'display:none' : ''}"><label>Video engine</label>
         <select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
     </div>
     <label>Title</label><input id="f-title" value="${esc(pl.title)}">
     <div class="row"><div style="flex:1"><label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea></div>
     <div style="flex:1"><label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea></div></div>
-    <h2>Keyframes and motions</h2>
+    <h2>${isImg ? `Images (${n})` : 'Keyframes and motions'}</h2>
     <div class="strip">${strip}</div>
     <div class="row" style="margin:10px 0">
-      <button id="btn-kf" ${busy ? 'disabled' : ''}>1. Generate keyframes</button>
-      <button id="btn-anim" ${busy || !hasKf ? 'disabled' : ''}>2. Animate &amp; stitch</button>
+      <button id="btn-kf" ${busy ? 'disabled' : ''}>${isImg ? 'Generate images' : '1. Generate keyframes'}</button>
+      ${isImg ? '' : `<button id="btn-anim" ${busy || !hasKf ? 'disabled' : ''}>2. Animate &amp; stitch</button>`}
+      <button class="ghost" id="btn-add" ${busy || n >= (isImg ? 12 : 8) ? 'disabled' : ''}>+ Add ${word.toLowerCase()}</button>
+      <button class="ghost" id="btn-del" ${busy || n <= (isImg ? 1 : 2) ? 'disabled' : ''}>Remove last</button>
       <button class="ghost" id="btn-save">Save edits</button>
-      <button class="ghost" id="btn-stitch" ${busy || !P.clips_version ? 'disabled' : ''}>Re-stitch (after caption edits)</button>
+      ${isImg ? '' : `<button class="ghost" id="btn-stitch" ${busy || !P.clips_version ? 'disabled' : ''}>Re-stitch (after caption edits)</button>`}
     </div>
     <h2>Caption</h2>
     <textarea id="f-caption" rows="3">${esc(pl.caption)}</textarea>
     <label>Hashtags</label><input id="f-tags" value="${esc((pl.hashtags || []).join(' '))}">
-    ${hasFinal ? `<h2>Final video</h2><div class="final">
+    ${isImg && hasKf ? `<p><a href="${file('caption.txt', P.keyframes_version)}" target="_blank">caption.txt</a> · files are in app\projects\${esc(P.id)}\keyframes</p>` : ''}
+    ${hasFinal && !isImg ? `<h2>Final video</h2><div class="final">
       <div><video src="${file('final_subtitled.mp4', P.final_version)}" controls onerror="this.parentElement.remove()"></video><br><a href="${file('final_subtitled.mp4', P.final_version)}" download>With on-screen text</a></div>
       <div><video src="${file('final.mp4', P.final_version)}" controls></video><br><a href="${file('final.mp4', P.final_version)}" download>Clean (no text)</a> ·
       <a href="${file('caption.txt', P.final_version)}" target="_blank">caption.txt</a> · <a href="${file('subtitles.srt', P.final_version)}" download>subtitles.srt</a></div></div>
@@ -203,13 +220,19 @@ function render() {
   $('#view').querySelectorAll('input,textarea').forEach(el => el.oninput = () => dirty = true);
   $('#f-ref').onchange = async e => {
     await savePlan(); P = await api(`/api/projects/${P.id}/reference`, {reference: e.target.value}); render(); };
-  const setEng = async () => { P = await api(`/api/projects/${P.id}/engines`,
-      {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value}); render(); };
-  $('#f-img-eng').onchange = setEng; $('#f-vid-eng').onchange = setEng;
+  const setEng = async () => { await savePlan(); P = await api(`/api/projects/${P.id}/engines`,
+      {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value, mode: $('#f-mode').value}).catch(e => (alert(e.message), P)); render(); };
+  $('#f-img-eng').onchange = setEng; $('#f-vid-eng').onchange = setEng; $('#f-mode').onchange = setEng;
+  const resize = async delta => {
+    const pl2 = collectPlan();
+    if (delta > 0) { pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''}); }
+    else { pl2.keyframes.pop(); }
+    P = await api(`/api/projects/${P.id}/plan`, {plan: pl2}); dirty = false; render(); };
+  $('#btn-add').onclick = () => resize(1); $('#btn-del').onclick = () => resize(-1);
   $('#btn-save').onclick = () => savePlan().then(render).catch(alert);
   $('#btn-kf').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/keyframes`, {}); poll(); };
-  $('#btn-anim').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/animate`, {}); poll(); };
-  $('#btn-stitch').onclick = async () => { dirty = true; await savePlan(); await api(`/api/projects/${P.id}/stitch`, {}); poll(); };
+  if (!isImg) $('#btn-anim').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/animate`, {}); poll(); };
+  if (!isImg) $('#btn-stitch').onclick = async () => { dirty = true; await savePlan(); await api(`/api/projects/${P.id}/stitch`, {}); poll(); };
   document.querySelectorAll('[data-regen]').forEach(b => b.onclick = async () => {
     await savePlan(); await api(`/api/projects/${P.id}/keyframes`, {indices:[+b.dataset.regen], reseed:true}); poll(); });
   document.querySelectorAll('[data-reanim]').forEach(b => b.onclick = async () => {
@@ -233,7 +256,7 @@ $('#btn-plan').onclick = async () => {
   if (!idea) return;
   $('#btn-plan').disabled = true; $('#plan-msg').textContent = 'Planning with the local LLM…';
   try {
-    P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, reference: $('#ref').value,
+    P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, reference: $('#ref').value, mode: $('#mode').value,
                                 image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value,
                                 keyframes: +$('#nkf').value, aspect: $('#aspect').value});
     dirty = false; render(); refreshProjects(); $('#plan-msg').textContent = '';

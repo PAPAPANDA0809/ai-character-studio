@@ -147,11 +147,12 @@ threading.Thread(target=worker, daemon=True).start()
 # ---------------------------------------------------------------- steps
 
 def create_project(idea, n_keyframes, style, character, aspect, seed=None, reference="",
-                   image_engine=None, video_engine=None):
+                   image_engine=None, video_engine=None, mode="video"):
     cfg = load_config()
-    n_keyframes = max(2, min(int(n_keyframes), 8))
+    mode = "images" if mode == "images" else "video"
+    n_keyframes = max(1 if mode == "images" else 2, min(int(n_keyframes), 12 if mode == "images" else 8))
     reference = reference if reference in list_characters() else ""
-    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=bool(reference))
+    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=bool(reference), mode=mode)
     pid = time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
     os.makedirs(pdir(pid, "keyframes"))
     os.makedirs(pdir(pid, "clips"))
@@ -162,10 +163,10 @@ def create_project(idea, n_keyframes, style, character, aspect, seed=None, refer
         "reference": reference,
         "image_engine": image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
-        "clip_fps": {},
+        "clip_fps": {}, "mode": mode,
     }
     save(p)
-    log(p, f"planned {n_keyframes} keyframes with {cfg['llm']['provider']}")
+    log(p, f"planned {n_keyframes} {'images' if mode == 'images' else 'keyframes'} with {cfg['llm']['provider']}")
     return p
 
 
@@ -183,8 +184,12 @@ def engines():
     }
 
 
-def set_engines(pid, image_engine=None, video_engine=None):
+def set_engines(pid, image_engine=None, video_engine=None, mode=None):
     p = load(pid)
+    if mode in ("images", "video"):
+        if mode == "video" and len(p["plan"]["keyframes"]) < 2:
+            raise ValueError("a video needs at least 2 keyframes; add one first")
+        p["mode"] = mode
     if image_engine in comfy.IMAGE_ENGINES:
         p["image_engine"] = image_engine
     if video_engine in comfy.VIDEO_ENGINES:
@@ -203,7 +208,7 @@ def set_reference(pid, reference):
 def update_plan(pid, plan):
     p = load(pid)
     n = len(plan["keyframes"])
-    plan["motions"] = (plan.get("motions") or [])[: n - 1]
+    plan["motions"] = (plan.get("motions") or [])[: max(0, n - 1)]
     while len(plan["motions"]) < n - 1:
         plan["motions"].append("smooth natural movement, gentle camera motion")
     p["plan"] = plan
@@ -262,6 +267,7 @@ def do_keyframes(p, indices=None, reseed=False):
             f.write(c.fetch(img))
         p["keyframes_version"] = time.time()
         log(p, f"keyframe {i + 1}/{n}: done in {time.time() - t:.0f}s")
+    write_caption(p)
 
 
 def do_animate(p, only=None):
@@ -324,6 +330,14 @@ def srt_time(s):
     return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
 
 
+def write_caption(p):
+    pl = p["plan"]
+    with open(pdir(p["id"], "caption.txt"), "w", encoding="utf-8") as f:
+        caption = pl.get("caption", "").strip()
+        tags = [t for t in pl.get("hashtags", []) if t.lower() not in caption.lower()]
+        f.write(caption + ("\n\n" + " ".join(tags) if tags else "") + "\n")
+
+
 def stitch(p, cfg, ff):
     n = len(p["plan"]["keyframes"])
     clip_fps = [p.get("clip_fps", {}).get(str(i), cfg["video"]["fps"]) for i in range(n - 1)]
@@ -363,11 +377,7 @@ def stitch(p, cfg, ff):
         for j, (s, e, text) in enumerate(cues, 1):
             f.write(f"{j}\n{srt_time(s)} --> {srt_time(e)}\n{text.strip()}\n\n")
 
-    pl = p["plan"]
-    with open(pdir(p["id"], "caption.txt"), "w", encoding="utf-8") as f:
-        caption = pl.get("caption", "").strip()
-        tags = [t for t in pl.get("hashtags", []) if t.lower() not in caption.lower()]
-        f.write(caption + ("\n\n" + " ".join(tags) if tags else "") + "\n")
+    write_caption(p)
 
     run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(seq, "%05d.png"), *H264, "final.mp4"],
                cwd=pdir(p["id"]))

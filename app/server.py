@@ -126,10 +126,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/plan":
                 p = pipeline.create_project(b["idea"], b.get("keyframes", 4), b.get("style", ""),
                                             b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),
-                                            b.get("reference", ""), b.get("image_engine"), b.get("video_engine"))
+                                            b.get("reference", ""), b.get("image_engine"), b.get("video_engine"),
+                                            b.get("mode", "video"))
                 return self.send_json(p)
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/engines", path):
-                return self.send_json(pipeline.set_engines(m.group(1), b.get("image_engine"), b.get("video_engine")))
+                return self.send_json(pipeline.set_engines(m.group(1), b.get("image_engine"), b.get("video_engine"), b.get("mode")))
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/reference", path):
                 return self.send_json(pipeline.set_reference(m.group(1), b.get("reference", "")))
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/plan", path):

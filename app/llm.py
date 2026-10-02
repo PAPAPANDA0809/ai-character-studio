@@ -94,7 +94,11 @@ REFERENCE_RULE = ("IMPORTANT: the character's appearance comes from a reference 
                   "Set \"character\" to an empty string.")
 
 
-def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False):
+IMAGES_RULE = ("This is a PHOTO SET (carousel post), not a video: the keyframes are independent images of the same "
+               "character with varied poses, framing and moments. Return an empty \"motions\" list.")
+
+
+def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mode="video"):
     if cfg["provider"] == "template":
         p = template_plan(idea, n_keyframes, "" if has_reference else character)
         if has_reference:
@@ -130,7 +134,7 @@ def normalize_plan(data, n, idea, character=""):
         kfs.append(dict(kfs[-1]) if kfs else {"image_prompt": idea, "subtitle": ""})
     kfs = kfs[:n]
     motions = [str(m) for m in (data.get("motions") or [])]
-    while len(motions) < n - 1:
+    while len(motions) < max(0, n - 1):
         motions.append("smooth natural movement, gentle camera motion")
     tags = data.get("hashtags") or []
     if isinstance(tags, str):
@@ -140,7 +144,7 @@ def normalize_plan(data, n, idea, character=""):
         "character": character or data.get("character", ""),
         "setting": data.get("setting", ""),
         "keyframes": kfs,
-        "motions": motions[: n - 1],
+        "motions": motions[: max(0, n - 1)],
         "caption": data.get("caption", ""),
         "hashtags": [t if t.startswith("#") else "#" + t for t in map(str, tags)],
     }
