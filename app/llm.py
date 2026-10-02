@@ -98,6 +98,11 @@ IMAGES_RULE = ("This is a PHOTO SET (carousel post), not a video: the keyframes 
                "character with varied poses, framing and moments. Return an empty \"motions\" list.")
 
 
+T2V_RULE = ("This is a TEXT-TO-VIDEO post: each keyframe is a separate 5-second video scene. In image_prompt describe "
+            "the scene AND the action/camera movement that happens during those 5 seconds, fully self-contained "
+            "(repeat the character's look in every scene). Return an empty \"motions\" list.")
+
+
 def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mode="video"):
     if cfg["provider"] == "template":
         p = template_plan(idea, n_keyframes, "" if has_reference else character)
@@ -106,6 +111,10 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
                 k["image_prompt"] = "the character: " + k["image_prompt"]
         return p
     user = f"Post idea: {idea}\nNumber of keyframes: {n_keyframes}\n"
+    if mode == "images":
+        user += IMAGES_RULE + "\n"
+    elif mode == "t2v":
+        user += T2V_RULE + "\n"
     if style:
         user += f"Visual style: {style}\n"
     if has_reference:

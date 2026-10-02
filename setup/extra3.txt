@@ -1,0 +1,2 @@
+C:\Users\Andy\AICharacterStudio\models\unet\Wan2.2-TI2V-5B-Q5_K_M.gguf|https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/Wan2.2-TI2V-5B-Q5_K_M.gguf
+C:\Users\Andy\AICharacterStudio\models\vae\wan2.2_vae.safetensors|https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors

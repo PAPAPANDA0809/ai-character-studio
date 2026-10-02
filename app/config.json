@@ -79,5 +79,15 @@
     "fps": 24,
     "steps": 8,
     "shift": 5.0
-  }
+  },
+  "wan5b": {
+    "unet": "Wan2.2-TI2V-5B-Q5_K_M.gguf",
+    "vae": "wan2.2_vae.safetensors",
+    "frames": 121,
+    "fps": 24,
+    "steps": 20,
+    "cfg": 5.0,
+    "shift": 8.0
+  },
+  "default_t2v_engine": "wan22-5b"
 }

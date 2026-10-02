@@ -101,6 +101,57 @@ VIDEO_ENGINES = {
 }
 
 
+T2V_ENGINES = {
+    "wan22-5b": {"label": "Wan 2.2 5B text-to-video (better quality)",
+                 "files": ["unet/Wan2.2-TI2V-5B-Q5_K_M.gguf", "vae/wan2.2_vae.safetensors",
+                           "text_encoders/umt5-xxl-encoder-Q5_K_M.gguf"]},
+    "ltxv-2b": {"label": "LTX-Video 2B text-to-video (fast)",
+                "files": ["checkpoints/ltxv-2b-0.9.8-distilled.safetensors"]},
+}
+
+
+def t2v_workflow(cfg, engine, prompt, width, height, seed, prefix):
+    w, h = width // 32 * 32, height // 32 * 32
+    if engine == "ltxv-2b":
+        v = cfg["ltxv"]
+        return {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": v["checkpoint"]}},
+            "2": {"class_type": "CLIPLoaderGGUF", "inputs": {"clip_name": cfg["image"]["t5"], "type": "ltxv"}},
+            "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+            "4": {"class_type": "CLIPTextEncode", "inputs": {"text": WAN_NEGATIVE, "clip": ["2", 0]}},
+            "9": {"class_type": "EmptyLTXVLatentVideo", "inputs": {"width": w, "height": h, "length": v["frames"], "batch_size": 1}},
+            "12": {"class_type": "LTXVConditioning", "inputs": {"positive": ["3", 0], "negative": ["4", 0], "frame_rate": float(v["fps"])}},
+            "13": {"class_type": "LTXVScheduler", "inputs": {"steps": v["steps"], "max_shift": 2.05, "base_shift": 0.95,
+                                                            "stretch": True, "terminal": 0.1, "latent": ["9", 0]}},
+            "14": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler_ancestral"}},
+            "15": {"class_type": "SamplerCustom",
+                   "inputs": {"model": ["1", 0], "add_noise": True, "noise_seed": seed, "cfg": 1.0,
+                              "positive": ["12", 0], "negative": ["12", 1], "sampler": ["14", 0],
+                              "sigmas": ["13", 0], "latent_image": ["9", 0]}},
+            "17": {"class_type": "VAEDecode", "inputs": {"samples": ["15", 0], "vae": ["1", 2]}},
+            "18": {"class_type": "SaveImage", "inputs": {"images": ["17", 0], "filename_prefix": prefix}},
+        }
+    t = cfg["wan5b"]
+    return {
+        "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": t["unet"]}},
+        "2": {"class_type": "ModelSamplingSD3", "inputs": {"model": ["1", 0], "shift": t["shift"]}},
+        "3": {"class_type": "CLIPLoaderGGUF", "inputs": {"clip_name": cfg["video"]["text_encoder"], "type": "wan"}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["3", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": WAN_NEGATIVE, "clip": ["3", 0]}},
+        "6": {"class_type": "VAELoader", "inputs": {"vae_name": t["vae"]}},
+        "7": {"class_type": "Wan22ImageToVideoLatent",
+              "inputs": {"vae": ["6", 0], "width": w, "height": h, "length": t["frames"], "batch_size": 1}},
+        "8": {"class_type": "KSampler",
+              "inputs": {"model": ["2", 0], "positive": ["4", 0], "negative": ["5", 0], "latent_image": ["7", 0],
+                         "seed": seed, "steps": t["steps"], "cfg": t["cfg"], "sampler_name": "uni_pc",
+                         "scheduler": "simple", "denoise": 1.0}},
+        "9": {"class_type": "VAEDecodeTiled",
+              "inputs": {"samples": ["8", 0], "vae": ["6", 0], "tile_size": 256, "overlap": 64,
+                         "temporal_size": 32, "temporal_overlap": 8}},
+        "10": {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": prefix}},
+    }
+
+
 def image_workflow(cfg, engine, prompt, width, height, seed, prefix):
     c = cfg["image"]
     if engine == "flux-schnell":

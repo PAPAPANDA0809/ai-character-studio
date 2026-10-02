@@ -130,7 +130,8 @@ class Handler(BaseHTTPRequestHandler):
                                             b.get("mode", "video"))
                 return self.send_json(p)
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/engines", path):
-                return self.send_json(pipeline.set_engines(m.group(1), b.get("image_engine"), b.get("video_engine"), b.get("mode")))
+                return self.send_json(pipeline.set_engines(m.group(1), b.get("image_engine"), b.get("video_engine"), b.get("mode"),
+                                                       b.get("t2v_engine")))
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/reference", path):
                 return self.send_json(pipeline.set_reference(m.group(1), b.get("reference", "")))
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/plan", path):
@@ -140,6 +141,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": True})
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/animate", path):
                 pipeline.enqueue(m.group(1), "animate", only=b.get("only"))
+                return self.send_json({"ok": True})
+            if m := re.fullmatch(r"/api/projects/([\w\-]+)/t2v", path):
+                pipeline.enqueue(m.group(1), "t2v", only=b.get("only"))
                 return self.send_json({"ok": True})
             if m := re.fullmatch(r"/api/projects/([\w\-]+)/stitch", path):
                 pipeline.enqueue(m.group(1), "stitch")

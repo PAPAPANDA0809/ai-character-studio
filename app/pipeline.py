@@ -115,7 +115,7 @@ def worker():
         try:
             p["status"] = "running:" + task
             save(p)
-            {"keyframes": do_keyframes, "animate": do_animate, "stitch": restitch}[task](p, **kw)
+            {"keyframes": do_keyframes, "animate": do_animate, "stitch": restitch, "t2v": do_t2v}[task](p, **kw)
             p = load(pid)
             p["status"] = "done:" + task
             log(p, f"{task} finished")
@@ -149,8 +149,8 @@ threading.Thread(target=worker, daemon=True).start()
 def create_project(idea, n_keyframes, style, character, aspect, seed=None, reference="",
                    image_engine=None, video_engine=None, mode="video"):
     cfg = load_config()
-    mode = "images" if mode == "images" else "video"
-    n_keyframes = max(1 if mode == "images" else 2, min(int(n_keyframes), 12 if mode == "images" else 8))
+    mode = mode if mode in ("images", "t2v") else "video"
+    n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
     reference = reference if reference in list_characters() else ""
     plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=bool(reference), mode=mode)
     pid = time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
@@ -164,29 +164,37 @@ def create_project(idea, n_keyframes, style, character, aspect, seed=None, refer
         "image_engine": image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
         "clip_fps": {}, "mode": mode,
+        "t2v_engine": cfg.get("default_t2v_engine", "wan22-5b"),
     }
     save(p)
-    log(p, f"planned {n_keyframes} {'images' if mode == 'images' else 'keyframes'} with {cfg['llm']['provider']}")
+    log(p, f"planned {n_keyframes} {dict(images='images', t2v='scenes').get(mode, 'keyframes')} with {cfg['llm']['provider']}")
     return p
 
 
 def engines():
+    def ready(f):  # present and not still being written by a download
+        path = os.path.join(MODELS, f)
+        return os.path.exists(path) and time.time() - os.path.getmtime(path) > 90
+
     def entry(key, e):
-        return {"id": key, "label": e["label"],
-                "installed": all(os.path.exists(os.path.join(MODELS, f)) for f in e["files"])}
+        return {"id": key, "label": e["label"], "installed": all(ready(f) for f in e["files"])}
     cfg = load_config()
     return {
         "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()],
         "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
+        "t2v": [entry(k, e) for k, e in comfy.T2V_ENGINES.items()],
+        "default_t2v": cfg.get("default_t2v_engine", "wan22-5b"),
         "reference": entry("flux-kontext", comfy.REFERENCE_ENGINE),
         "default_image": cfg.get("default_image_engine", "flux-dev"),
         "default_video": cfg.get("default_video_engine", "wan22-14b"),
     }
 
 
-def set_engines(pid, image_engine=None, video_engine=None, mode=None):
+def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None):
     p = load(pid)
-    if mode in ("images", "video"):
+    if t2v_engine in comfy.T2V_ENGINES:
+        p["t2v_engine"] = t2v_engine
+    if mode in ("images", "video", "t2v"):
         if mode == "video" and len(p["plan"]["keyframes"]) < 2:
             raise ValueError("a video needs at least 2 keyframes; add one first")
         p["mode"] = mode
@@ -311,6 +319,44 @@ def do_animate(p, only=None):
         log(p, "some clips are not animated yet; skipping stitch")
 
 
+def do_t2v(p, only=None):
+    """Video-only mode: each scene is generated straight from text, then the clips are joined."""
+    cfg = load_config()
+    ff = find_ffmpeg(cfg["ffmpeg"])
+    c = comfy.Comfy(cfg["comfy_url"])
+    if not c.alive():
+        raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
+    w, h = size(cfg, p)
+    engine = p.get("t2v_engine", "wan22-5b")
+    fps = cfg["ltxv"]["fps"] if engine == "ltxv-2b" else cfg["wan5b"]["fps"]
+    n = len(p["plan"]["keyframes"])
+    c.free()
+    for i in (range(n) if only is None else [int(only)]):
+        prompt = ". ".join(x for x in [p.get("style", ""), p["plan"]["keyframes"][i]["image_prompt"],
+                                       p["plan"].get("character", ""), p["plan"].get("setting", "")] if x)
+        t = time.time()
+        log(p, f"scene {i + 1}/{n}: generating video with {engine}")
+        out = c.run(comfy.t2v_workflow(cfg, engine, prompt, w, h, p["seed"] + i, f"aics/{p['id']}/scene{i:02d}"))
+        frames = next(o["images"] for o in out.values() if o.get("images"))
+        save_clip_frames(p, c, ff, i, frames, fps)
+        log(p, f"scene {i + 1}/{n}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
+    if all(glob.glob(pdir(p["id"], "clips", f"frames_{i:02d}", "*.png")) for i in range(n)):
+        stitch(p, cfg, ff)
+
+
+def save_clip_frames(p, c, ff, i, frames, fps):
+    fdir = pdir(p["id"], "clips", f"frames_{i:02d}")
+    shutil.rmtree(fdir, ignore_errors=True)
+    os.makedirs(fdir)
+    for k, fr in enumerate(frames):
+        with open(os.path.join(fdir, f"{k:04d}.png"), "wb") as f:
+            f.write(c.fetch(fr))
+    run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(fdir, "%04d.png"), *H264,
+                    pdir(p["id"], "clips", f"clip_{i:02d}.mp4")])
+    p.setdefault("clip_fps", {})[str(i)] = fps
+    p["clips_version"] = time.time()
+
+
 def restitch(p):
     cfg = load_config()
     stitch(p, cfg, find_ffmpeg(cfg["ffmpeg"]))
@@ -340,7 +386,9 @@ def write_caption(p):
 
 def stitch(p, cfg, ff):
     n = len(p["plan"]["keyframes"])
-    clip_fps = [p.get("clip_fps", {}).get(str(i), cfg["video"]["fps"]) for i in range(n - 1)]
+    t2v = p.get("mode") == "t2v"
+    nclips = n if t2v else n - 1
+    clip_fps = [p.get("clip_fps", {}).get(str(i), cfg["video"]["fps"]) for i in range(nclips)]
     fps = max(clip_fps)  # clips from different engines are retimed to the fastest frame rate
     log(p, "stitching clips")
     seq = pdir(p["id"], "clips", "all_frames")
@@ -348,14 +396,14 @@ def stitch(p, cfg, ff):
     os.makedirs(seq)
     k = 0
     bounds = []  # (start_sec, end_sec) per clip on the final timeline
-    for i in range(n - 1):
+    for i in range(nclips):
         files = sorted(glob.glob(pdir(p["id"], "clips", f"frames_{i:02d}", "*.png")))
         if not files:
             raise RuntimeError(f"clip {i + 1} has no frames; animate it first")
         if clip_fps[i] != fps:  # repeat frames so the clip keeps its real duration
             files = [files[min(len(files) - 1, int(j * clip_fps[i] / fps))]
                      for j in range(round(len(files) * fps / clip_fps[i]))]
-        if i > 0:
+        if i > 0 and not t2v:
             files = files[1:]  # first frame duplicates the previous clip's last frame (same keyframe)
         start = k
         for fsrc in files:
@@ -367,7 +415,7 @@ def stitch(p, cfg, ff):
     kfs = p["plan"]["keyframes"]
     cues = []
     for i, (s, e) in enumerate(bounds):
-        if i == len(bounds) - 1 and kfs[-1].get("subtitle"):
+        if not t2v and i == len(bounds) - 1 and kfs[-1].get("subtitle"):
             mid = (s + e) / 2
             cues += [(s, mid, kfs[i].get("subtitle", "")), (mid, e, kfs[-1]["subtitle"])]
         else:
