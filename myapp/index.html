@@ -30,9 +30,9 @@
   <h1>MyApp</h1>
   <p class="sub">Your apps on the home PC (Tailscale must be on)</p>
   <div class="grid">
-    <a class="tile" href="https://desktop-h7p36q5.tail46ae30.ts.net/">
+    <a class="tile" href="https://desktop-h7p36q5.tail46ae30.ts.net/" data-status="https://desktop-h7p36q5.tail46ae30.ts.net/login">
       <div class="ico" style="background:linear-gradient(135deg,#6d7bff,#9b6dff)">📈</div>
-      <div><div class="name">Wickward</div><div class="desc">Trading dashboard</div></div>
+      <div><div class="name"><span class="dot"></span>Wickward</div><div class="desc">Trading dashboard</div></div>
     </a>
     <a class="tile" href="http://desktop-h7p36q5:8090/" data-status="http://desktop-h7p36q5:8090/api/status">
       <img class="ico" src="reelmint-192.png" alt="">
@@ -40,6 +40,9 @@
     </a>
   </div>
 <script>
+  // opened over https (e.g. a shared device): point the Reelmint tile at its https entrance
+  if (location.protocol === 'https:') document.querySelectorAll('[data-status]').forEach(a => {
+    a.href = `https://${location.hostname}:8443/`; a.dataset.status = `https://${location.hostname}:8443/api/status`; });
   // light up a green dot when the studio is reachable
   document.querySelectorAll('[data-status]').forEach(async a => {
     const dot = a.querySelector('.dot');
