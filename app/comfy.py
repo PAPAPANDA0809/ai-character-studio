@@ -62,11 +62,20 @@ class Comfy:
             raise RuntimeError("ComfyUI rejected workflow: " + json.dumps(res["node_errors"])[:1500])
         pid = res["prompt_id"]
         start = time.time()
+        misses = 0
         while time.time() - start < timeout:
             if self.should_stop and self.should_stop():
                 self.stop(pid)
                 raise Stopped()
-            hist = json.loads(self._get("/history/" + pid))
+            try:
+                hist = json.loads(self._get("/history/" + pid))
+                misses = 0
+            except (OSError, ValueError):  # ComfyUI can drop a poll while it loads big models; the job keeps running
+                misses += 1
+                if misses > 15:
+                    raise
+                time.sleep(2)
+                continue
             if pid in hist:
                 entry = hist[pid]
                 status = entry.get("status", {})
