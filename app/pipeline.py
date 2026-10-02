@@ -397,8 +397,8 @@ def reference_prompt(p, i):
     scene = ". ".join(s.strip().rstrip(".") for s in [pl["keyframes"][i]["image_prompt"], pl.get("setting", "")]
                       if s and s.strip())
     style = p.get("style", "").strip()
-    return (f"Place the exact same character from the reference image into a new scene: {scene}. "
-            f"Keep the character's face, body proportions, colors and outfit identical to the reference. "
+    return (f"Keep this exact same person from the reference image: same face, same eyes, same glasses and "
+            f"accessories, same hair, same body proportions. Change only the scene and pose: {scene}. "
             + (f"Style: {style}." if style else ""))
 
 

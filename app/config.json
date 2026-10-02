@@ -222,6 +222,6 @@
   },
   "kontext_polish": {
     "enabled": true,
-    "denoise": 0.4
+    "denoise": 0.22
   }
 }

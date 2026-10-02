@@ -98,7 +98,7 @@ def _claude_cli():
     return bundled[-1] if bundled else None
 
 
-def enhance(cfg, idea, mode="video", style="", character=""):
+def enhance(cfg, idea, mode="video", style="", character="", has_reference=False):
     """Rewrite a rough idea into a richer brief: Claude Code on this PC (owner's login), else a Claude API key,
     else the local LLM.
     Returns (text, engine_label)."""
@@ -108,6 +108,9 @@ def enhance(cfg, idea, mode="video", style="", character=""):
         user += f"Visual style: {style}\n"
     if character:
         user += f"Character: {character}\n"
+    if has_reference:
+        user += ("The character's look comes from a reference photo, so do NOT describe their face, hair, body, "
+                 "clothing, glasses or accessories. Describe only the scene, pose, action, expression, mood and camera.\n")
     cli = _claude_cli()
     if cli:  # Claude Code on this PC, signed in with the owner's Claude account
         r = subprocess.run([cli, "-p", "--output-format", "text", "--max-turns", "1"],
@@ -219,7 +222,7 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
                 if has_reference:
                     data["character"] = ""
                 plan_ = normalize_plan(data, n_keyframes, idea, "" if has_reference else character)
-                if n_keyframes == 1 and mode != "video":  # a single picture/scene is the prompt itself, word for word
+                if n_keyframes == 1 and mode != "video" and not has_reference:  # a single picture/scene is the prompt itself, word for word
                     plan_["keyframes"][0]["image_prompt"] = idea
                 plan_["planner"] = "claude"
                 return plan_
