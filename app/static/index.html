@@ -2,159 +2,348 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reelmint</title>
 <link rel="icon" href="/static/reelmint-32.png">
 <link rel="apple-touch-icon" href="/static/reelmint-192.png">
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#2ed6aa">
+<meta name="theme-color" content="#07090d">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#111317; --panel:#1a1d23; --line:#2a2e37; --text:#e7e9ee; --muted:#9097a5; --accent:#7c9cff; --ok:#4cc38a; --err:#ff6b6b; }
-  * { box-sizing:border-box; }
-  body { margin:0; font:14px/1.45 system-ui, Segoe UI, sans-serif; background:var(--bg); color:var(--text); }
-  header { display:flex; align-items:center; gap:16px; padding:12px 20px; border-bottom:1px solid var(--line); }
-  header h1 { font-size:17px; margin:0; }
-  .pill { font-size:12px; padding:2px 8px; border-radius:99px; background:var(--line); color:var(--muted); }
-  .pill.ok { color:var(--ok); } .pill.bad { color:var(--err); }
-  main { display:grid; grid-template-columns:320px 1fr; min-height:calc(100vh - 50px); }
-  aside { border-right:1px solid var(--line); padding:16px; display:flex; flex-direction:column; gap:10px; }
-  section { padding:16px 24px; overflow:auto; }
-  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
-  input, textarea, select { width:100%; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 9px; font:inherit; }
+  :root {
+    --bg:#07090d; --glass:rgba(255,255,255,.045); --glass2:rgba(255,255,255,.075); --line:rgba(255,255,255,.09);
+    --text:#eef1f6; --muted:#8b93a3; --mint:#2ef2b5; --cyan:#3ad7ff; --violet:#8a5cff; --err:#ff6b8a;
+    --grad:linear-gradient(120deg,var(--mint),var(--cyan) 55%,var(--violet));
+    --r:16px; --font:Inter,system-ui,Segoe UI,Roboto,sans-serif; --display:'Space Grotesk',Inter,system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 var(--font); }
+  body::before { content:""; position:fixed; inset:-20vmax; z-index:-1; pointer-events:none;
+    background:radial-gradient(40vmax 30vmax at 10% 0%,rgba(46,242,181,.13),transparent 60%),
+               radial-gradient(40vmax 30vmax at 100% 20%,rgba(138,92,255,.14),transparent 60%),
+               radial-gradient(50vmax 40vmax at 50% 110%,rgba(58,215,255,.10),transparent 60%); }
+  a { color:var(--cyan); }
+  /* header */
+  header { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; padding:12px 18px;
+    background:rgba(7,9,13,.7); backdrop-filter:blur(14px); border-bottom:1px solid var(--line); }
+  header img { width:34px; height:34px; border-radius:10px; box-shadow:0 0 22px rgba(46,242,181,.35); }
+  .brand { font:700 21px var(--display); letter-spacing:.3px; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .chips { margin-left:auto; display:flex; gap:8px; }
+  .chip { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); padding:5px 10px; border-radius:99px; background:var(--glass); border:1px solid var(--line); white-space:nowrap; }
+  .dot { width:7px; height:7px; border-radius:50%; background:#555; }
+  .dot.on { background:var(--mint); box-shadow:0 0 10px var(--mint); } .dot.off { background:var(--err); }
+  nav.tabs { display:flex; gap:6px; padding:12px 18px 0; max-width:1200px; margin:0 auto; }
+  nav.tabs button { flex:none; }
+  /* layout */
+  main { max-width:1200px; margin:0 auto; padding:16px 18px 120px; }
+  .view { display:none; animation:fade .25s ease; } .view.on { display:block; }
+  @keyframes fade { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
+  h2 { font:600 22px var(--display); margin:4px 0 14px; }
+  h3 { font:600 15px var(--display); margin:18px 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; font-size:12px; }
+  .glass { background:var(--glass); border:1px solid var(--line); border-radius:var(--r); backdrop-filter:blur(10px); }
+  .pad { padding:16px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:14px 0 6px; letter-spacing:.3px; }
+  input, textarea, select { width:100%; background:rgba(0,0,0,.35); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:11px 13px; font:inherit; outline:none; transition:border .15s, box-shadow .15s; }
+  input:focus, textarea:focus, select:focus { border-color:rgba(46,242,181,.6); box-shadow:0 0 0 3px rgba(46,242,181,.12); }
   textarea { resize:vertical; }
-  button { background:var(--accent); color:#0b0d12; border:0; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; font:inherit; font-weight:600; }
-  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); font-weight:500; }
-  button:disabled { opacity:.45; cursor:default; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .projects { overflow:auto; flex:1; margin-top:8px; }
-  .proj { padding:8px; border-radius:6px; cursor:pointer; border:1px solid transparent; }
-  .proj:hover { background:var(--panel); } .proj.active { border-color:var(--accent); }
-  .proj small { color:var(--muted); display:block; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
-  .strip { display:flex; gap:10px; overflow-x:auto; align-items:stretch; padding-bottom:8px; }
-  .kf { width:250px; flex:none; display:flex; flex-direction:column; gap:6px; }
-  .kf .img { background:#0c0e12; border-radius:6px; aspect-ratio:var(--ar,9/16); display:flex; align-items:center; justify-content:center; color:var(--muted); overflow:hidden; }
-  .kf img, .kf video { width:100%; height:100%; object-fit:contain; }
-  .motion { width:220px; flex:none; display:flex; flex-direction:column; gap:6px; justify-content:center; }
-  .motion .arrow { color:var(--muted); text-align:center; font-size:12px; }
-  .status { color:var(--muted); font-size:13px; }
-  .log { font:12px/1.4 Consolas, monospace; color:var(--muted); max-height:180px; overflow:auto; white-space:pre-wrap; }
-  .final { display:flex; gap:16px; flex-wrap:wrap; }
-  .final video { max-height:520px; max-width:100%; border-radius:8px; background:#000; }
-  h2 { font-size:15px; margin:18px 0 8px; } h2:first-child { margin-top:0; }
-  a { color:var(--accent); }
-  @media (max-width:800px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+  select { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%; background-size:5px 5px; background-repeat:no-repeat; padding-right:34px; }
+  .idea { font-size:17px; min-height:110px; }
+  button { font:600 14px var(--font); color:var(--text); background:var(--glass2); border:1px solid var(--line); border-radius:12px; padding:10px 15px; cursor:pointer; transition:transform .1s, border .15s, background .15s; }
+  button:hover { border-color:rgba(255,255,255,.2); } button:active { transform:scale(.97); }
+  button:disabled { opacity:.4; cursor:default; transform:none; }
+  .primary { background:var(--grad); color:#041014; border:0; box-shadow:0 6px 24px rgba(46,242,181,.25); }
+  .big { width:100%; padding:15px; font-size:16px; border-radius:14px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .seg { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .seg button { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px; font-weight:500; font-size:13px; color:var(--muted); background:rgba(0,0,0,.25); }
+  .seg button svg { width:24px; height:24px; stroke:currentColor; }
+  .seg button.on { color:var(--text); border-color:rgba(46,242,181,.7); background:rgba(46,242,181,.08); box-shadow:inset 0 0 18px rgba(46,242,181,.12); }
+  .seg.small button { flex-direction:row; justify-content:center; padding:10px 6px; }
+  .stepper { display:flex; align-items:center; border:1px solid var(--line); border-radius:12px; background:rgba(0,0,0,.35); }
+  .stepper button { border:0; background:none; font-size:20px; width:46px; padding:8px 0; }
+  .stepper input { border:0; background:none; text-align:center; font:600 17px var(--display); padding:8px 0; }
+  .stepper input:focus { box-shadow:none; }
+  .chars { display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; }
+  .char { flex:none; width:64px; text-align:center; font-size:11px; color:var(--muted); cursor:pointer; }
+  .char .pic { width:64px; height:64px; border-radius:16px; border:2px solid transparent; background:rgba(0,0,0,.35) center/cover; display:flex; align-items:center; justify-content:center; font-size:22px; color:var(--muted); }
+  .char.on .pic { border-color:var(--mint); box-shadow:0 0 16px rgba(46,242,181,.4); }
+  .char span { display:block; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .presets { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .presets button { font-size:12px; padding:6px 10px; font-weight:500; border-radius:99px; }
+  details { margin-top:14px; } summary { cursor:pointer; color:var(--muted); font-size:13px; list-style:none; }
+  summary::before { content:"▸ "; } details[open] summary::before { content:"▾ "; }
+  .create-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:16px; align-items:start; }
+  /* project list */
+  .plist { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+  .pcard { display:flex; gap:12px; align-items:center; padding:10px; cursor:pointer; }
+  .pcard .th { width:56px; height:72px; border-radius:10px; background:rgba(0,0,0,.4) center/cover; flex:none; }
+  .pcard b { display:block; font:600 15px var(--display); }
+  .badge { display:inline-block; font-size:11px; padding:2px 8px; border-radius:99px; background:var(--glass2); color:var(--muted); margin-top:4px; }
+  .badge.run { color:var(--cyan); } .badge.done { color:var(--mint); } .badge.err { color:var(--err); }
+  /* project editor */
+  .topbar { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .topbar h2 { margin:0; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .progress { display:flex; align-items:center; gap:10px; padding:12px 14px; margin:10px 0; border-radius:14px;
+    background:linear-gradient(90deg,rgba(46,242,181,.12),rgba(138,92,255,.12)); border:1px solid rgba(46,242,181,.25); font-size:14px; }
+  .spin { width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.2); border-top-color:var(--mint); animation:sp 0.8s linear infinite; flex:none; }
+  @keyframes sp { to { transform:rotate(360deg) } }
+  .scenes { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
+  .scene { padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .scene .media { border-radius:12px; overflow:hidden; aspect-ratio:var(--ar,9/16); background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; cursor:pointer; position:relative; }
+  .scene .media img, .scene .media video { width:100%; height:100%; object-fit:cover; display:block; }
+  .scene .num { position:absolute; top:8px; left:8px; font:600 12px var(--display); padding:3px 8px; border-radius:99px; background:rgba(0,0,0,.6); color:var(--text); }
+  .scene label { margin:4px 0 2px; }
+  .scene textarea { font-size:13px; }
+  .motion { border-top:1px dashed var(--line); padding-top:8px; }
+  .motion video { width:100%; border-radius:10px; margin-bottom:6px; }
+  .actions { position:sticky; bottom:76px; z-index:10; display:flex; gap:8px; flex-wrap:wrap; padding:12px; margin-top:16px; border-radius:16px; background:rgba(12,15,21,.85); backdrop-filter:blur(14px); border:1px solid var(--line); }
+  .actions .primary { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  @media (max-width:820px) { .actions { flex-wrap:nowrap; padding:8px; gap:6px; } .actions button { padding:10px 11px; font-size:13px; } }
+  .final { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+  .final video { width:100%; border-radius:14px; background:#000; max-height:70vh; }
+  .log { font:12px/1.5 ui-monospace,Consolas,monospace; color:var(--muted); max-height:180px; overflow:auto; white-space:pre-wrap; padding:12px; }
+  /* galleries */
+  .gal { columns:4 200px; column-gap:12px; }
+  .gal .it { break-inside:avoid; margin-bottom:12px; border-radius:14px; overflow:hidden; position:relative; cursor:pointer; border:1px solid var(--line); background:rgba(0,0,0,.4); }
+  .gal img, .gal video { width:100%; display:block; }
+  .gal .cap { position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px; font-size:12px; background:linear-gradient(transparent,rgba(0,0,0,.8)); }
+  .gal .play { position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; font-size:12px; }
+  .empty { color:var(--muted); text-align:center; padding:50px 10px; }
+  /* lightbox */
+  .lb { position:fixed; inset:0; z-index:50; background:rgba(3,4,7,.92); backdrop-filter:blur(8px); display:none; flex-direction:column; align-items:center; justify-content:center; padding:20px; gap:14px; }
+  .lb.on { display:flex; }
+  .lb img, .lb video { max-width:100%; max-height:76vh; border-radius:14px; }
+  .lb .row { justify-content:center; }
+  /* bottom nav (mobile) */
+  .bnav { display:none; }
+  @media (max-width:820px) {
+    nav.tabs { display:none; }
+    .create-grid { grid-template-columns:1fr; }
+    .chips .chip span.t { display:none; }
+    main { padding:12px 14px 140px; }
+    .bnav { display:flex; position:fixed; left:12px; right:12px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:30;
+      justify-content:space-around; padding:8px; border-radius:20px; background:rgba(14,17,24,.88); backdrop-filter:blur(16px); border:1px solid var(--line); box-shadow:0 10px 40px rgba(0,0,0,.5); }
+    .bnav button { flex:1; background:none; border:0; display:flex; flex-direction:column; align-items:center; gap:3px; font-size:11px; font-weight:500; color:var(--muted); padding:6px 0; }
+    .bnav button svg { width:22px; height:22px; stroke:currentColor; }
+    .bnav button.on { color:var(--mint); }
+    .actions { bottom:calc(84px + env(safe-area-inset-bottom)); }
+    .gal { columns:2 140px; column-gap:10px; }
+    .scenes { grid-template-columns:1fr 1fr; gap:10px; }
+  }
+  @media (max-width:480px) { .scenes { grid-template-columns:1fr; } }
+  nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
 </head>
 <body>
 <header>
-  <img src="/static/reelmint-192.png" alt="" style="width:28px;height:28px;border-radius:7px">
-  <h1>Reelmint</h1>
-  <span id="st-comfy" class="pill">ComfyUI …</span>
-  <span id="st-llm" class="pill">LLM …</span>
-  <span id="st-busy" class="status"></span>
+  <img src="/static/reelmint-192.png" alt="">
+  <span class="brand">Reelmint</span>
+  <div class="chips">
+    <span class="chip"><i class="dot" id="d-comfy"></i><span class="t">Engine</span></span>
+    <span class="chip"><i class="dot" id="d-llm"></i><span class="t" id="t-llm">Planner</span></span>
+  </div>
 </header>
+<nav class="tabs" id="tabs"></nav>
+
 <main>
-  <aside>
-    <div class="card">
-      <label>Post idea</label>
-      <textarea id="idea" rows="4" placeholder="e.g. Our mascot fox tries surfing for the first time and wipes out"></textarea>
-      <label>Master character picture (keyframes keep this character)</label>
-      <div class="row" style="flex-wrap:nowrap">
-        <img id="ref-thumb" style="width:48px;height:48px;object-fit:cover;border-radius:6px;background:#0c0e12;display:none">
-        <select id="ref" style="flex:1"></select>
-        <label class="ghost" style="margin:0;cursor:pointer;border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:var(--text)">Upload
-          <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" style="display:none"></label>
+  <!-- CREATE -->
+  <section class="view" id="v-create">
+    <div class="create-grid">
+      <div class="glass pad">
+        <h2>What's the post?</h2>
+        <textarea id="idea" class="idea" placeholder="e.g. Our fox mascot opens a tiny coffee shop and serves its first customer"></textarea>
+        <label>Make</label>
+        <div class="seg" id="mode-seg">
+          <button data-mode="video"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7"><rect x="3" y="5" width="7" height="14" rx="2"/><path d="M14 8l7-3v14l-7-3z"/></svg>Images + video</button>
+          <button data-mode="t2v"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10l6-3v10l-6-3z"/></svg>Video only</button>
+          <button data-mode="images"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-5-5-9 10"/></svg>Images only</button>
+        </div>
+        <label>Character</label>
+        <div class="chars" id="chars"></div>
+        <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       </div>
-      <label>Character description (optional)</label>
-      <textarea id="character" rows="2" placeholder="e.g. a small orange fox with a teal scarf and round glasses"></textarea>
-      <label>Visual style</label>
-      <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
-      <label>What to make</label>
-      <select id="mode"><option value="video">Images + video (keyframes animated into 5s clips)</option><option value="t2v">Video only (text-to-video scenes)</option><option value="images">Images only (photo set / carousel)</option></select>
-      <div class="row">
-        <div style="flex:1"><label id="nkf-label">Keyframes</label><input id="nkf" type="number" min="2" max="8" value="3"></div>
-        <div style="flex:1"><label>Format</label>
-          <select id="aspect"><option value="portrait">Portrait 9:16</option><option value="landscape">Landscape 16:9</option><option value="square">Square</option></select></div>
+      <div class="glass pad">
+        <div class="grid2">
+          <div><label style="margin-top:0" id="nkf-label">Keyframes</label>
+            <div class="stepper"><button data-step="-1">−</button><input id="nkf" type="number" value="3" min="1" max="12"><button data-step="1">+</button></div></div>
+          <div><label style="margin-top:0">Format</label>
+            <div class="seg small" id="aspect-seg"><button data-aspect="portrait">9:16</button><button data-aspect="landscape">16:9</button><button data-aspect="square">1:1</button></div></div>
+        </div>
+        <p id="nkf-hint" style="color:var(--muted);font-size:12px;margin:8px 0 0"></p>
+        <label>Visual style</label>
+        <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
+        <div class="presets" id="presets"></div>
+        <div id="img-eng-wrap"><label>Image engine</label><select id="img-eng"></select></div>
+        <div id="vid-eng-wrap"><label>Video engine</label><select id="vid-eng"></select></div>
+        <div id="t2v-eng-wrap"><label>Text-to-video engine</label><select id="t2v-eng"></select></div>
+        <details><summary>Describe the character in words (optional)</summary>
+          <textarea id="character" rows="2" placeholder="e.g. a small orange fox with a teal scarf and round glasses" style="margin-top:8px"></textarea></details>
       </div>
-      <div id="img-eng-wrap"><label>Image engine</label><select id="img-eng"></select></div>
-      <div id="vid-eng-wrap"><label>Video engine</label><select id="vid-eng"></select></div>
-      <div id="t2v-eng-wrap" style="display:none"><label>Text-to-video engine</label><select id="t2v-eng"></select></div>
-      <div style="margin-top:10px" class="row"><button id="btn-plan">Plan scenes</button><span id="plan-msg" class="status"></span></div>
     </div>
-    <div class="projects" id="projects"></div>
-  </aside>
-  <section id="view"><p class="status">Write a post idea and press <b>Plan scenes</b>, or open a project on the left.</p></section>
+    <button class="primary big" id="btn-plan" style="margin-top:16px">✦ Plan scenes</button>
+    <div id="plan-msg" class="progress" style="display:none"><i class="spin"></i><span>Planning scenes with the local AI…</span></div>
+  </section>
+
+  <!-- PROJECTS -->
+  <section class="view" id="v-projects"><h2>Projects</h2><div class="plist" id="plist"></div></section>
+
+  <!-- PROJECT EDITOR -->
+  <section class="view" id="v-project"></section>
+
+  <!-- GALLERIES -->
+  <section class="view" id="v-images"><h2>Images</h2><div class="gal" id="gal-images"></div></section>
+  <section class="view" id="v-videos"><h2>Videos</h2><div class="gal" id="gal-videos"></div></section>
 </main>
+
+<nav class="bnav" id="bnav"></nav>
+<div class="lb" id="lb"></div>
+
 <script>
-const $ = s => document.querySelector(s);
-let P = null, dirty = false;
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+let P = null, dirty = false, CHARS = [], ENG = null, VIEW = 'create';
+const NEW = {mode: 'video', aspect: 'portrait', ref: ''};
+const ICON = {
+  create: '<path d="M12 3v18M3 12h18"/>',
+  projects: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/>',
+  images: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-5-5-9 10"/>',
+  videos: '<rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10l6-3v10l-6-3z"/>'
+};
+const TABS = [['create', 'Create'], ['projects', 'Projects'], ['images', 'Images'], ['videos', 'Videos']];
+$('#bnav').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8">${ICON[k]}</svg>${l}</button>`).join('');
+$('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}">${l}</button>`).join('');
+$$('[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
+
+function show(v) {
+  VIEW = v;
+  $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
+  $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
+  if (v === 'projects') refreshProjects();
+  if (v === 'images' || v === 'videos') refreshGallery(v);
+  window.scrollTo({top: 0});
+}
 
 async function api(path, body) {
-  const r = await fetch(path, body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const r = await fetch(path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   const j = await r.json();
   if (!r.ok || j.error) throw new Error(j.error || r.statusText);
   return j;
 }
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const running = () => P && /^(queued|running)/.test(P.status);
+const pad = i => String(i).padStart(2, '0');
+const fileOf = (pid, rel, ver) => `/files/${pid}/${rel}?v=${ver || 0}`;
+const file = (rel, ver) => fileOf(P.id, rel, ver);
+const fmtDate = t => new Date(t * 1000).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
 
 async function refreshStatus() {
   try {
     const s = await api('/api/status');
-    $('#st-comfy').textContent = 'ComfyUI ' + (s.comfy ? 'online' : 'offline');
-    $('#st-comfy').className = 'pill ' + (s.comfy ? 'ok' : 'bad');
-    $('#st-llm').textContent = s.llm + (s.ollama === false ? ' (offline)' : '');
-    $('#st-llm').className = 'pill ' + (s.ollama === false ? 'bad' : 'ok');
-    $('#st-busy').textContent = s.busy.pid ? `Working: ${s.busy.task} (${s.queued} queued)` : '';
-  } catch (e) {}
+    $('#d-comfy').className = 'dot ' + (s.comfy ? 'on' : 'off');
+    $('#d-llm').className = 'dot ' + (s.ollama === false ? 'off' : 'on');
+    $('#t-llm').textContent = s.llm.split(':').slice(1).join(':') || 'Planner';
+  } catch (e) { $('#d-comfy').className = 'dot off'; }
 }
 
-async function refreshProjects() {
-  const list = await api('/api/projects');
-  $('#projects').innerHTML = list.map(p => `<div class="proj ${P && P.id === p.id ? 'active' : ''}" data-id="${p.id}">
-      ${esc(p.title)}<small>${esc(p.status)} · ${new Date(p.created * 1000).toLocaleString()}</small></div>`).join('');
-  document.querySelectorAll('.proj').forEach(el => el.onclick = () => openProject(el.dataset.id));
-}
+/* ---------- create form ---------- */
+const STYLE_PRESETS = ['cinematic photo, soft natural light, shallow depth of field', 'anime key visual, vibrant colors',
+  'Pixar-style 3D render, soft lighting', 'neon cyberpunk night, rain reflections', 'film photography, 35mm grain, warm tones',
+  'clean studio product shot, white background'];
+$('#presets').innerHTML = STYLE_PRESETS.map(s => `<button>${esc(s.split(',')[0])}</button>`).join('');
+$$('#presets button').forEach((b, i) => b.onclick = () => $('#style').value = STYLE_PRESETS[i]);
 
-function syncMode() {
-  const m = $('#mode').value;
-  $('#nkf-label').textContent = {images: 'Number of images', t2v: 'Number of 5s scenes'}[m] || 'Keyframes (clips = keyframes - 1)';
-  $('#nkf').min = m === 'video' ? 2 : 1; $('#nkf').max = m === 'images' ? 12 : 8;
-  if (m === 'video' && +$('#nkf').value < 2) $('#nkf').value = 2;
+function syncCreate() {
+  const m = NEW.mode;
+  $$('#mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  $$('#aspect-seg button').forEach(b => b.classList.toggle('on', b.dataset.aspect === NEW.aspect));
+  $('#nkf-label').textContent = {images: 'Images', t2v: 'Scenes'}[m] || 'Keyframes';
+  const min = m === 'video' ? 2 : 1, max = m === 'images' ? 12 : 8;
+  $('#nkf').min = min; $('#nkf').max = max;
+  $('#nkf').value = Math.max(min, Math.min(max, +$('#nkf').value || min));
+  const n = +$('#nkf').value;
+  $('#nkf-hint').textContent = m === 'video' ? `${n} pictures → ${n - 1} clips → ${(n - 1) * 5}s video`
+    : m === 't2v' ? `${n} scenes × 5s → ${n * 5}s video` : `${n} picture${n > 1 ? 's' : ''}`;
   $('#vid-eng-wrap').style.display = m === 'video' ? '' : 'none';
   $('#t2v-eng-wrap').style.display = m === 't2v' ? '' : 'none';
   $('#img-eng-wrap').style.display = m === 't2v' ? 'none' : '';
 }
-$('#mode').onchange = syncMode;
-let CHARS = [], ENG = null;
-const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label)}${e.installed ? '' : ' (downloading / not installed)'}</option>`).join('');
+$$('#mode-seg button').forEach(b => b.onclick = () => { NEW.mode = b.dataset.mode; syncCreate(); });
+$$('#aspect-seg button').forEach(b => b.onclick = () => { NEW.aspect = b.dataset.aspect; syncCreate(); });
+$$('[data-step]').forEach(b => b.onclick = () => { $('#nkf').value = +$('#nkf').value + +b.dataset.step; syncCreate(); });
+$('#nkf').oninput = syncCreate;
+
+const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label)}${e.installed ? '' : ' · downloading'}</option>`).join('');
 async function refreshEngines() {
   ENG = await api('/api/engines');
   $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
   $('#vid-eng').innerHTML = engOptions(ENG.video, $('#vid-eng').value || ENG.default_video);
   $('#t2v-eng').innerHTML = engOptions(ENG.t2v, $('#t2v-eng').value || ENG.default_t2v);
 }
-const refOptions = sel => `<option value="">None (text only)</option>` +
-  CHARS.map(c => `<option value="${esc(c)}" ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('');
-function showThumb(img, name) { img.style.display = name ? '' : 'none'; if (name) img.src = '/characters/' + encodeURIComponent(name); }
-async function refreshChars(select) {
-  CHARS = await api('/api/characters');
-  const cur = select ?? $('#ref').value;
-  $('#ref').innerHTML = refOptions(cur);
-  showThumb($('#ref-thumb'), $('#ref').value);
+
+function renderChars() {
+  $('#chars').innerHTML = `<div class="char ${NEW.ref ? '' : 'on'}" data-c=""><div class="pic">∅</div><span>None</span></div>` +
+    CHARS.map(c => `<div class="char ${c === NEW.ref ? 'on' : ''}" data-c="${esc(c)}"><div class="pic" style="background-image:url('/characters/${encodeURIComponent(c)}')"></div><span>${esc(c.replace(/\.\w+$/, ''))}</span></div>`).join('') +
+    `<div class="char" id="char-up"><div class="pic" style="border:2px dashed var(--line)">＋</div><span>Upload</span></div>`;
+  $$('#chars [data-c]').forEach(el => el.onclick = () => { NEW.ref = el.dataset.c; renderChars(); });
+  $('#char-up').onclick = () => $('#ref-file').click();
 }
-$('#ref').onchange = () => showThumb($('#ref-thumb'), $('#ref').value);
+async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
 $('#ref-file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  const r = await fetch('/api/characters?name=' + encodeURIComponent(f.name), {method:'POST', body:f});
+  const r = await fetch('/api/characters?name=' + encodeURIComponent(f.name), {method: 'POST', body: f});
   const j = await r.json(); if (j.error) return alert(j.error);
-  await refreshChars(j.name); e.target.value = '';
-  if (P) render();
+  NEW.ref = j.name; await refreshChars(); e.target.value = '';
+  if (VIEW === 'project') render();
 };
 
-async function openProject(id) { dirty = false; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); render(); refreshProjects(); }
+$('#btn-plan').onclick = async () => {
+  const idea = $('#idea').value.trim();
+  if (!idea) return $('#idea').focus();
+  $('#btn-plan').disabled = true; $('#plan-msg').style.display = 'flex';
+  try {
+    P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, reference: NEW.ref,
+      mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value,
+      keyframes: +$('#nkf').value, aspect: NEW.aspect});
+    dirty = false; show('project'); render();
+  } catch (e) { alert(e.message); }
+  $('#btn-plan').disabled = false; $('#plan-msg').style.display = 'none';
+};
 
+/* ---------- projects ---------- */
+async function refreshProjects() {
+  const list = await api('/api/projects');
+  $('#plist').innerHTML = list.length ? list.map(p => {
+    const st = p.status || '', cls = /^(queued|running)/.test(st) ? 'run' : /^done/.test(st) ? 'done' : /^error/.test(st) ? 'err' : '';
+    return `<div class="glass pcard" data-id="${p.id}"><div class="th" style="background-image:url('${fileOf(p.id, 'keyframes/kf_00.png', 1)}')"></div>
+      <div style="min-width:0"><b>${esc(p.title)}</b><span style="color:var(--muted);font-size:12px">${fmtDate(p.created)}</span><br><span class="badge ${cls}">${esc(st.replace(':', ' · '))}</span></div></div>`;
+  }).join('') : '<div class="empty">No projects yet. Create one!</div>';
+  $$('.pcard').forEach(el => el.onclick = () => openProject(el.dataset.id));
+}
+async function openProject(id) { dirty = false; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project'); render(); poll(); }
+
+/* ---------- galleries ---------- */
+async function refreshGallery(kind) {
+  const items = await api('/api/gallery/' + kind), el = $('#gal-' + kind);
+  el.innerHTML = items.length ? items.map((it, i) => kind === 'images'
+    ? `<div class="it" data-i="${i}"><img loading="lazy" src="${fileOf(it.project, it.path, Math.floor(it.mtime))}"><div class="cap">${esc(it.label)}</div></div>`
+    : `<div class="it" data-i="${i}"><video preload="metadata" muted playsinline src="${fileOf(it.project, it.path, Math.floor(it.mtime))}#t=0.5"></video><div class="play">▶</div><div class="cap">${esc(it.label)}</div></div>`).join('')
+    : `<div class="empty">Nothing here yet.</div>`;
+  $$('#gal-' + kind + ' .it').forEach(t => t.onclick = () => lightbox(kind, items[+t.dataset.i]));
+}
+function lightbox(kind, it) {
+  const src = fileOf(it.project, it.path, Math.floor(it.mtime));
+  $('#lb').innerHTML = (kind === 'images' ? `<img src="${src}">` : `<video src="${src}" controls autoplay playsinline></video>`) +
+    `<div style="color:var(--muted);font-size:13px">${esc(it.label)} · ${fmtDate(it.mtime)}</div>
+     <div class="row"><a href="${src}" download><button class="primary">Download</button></a>
+     <button id="lb-open">Open project</button><button id="lb-close">Close</button></div>`;
+  $('#lb').classList.add('on');
+  $('#lb-close').onclick = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
+  $('#lb-open').onclick = () => { $('#lb-close').onclick(); openProject(it.project); };
+}
+$('#lb').onclick = e => { if (e.target.id === 'lb') { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; } };
+
+/* ---------- project editor ---------- */
 function collectPlan() {
   const pl = structuredClone(P.plan);
   pl.title = $('#f-title').value; pl.character = $('#f-character').value; pl.setting = $('#f-setting').value;
@@ -166,92 +355,97 @@ function collectPlan() {
 }
 async function savePlan() { if (!dirty) return; P = await api(`/api/projects/${P.id}/plan`, {plan: collectPlan()}); dirty = false; }
 
-function file(rel, ver) { return `/files/${P.id}/${rel}?v=${ver || 0}`; }
-
 function render() {
   const pl = P.plan, n = pl.keyframes.length, busy = running();
-  const ar = {portrait:'9/16', landscape:'16/9', square:'1/1'}[P.aspect] || '9/16';
-  const hasKf = P.keyframes_version, hasFinal = P.final_version, isImg = P.mode === 'images', isT2V = P.mode === 't2v';
+  const ar = {portrait: '9/16', landscape: '16/9', square: '1/1'}[P.aspect] || '9/16';
+  const hasKf = P.keyframes_version, isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
   const word = isImg ? 'Image' : isT2V ? 'Scene' : 'Keyframe';
-  const pad = i => String(i).padStart(2, '0');
-  let strip = '';
-  pl.keyframes.forEach((k, i) => {
-    strip += `<div class="kf card">
-      <div class="img" style="--ar:${ar}">${isT2V ? (P.clips_version ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}" controls loop muted onerror="this.replaceWith('not generated')"></video>` : 'not generated') : hasKf ? `<img src="${file(`keyframes/kf_${String(i).padStart(2,'0')}.png`, P.keyframes_version)}" onerror="this.replaceWith('not generated')">` : 'not generated'}</div>
-      ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${String(i).padStart(2,'0')}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png">Download</a>` : ''}
-      <label>${word} ${i + 1} prompt</label><textarea id="kp${i}" rows="5">${esc(k.image_prompt)}</textarea>
-      <label>On-screen line</label><input id="ks${i}" value="${esc(k.subtitle)}">
-      <button class="ghost" ${isT2V ? `data-rescene="${i}"` : `data-regen="${i}"`} ${busy ? 'disabled' : ''}>${isT2V ? 'Regenerate this scene' : 'Regenerate (new seed)'}</button></div>`;
-    if (!isImg && i < n - 1) strip += `<div class="motion">
-      <div class="arrow">clip ${i + 1} · 5s →</div>
-      ${P.clips_version ? `<video src="${file(`clips/clip_${String(i).padStart(2,'0')}.mp4`, P.clips_version)}" controls loop muted onerror="this.remove()"></video>` : ''}
-      <textarea id="mo${i}" rows="5">${esc(pl.motions[i])}</textarea>
-      ${P.clips_version ? `<button class="ghost" data-reanim="${i}" ${busy ? 'disabled' : ''}>Re-animate this clip</button>` : ''}</div>`;
-  });
-  $('#view').innerHTML = `
-    <div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(pl.title)}</h2><span class="status">${esc(P.status)} · ${esc(P.message || '')}</span></div>
-    <div class="row" style="flex-wrap:nowrap;margin-top:8px">
-      ${P.reference ? `<img src="/characters/${encodeURIComponent(P.reference)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px">` : ''}
-      <div style="flex:1"><label style="margin-top:0">Master character picture (FLUX Kontext keeps this character in every keyframe)</label>
-      <select id="f-ref" ${busy ? 'disabled' : ''}>${refOptions(P.reference)}</select></div>
+  const refOpts = `<option value="">No character picture</option>` + CHARS.map(c => `<option value="${esc(c)}" ${c === P.reference ? 'selected' : ''}>${esc(c)}</option>`).join('');
+  const cards = pl.keyframes.map((k, i) => {
+    const media = isT2V
+      ? (P.clips_version ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}#t=0.1" controls loop muted playsinline onerror="this.remove()"></video>` : 'not generated yet')
+      : (hasKf ? `<img src="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" onerror="this.replaceWith('not generated yet')" data-full="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}">` : 'not generated yet');
+    const motion = isVid && i < n - 1 ? `<div class="motion"><label>Motion to ${word.toLowerCase()} ${i + 2} · clip ${i + 1}</label>
+        ${P.clips_version ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}#t=0.1" controls loop muted playsinline onerror="this.remove()"></video>` : ''}
+        <textarea id="mo${i}" rows="3">${esc(pl.motions[i])}</textarea>
+        ${P.clips_version ? `<button data-reanim="${i}" ${busy ? 'disabled' : ''}>↻ Re-animate clip ${i + 1}</button>` : ''}</div>` : '';
+    return `<div class="glass scene"><div class="media" style="--ar:${ar}"><span class="num">${word} ${i + 1}</span>${media}</div>
+      <label>Prompt</label><textarea id="kp${i}" rows="4">${esc(k.image_prompt)}</textarea>
+      <label>On-screen text</label><input id="ks${i}" value="${esc(k.subtitle)}">
+      <div class="row">${isT2V ? `<button data-rescene="${i}" ${busy ? 'disabled' : ''}>↻ Regenerate scene</button>`
+        : `<button data-regen="${i}" ${busy ? 'disabled' : ''}>↻ New version</button>`}
+        ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png"><button>⤓ Save</button></a>` : ''}</div>
+      ${motion}</div>`;
+  }).join('');
+  const finalBlock = P.final_version && !isImg ? `<h3>Final video</h3><div class="final">
+      <div class="glass pad"><video src="${file('final_subtitled.mp4', P.final_version)}#t=0.1" controls playsinline onerror="this.parentElement.remove()"></video>
+        <div class="row" style="margin-top:8px"><a href="${file('final_subtitled.mp4', P.final_version)}" download><button class="primary">⤓ With text</button></a></div></div>
+      <div class="glass pad"><video src="${file('final.mp4', P.final_version)}#t=0.1" controls playsinline></video>
+        <div class="row" style="margin-top:8px"><a href="${file('final.mp4', P.final_version)}" download><button>⤓ Clean</button></a>
+        <a href="${file('subtitles.srt', P.final_version)}" download><button>⤓ .srt</button></a></div></div></div>` : '';
+  $('#v-project').innerHTML = `
+    <div class="topbar"><button id="btn-back">←</button><h2>${esc(pl.title)}</h2></div>
+    ${busy ? `<div class="progress"><i class="spin"></i><span>${esc(P.message || 'Working…')}</span></div>`
+      : /^error/.test(P.status) ? `<div class="progress" style="border-color:var(--err)">⚠ ${esc(P.message)}</div>` : ''}
+    <div class="glass pad">
+      <div class="grid2">
+        <div><label style="margin-top:0">Make</label><select id="f-mode" ${busy ? 'disabled' : ''}>${[['video', 'Images + video'], ['t2v', 'Video only'], ['images', 'Images only']].map(([v, l]) => `<option value="${v}" ${(P.mode || 'video') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V ? 'disabled' : ''}>${refOpts}</select></div>
+        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine${P.reference ? ' · Kontext (picture set)' : ''}</label><select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select></div>
+        <div style="${isVid ? '' : 'display:none'}"><label>Video engine</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
+        <div style="${isT2V ? '' : 'display:none'}"><label>Text-to-video engine</label><select id="f-t2v-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select></div>
+      </div>
+      <details><summary>Title, character and setting</summary>
+        <label>Title</label><input id="f-title" value="${esc(pl.title)}">
+        <label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea>
+        <label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea>
+      </details>
     </div>
-    <div class="row">
-      <div style="flex:1"><label>What to make</label>
-        <select id="f-mode" ${busy ? 'disabled' : ''}>${[['video', 'Images + video'], ['t2v', 'Video only'], ['images', 'Images only']].map(([v, l]) => `<option value="${v}" ${(P.mode || 'video') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      <div style="flex:1;${isT2V ? 'display:none' : ''}"><label>Image engine ${P.reference ? '(using FLUX Kontext because a character picture is set)' : ''}</label>
-        <select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select></div>
-      <div style="flex:1;${isT2V ? '' : 'display:none'}"><label>Text-to-video engine</label>
-        <select id="f-t2v-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select></div>
-      <div style="flex:1;${isImg || isT2V ? 'display:none' : ''}"><label>Video engine</label>
-        <select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
+    <h3>${isImg ? `Images · ${n}` : isT2V ? `Scenes · ${n} × 5s` : `Keyframes · ${n} → ${(n - 1) * 5}s video`}</h3>
+    <div class="scenes">${cards}</div>
+    <div class="actions">
+      ${isT2V ? `<button class="primary" id="btn-t2v" ${busy ? 'disabled' : ''}>▶ Generate video</button>`
+        : `<button class="primary" id="btn-kf" ${busy ? 'disabled' : ''}>✦ ${isImg ? 'Generate images' : 'Generate keyframes'}</button>`}
+      ${isVid ? `<button class="primary" id="btn-anim" ${busy || !hasKf ? 'disabled' : ''}>▶ Animate &amp; stitch</button>` : ''}
+      <button id="btn-add" ${busy || n >= (isImg ? 12 : 8) ? 'disabled' : ''}>＋</button>
+      <button id="btn-del" ${busy || n <= (isVid ? 2 : 1) ? 'disabled' : ''}>−</button>
+      <button id="btn-save">Save</button>
     </div>
-    <label>Title</label><input id="f-title" value="${esc(pl.title)}">
-    <div class="row"><div style="flex:1"><label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea></div>
-    <div style="flex:1"><label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea></div></div>
-    <h2>${isImg ? `Images (${n})` : isT2V ? `Scenes (${n} × 5s)` : 'Keyframes and motions'}</h2>
-    <div class="strip">${strip}</div>
-    <div class="row" style="margin:10px 0">
-      ${isT2V ? `<button id="btn-t2v" ${busy ? 'disabled' : ''}>Generate video</button>` : `<button id="btn-kf" ${busy ? 'disabled' : ''}>${isImg ? 'Generate images' : '1. Generate keyframes'}</button>`}
-      ${isImg || isT2V ? '' : `<button id="btn-anim" ${busy || !hasKf ? 'disabled' : ''}>2. Animate &amp; stitch</button>`}
-      <button class="ghost" id="btn-add" ${busy || n >= (isImg ? 12 : 8) ? 'disabled' : ''}>+ Add ${word.toLowerCase()}</button>
-      <button class="ghost" id="btn-del" ${busy || n <= (isImg || isT2V ? 1 : 2) ? 'disabled' : ''}>Remove last</button>
-      <button class="ghost" id="btn-save">Save edits</button>
-      ${isImg ? '' : `<button class="ghost" id="btn-stitch" ${busy || !P.clips_version ? 'disabled' : ''}>Re-stitch (after caption edits)</button>`}
-    </div>
-    <h2>Caption</h2>
-    <textarea id="f-caption" rows="3">${esc(pl.caption)}</textarea>
-    <label>Hashtags</label><input id="f-tags" value="${esc((pl.hashtags || []).join(' '))}">
-    ${isImg && hasKf ? `<p><a href="${file('caption.txt', P.keyframes_version)}" target="_blank">caption.txt</a> · files are in app\projects\${esc(P.id)}\keyframes</p>` : ''}
-    ${hasFinal && !isImg ? `<h2>Final video</h2><div class="final">
-      <div><video src="${file('final_subtitled.mp4', P.final_version)}" controls onerror="this.parentElement.remove()"></video><br><a href="${file('final_subtitled.mp4', P.final_version)}" download>With on-screen text</a></div>
-      <div><video src="${file('final.mp4', P.final_version)}" controls></video><br><a href="${file('final.mp4', P.final_version)}" download>Clean (no text)</a> ·
-      <a href="${file('caption.txt', P.final_version)}" target="_blank">caption.txt</a> · <a href="${file('subtitles.srt', P.final_version)}" download>subtitles.srt</a></div></div>
-      <p class="status">Files are in app\\projects\\${esc(P.id)}</p>` : ''}
-    <h2>Log</h2><div class="log" id="log">${esc((P.log || []).join('\n'))}</div>`;
-  $('#log').scrollTop = 1e9;
-  $('#view').querySelectorAll('input,textarea').forEach(el => el.oninput = () => dirty = true);
-  $('#f-ref').onchange = async e => {
-    await savePlan(); P = await api(`/api/projects/${P.id}/reference`, {reference: e.target.value}); render(); };
-  const setEng = async () => { await savePlan(); P = await api(`/api/projects/${P.id}/engines`,
-      {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value, mode: $('#f-mode').value, t2v_engine: $('#f-t2v-eng').value}).catch(e => (alert(e.message), P)); render(); };
-  $('#f-img-eng').onchange = setEng; $('#f-vid-eng').onchange = setEng; $('#f-mode').onchange = setEng; $('#f-t2v-eng').onchange = setEng;
+    ${finalBlock}
+    <h3>Caption</h3>
+    <div class="glass pad"><textarea id="f-caption" rows="3">${esc(pl.caption)}</textarea>
+      <label>Hashtags</label><input id="f-tags" value="${esc((pl.hashtags || []).join(' '))}">
+      <div class="row" style="margin-top:10px"><button id="btn-copy">⧉ Copy caption</button>
+        ${!isImg && P.clips_version ? `<button id="btn-stitch" ${busy ? 'disabled' : ''}>Re-stitch with new text</button>` : ''}</div></div>
+    <details><summary>Log</summary><div class="glass log" id="log">${esc((P.log || []).join('\n'))}</div></details>`;
+
+  $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
+  $('#btn-back').onclick = () => show('projects');
+  $('#f-ref').onchange = async e => { await savePlan(); P = await api(`/api/projects/${P.id}/reference`, {reference: e.target.value}); render(); };
+  const setEng = async () => {
+    await savePlan();
+    try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value,
+      mode: $('#f-mode').value, t2v_engine: $('#f-t2v-eng').value}); } catch (e) { alert(e.message); }
+    render();
+  };
+  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng'].forEach(s => $(s).onchange = setEng);
   const resize = async delta => {
     const pl2 = collectPlan();
-    if (delta > 0) { pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''}); }
-    else { pl2.keyframes.pop(); }
-    P = await api(`/api/projects/${P.id}/plan`, {plan: pl2}); dirty = false; render(); };
+    if (delta > 0) pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});
+    else pl2.keyframes.pop();
+    P = await api(`/api/projects/${P.id}/plan`, {plan: pl2}); dirty = false; render();
+  };
   $('#btn-add').onclick = () => resize(1); $('#btn-del').onclick = () => resize(-1);
-  $('#btn-save').onclick = () => savePlan().then(render).catch(alert);
-  if (isT2V) $('#btn-t2v').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/t2v`, {}); poll(); };
-  document.querySelectorAll('[data-rescene]').forEach(b => b.onclick = async () => {
-    await savePlan(); await api(`/api/projects/${P.id}/t2v`, {only:+b.dataset.rescene}); poll(); });
-  if (!isT2V) $('#btn-kf').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/keyframes`, {}); poll(); };
-  if (!isImg && !isT2V) $('#btn-anim').onclick = async () => { await savePlan(); await api(`/api/projects/${P.id}/animate`, {}); poll(); };
-  if (!isImg) $('#btn-stitch').onclick = async () => { dirty = true; await savePlan(); await api(`/api/projects/${P.id}/stitch`, {}); poll(); };
-  document.querySelectorAll('[data-regen]').forEach(b => b.onclick = async () => {
-    await savePlan(); await api(`/api/projects/${P.id}/keyframes`, {indices:[+b.dataset.regen], reseed:true}); poll(); });
-  document.querySelectorAll('[data-reanim]').forEach(b => b.onclick = async () => {
-    await savePlan(); await api(`/api/projects/${P.id}/animate`, {only:+b.dataset.reanim}); poll(); });
+  $('#btn-save').onclick = () => { dirty = true; savePlan().then(render).catch(e => alert(e.message)); };
+  $('#btn-copy').onclick = () => navigator.clipboard?.writeText($('#f-caption').value + '\n\n' + $('#f-tags').value).then(() => $('#btn-copy').textContent = '✓ Copied');
+  const run = (task, body) => async () => { await savePlan(); await api(`/api/projects/${P.id}/${task}`, body || {}); poll(); };
+  if (isT2V) $('#btn-t2v').onclick = run('t2v'); else $('#btn-kf').onclick = run('keyframes');
+  if (isVid) $('#btn-anim').onclick = run('animate');
+  if ($('#btn-stitch')) $('#btn-stitch').onclick = async () => { dirty = true; await run('stitch')(); };
+  $$('[data-regen]').forEach(b => b.onclick = run('keyframes', {indices: [+b.dataset.regen], reseed: true}));
+  $$('[data-reanim]').forEach(b => b.onclick = run('animate', {only: +b.dataset.reanim}));
+  $$('[data-rescene]').forEach(b => b.onclick = run('t2v', {only: +b.dataset.rescene}));
+  $$('.scene img[data-full]').forEach(img => img.onclick = () => lightbox('images', {project: P.id, path: img.dataset.full.split('/files/' + P.id + '/')[1].split('?')[0], mtime: P.keyframes_version, label: pl.title}));
 }
 
 let pollTimer = null;
@@ -259,27 +453,16 @@ async function poll() {
   clearTimeout(pollTimer);
   if (!P) return;
   const fresh = await api('/api/projects/' + P.id);
-  const changed = JSON.stringify([fresh.status, fresh.log?.length, fresh.keyframes_version, fresh.clips_version, fresh.final_version]) !==
-                  JSON.stringify([P.status, P.log?.length, P.keyframes_version, P.clips_version, P.final_version]);
-  if (changed && !dirty) { P = fresh; render(); refreshProjects(); }
-  else if (changed) { P.status = fresh.status; P.log = fresh.log; P.message = fresh.message; }
+  const key = x => JSON.stringify([x.status, x.log?.length, x.keyframes_version, x.clips_version, x.final_version]);
+  if (key(fresh) !== key(P)) {
+    if (!dirty && VIEW === 'project') { P = fresh; render(); }
+    else { P.status = fresh.status; P.log = fresh.log; P.message = fresh.message; }
+  }
   if (/^(queued|running)/.test(fresh.status)) pollTimer = setTimeout(poll, 3000);
 }
 
-$('#btn-plan').onclick = async () => {
-  const idea = $('#idea').value.trim();
-  if (!idea) return;
-  $('#btn-plan').disabled = true; $('#plan-msg').textContent = 'Planning with the local LLM…';
-  try {
-    P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, reference: $('#ref').value, mode: $('#mode').value, t2v_engine: $('#t2v-eng').value,
-                                image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value,
-                                keyframes: +$('#nkf').value, aspect: $('#aspect').value});
-    dirty = false; render(); refreshProjects(); $('#plan-msg').textContent = '';
-  } catch (e) { $('#plan-msg').textContent = e.message; }
-  $('#btn-plan').disabled = false;
-};
-
-refreshStatus(); refreshProjects(); refreshChars(''); refreshEngines(); setInterval(refreshStatus, 5000);
+syncCreate(); refreshStatus(); refreshChars(); refreshEngines(); show('create');
+setInterval(refreshStatus, 6000);
 </script>
 </body>
 </html>

@@ -87,6 +87,32 @@ def list_projects():
     return out
 
 
+def gallery(kind):
+    """Every generated image (kind='images') or finished/clip video (kind='videos'), newest first."""
+    items = []
+    for d in os.listdir(PROJECTS):
+        try:
+            p = load(d)
+        except Exception:
+            continue
+        title = p["plan"]["title"]
+        if kind == "images":
+            for f in sorted(glob.glob(pdir(d, "keyframes", "kf_*.png"))):
+                items.append({"project": d, "title": title, "path": "keyframes/" + os.path.basename(f),
+                              "mtime": os.path.getmtime(f), "label": f"{title} #{int(f[-6:-4]) + 1}"})
+        else:
+            finals = [f for f in ("final_subtitled.mp4", "final.mp4") if os.path.exists(pdir(d, f))]
+            if finals:
+                f = pdir(d, finals[0])
+                items.append({"project": d, "title": title, "path": finals[0], "mtime": os.path.getmtime(f),
+                              "label": title, "final": True})
+            else:  # unfinished video projects still show their clips
+                for f in sorted(glob.glob(pdir(d, "clips", "clip_*.mp4"))):
+                    items.append({"project": d, "title": title, "path": "clips/" + os.path.basename(f),
+                                  "mtime": os.path.getmtime(f), "label": f"{title} clip {int(f[-6:-4]) + 1}"})
+    return sorted(items, key=lambda x: -x["mtime"])
+
+
 def log(p, msg):
     p.setdefault("log", []).append(time.strftime("%H:%M:%S ") + msg)
     p["log"] = p["log"][-200:]

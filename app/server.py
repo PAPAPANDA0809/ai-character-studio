@@ -97,6 +97,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(pipeline.list_projects())
             if path == "/api/characters":
                 return self.send_json(pipeline.list_characters())
+            if m := re.fullmatch(r"/api/gallery/(images|videos)", path):
+                return self.send_json(pipeline.gallery(m.group(1)))
             if path == "/api/engines":
                 return self.send_json(pipeline.engines())
             if m := re.fullmatch(r"/characters/([^/]+)", path):
