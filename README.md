@@ -31,6 +31,20 @@ N keyframes give N-1 clips of 5 s (81 frames at 16 fps).
 - Video: Wan 2.2 I2V A14B high-noise + low-noise Q4_K_S GGUF with the lightx2v 4-step LoRAs, UMT5-XXL Q5_K_M GGUF, Wan 2.1 VAE. Uses ComfyUI's `WanFirstLastFrameToVideo`.
 - Text: Ollama `qwen3:4b` (unloaded after each call so the GPU is free).
 
+### Added October 2026 (`setup/extra6.txt`)
+
+Big video models live on `D:\AICharacterStudio\models` (HDD, slower to load); the app and ComfyUI also look there (`extra_model_dirs` in `app\config.json`, second block in `extra_model_paths.yaml`).
+
+| Engine | Files | Character picture | Licence |
+|---|---|---|---|
+| FLUX.2 klein 4B | fp8 4.1 GB + Qwen3-4B (shared with Z-Image) + flux2 VAE | yes | Apache 2.0 |
+| FLUX.2 klein 9B | Q4_K_M GGUF 5.9 GB + Qwen3-8B fp8 8.7 GB | yes | FLUX non-commercial |
+| Qwen-Image 2.1 | int8 7.3 GB + Qwen3-VL-8B int8 9.4 GB + VAE | yes | Qwen research licence (commercial use needs an agreement) |
+| LTX-2.3 22B distilled (D:) | Q4_K_S GGUF 13 GB + Gemma 3 12B fp8 13 GB + connectors + VAEs | first+last frame, one picture, text | LTX-2 community licence |
+| LTX-2.5 22B distilled (D:) | Q4_K_S GGUF 15 GB + Gemma 4 12B int8 15 GB + VAEs | first+last frame, one picture, text | LTX-2 community licence |
+
+LTX-2.x makes sound with the video: each clip keeps its soundtrack and the final video joins them (silence under clips from engines without sound). The official workflows' prompt-rewriting LLMs (Qwen3.5 PE, Gemma 4 E2B) are not installed or used.
+
 ## Switching the text model
 
 In `app\config.json` → `llm.provider`:

@@ -224,5 +224,43 @@
   "kontext_polish": {
     "enabled": true,
     "denoise": 0.22
+  },
+  "extra_model_dirs": ["D:/AICharacterStudio/models"],
+  "flux2_klein": {
+    "4b": {"unet": "flux-2-klein-4b-fp8.safetensors", "text_encoder": "qwen_3_4b_fp8_mixed.safetensors"},
+    "9b": {"unet": "flux-2-klein-9b-Q4_K_M.gguf", "text_encoder": "qwen_3_8b_fp8mixed.safetensors"},
+    "vae": "flux2-vae.safetensors",
+    "steps": 4,
+    "ref_megapixels": 1.0
+  },
+  "qwen_image_21": {
+    "unet": "qwen_image_2.1_int8_convrot.safetensors",
+    "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+    "vae": "qwen_image_2.1_vae_bf16.safetensors",
+    "steps": 25,
+    "cfg": 1.0
+  },
+  "ltx23": {
+    "unet": "ltx-2.3-22b-distilled-Q4_K_S.gguf",
+    "text_encoder": "gemma_3_12B_it_fp8_scaled.safetensors",
+    "connectors": "ltx-2.3-22b-distilled_embeddings_connectors.safetensors",
+    "video_vae": "ltx-2.3-22b-distilled_video_vae.safetensors",
+    "audio_vae": "ltx-2.3-22b-distilled_audio_vae.safetensors",
+    "frames": 121,
+    "fps": 24,
+    "img_compression": 25,
+    "guide_strength": 0.7,
+    "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+  },
+  "ltx25": {
+    "unet": "LTX-2.5-Distilled-Q4_K_S.gguf",
+    "text_encoder": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+    "video_vae": "ltx-2.5-video-vae-bf16.safetensors",
+    "audio_vae": "ltx-2.5-audio-vae-bf16.safetensors",
+    "frames": 121,
+    "fps": 24,
+    "img_compression": 18,
+    "guide_strength": 0.7,
+    "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
   }
 }

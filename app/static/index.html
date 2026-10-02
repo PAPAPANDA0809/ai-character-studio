@@ -186,7 +186,7 @@
         </div>
         <label>Character</label>
         <div class="chars" id="chars"></div>
-        <div id="chars-hint" style="font-size:12px;color:var(--muted);margin-top:6px">Character pictures work with the <b>FLUX Kontext</b> image engine. <a href="#" id="use-kontext">Switch to it</a></div>
+        <div id="chars-hint" style="font-size:12px;color:var(--muted);margin-top:6px">Character pictures work with the <b>FLUX.2 klein</b>, <b>Qwen-Image 2.1</b> and <b>FLUX Kontext</b> image engines. <a href="#" id="use-kontext">Switch to one</a></div>
         <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       </div>
       <div class="glass pad">
@@ -320,8 +320,13 @@ async function refreshEngines() {
   $('#t2v-eng').innerHTML = engOptions(ENG.t2v, $('#t2v-eng').value || ENG.default_t2v);
 }
 
+// image engines that can use a character picture (the server's list; Kontext before it loads)
+const refEngines = () => (ENG && ENG.reference_engines) || ['flux-kontext'];
+// the one "Switch to one" picks: the fastest installed of them
+const bestRefEngine = () => ['flux2-klein-4b', 'flux2-klein-9b', 'flux-kontext', 'qwen-image-21']
+  .find(id => refEngines().includes(id) && (ENG?.image || []).some(e => e.id === id && e.installed)) || 'flux-kontext';
 function renderChars() {
-  const ok = $('#img-eng').value === 'flux-kontext';
+  const ok = refEngines().includes($('#img-eng').value);
   if (!ok) NEW.ref = '';
   $('#chars').style.opacity = ok ? '' : '.35';
   $('#chars').style.pointerEvents = ok ? '' : 'none';
@@ -334,7 +339,7 @@ function renderChars() {
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
 $('#img-eng').onchange = renderChars;
-$('#use-kontext').onclick = e => { e.preventDefault(); $('#img-eng').value = 'flux-kontext'; renderChars(); };
+$('#use-kontext').onclick = e => { e.preventDefault(); $('#img-eng').value = bestRefEngine(); renderChars(); };
 $('#ref-file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   const r = await fetch('/api/characters?name=' + encodeURIComponent(f.name), {method: 'POST', body: f});
@@ -504,12 +509,12 @@ function render() {
     <div class="glass pad">
       <div class="grid2">
         <div><label style="margin-top:0">Make</label><select id="f-mode" ${busy ? 'disabled' : ''}>${[['video', 'Images + video'], ['t2v', 'Video only'], ['images', 'Images only']].map(([v, l]) => `<option value="${v}" ${(P.mode || 'video') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V || (P.image_engine !== 'flux-kontext' && !P.reference) ? 'disabled' : ''}>${refOpts}</select>
-          ${P.image_engine !== 'flux-kontext' && !P.reference && !isT2V ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Image engine "FLUX Kontext"</div>` : ''}</div>
+        <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts}</select>
+          ${!refEngines().includes(P.image_engine) && !P.reference && !isT2V ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with FLUX.2 klein, Qwen-Image 2.1 or FLUX Kontext</div>` : ''}</div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
           ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine</label><select id="f-img-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.reference ? 'flux-kontext' : (P.image_engine || ENG.default_image)) : ''}</select>
-          ${P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Picking another engine removes the character picture</div>` : ''}</div>
+        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine</label><select id="f-img-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select>
+          ${P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Engines without "character picture OK" remove the character picture</div>` : ''}</div>
         <div><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
           ${['480p', '720p'].map(v => `<option value="${v}" ${(P.video_res || '480p') === v ? 'selected' : ''}>${v}${v === '720p' ? ' · ~2-3× slower' : ''}</option>`).join('')}</select></div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>

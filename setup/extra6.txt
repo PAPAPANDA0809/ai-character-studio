@@ -1,0 +1,16 @@
+C:\Users\Andy\AICharacterStudio\models\unet\flux-2-klein-4b-fp8.safetensors|https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors
+C:\Users\Andy\AICharacterStudio\models\vae\flux2-vae.safetensors|https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/vae/flux2-vae.safetensors
+C:\Users\Andy\AICharacterStudio\models\unet\flux-2-klein-9b-Q4_K_M.gguf|https://huggingface.co/unsloth/FLUX.2-klein-9B-GGUF/resolve/main/flux-2-klein-9b-Q4_K_M.gguf
+C:\Users\Andy\AICharacterStudio\models\text_encoders\qwen_3_8b_fp8mixed.safetensors|https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors
+C:\Users\Andy\AICharacterStudio\models\diffusion_models\qwen_image_2.1_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors
+C:\Users\Andy\AICharacterStudio\models\text_encoders\qwen3vl_8b_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors
+C:\Users\Andy\AICharacterStudio\models\vae\qwen_image_2.1_vae_bf16.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors
+D:\AICharacterStudio\models\unet\ltx-2.3-22b-distilled-Q4_K_S.gguf|https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/distilled/ltx-2.3-22b-distilled-Q4_K_S.gguf
+D:\AICharacterStudio\models\checkpoints\ltx-2.3-22b-distilled_embeddings_connectors.safetensors|https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/text_encoders/ltx-2.3-22b-distilled_embeddings_connectors.safetensors
+D:\AICharacterStudio\models\vae\ltx-2.3-22b-distilled_video_vae.safetensors|https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/vae/ltx-2.3-22b-distilled_video_vae.safetensors
+D:\AICharacterStudio\models\checkpoints\ltx-2.3-22b-distilled_audio_vae.safetensors|https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/vae/ltx-2.3-22b-distilled_audio_vae.safetensors
+D:\AICharacterStudio\models\text_encoders\gemma_3_12B_it_fp8_scaled.safetensors|https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp8_scaled.safetensors
+D:\AICharacterStudio\models\unet\LTX-2.5-Distilled-Q4_K_S.gguf|https://huggingface.co/Abiray/LTX-2.5-Distilled-GGUF/resolve/main/LTX-2.5-Distilled-Q4_K_S.gguf
+D:\AICharacterStudio\models\text_encoders\gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors|https://huggingface.co/comfyicu/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors
+D:\AICharacterStudio\models\vae\ltx-2.5-video-vae-bf16.safetensors|https://huggingface.co/comfyicu/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors
+D:\AICharacterStudio\models\vae\ltx-2.5-audio-vae-bf16.safetensors|https://huggingface.co/comfyicu/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors

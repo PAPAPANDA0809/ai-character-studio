@@ -235,12 +235,8 @@ def cancel(pid):
         jobs.queue.clear()
         jobs.queue.extend(kept)
     running = current["pid"] == pid
-    if running:
+    if running:  # the job's Comfy client sees this within ~2 s and drops/interrupts only its own prompt
         cancelled.add(pid)
-        try:
-            comfy.Comfy(load_config()["comfy_url"])._post("/interrupt", {})
-        except Exception:
-            pass
     if dropped and not running:
         p = load(pid)
         p["status"] = "stopped:" + p["status"].split(":", 1)[-1]
@@ -269,12 +265,13 @@ def worker():
             p["status"] = "done:" + task
             log(p, f"{task} finished")
         except Exception as e:
-            traceback.print_exc()
+            if not isinstance(e, (Cancelled, comfy.Stopped)):
+                traceback.print_exc()
             try:
                 p = load(pid)
             except Exception:  # project deleted while queued: nothing to report into, keep the worker alive
                 continue
-            if isinstance(e, Cancelled) or pid in cancelled:
+            if isinstance(e, (Cancelled, comfy.Stopped)) or pid in cancelled:
                 p["status"] = "stopped:" + task
                 log(p, "stopped by user")
             else:
@@ -297,7 +294,17 @@ def _reset_stale():
             pass
 
 
+def _clear_comfy_orphans():
+    try:
+        n = comfy.Comfy(load_config()["comfy_url"]).clear_orphans()
+        if n:
+            print(f"stopped {n} ComfyUI job(s) left over from an earlier app run")
+    except Exception:
+        pass  # ComfyUI not running yet: nothing to clear
+
+
 _reset_stale()
+threading.Thread(target=_clear_comfy_orphans, daemon=True).start()
 threading.Thread(target=worker, daemon=True).start()
 
 
@@ -310,7 +317,10 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
     reference = reference if reference in list_characters(user) else ""
     plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=bool(reference), mode=mode)
-    pid = user + "--" + time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
+    base = user + "--" + time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
+    pid, k = base, 2
+    while os.path.exists(pdir(pid)):  # same title in the same second
+        pid, k = f"{base}-{k}", k + 1
     os.makedirs(pdir(pid, "keyframes"))
     os.makedirs(pdir(pid, "clips"))
     p = {
@@ -318,7 +328,7 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "seed": int(seed) if seed not in (None, "") else random.randint(1, 2**31 - 1),
         "plan": plan, "keyframe_seeds": {}, "status": "planned", "log": [],
         "reference": reference,
-        "image_engine": "flux-kontext" if reference else
+        "image_engine": (image_engine if image_engine in comfy.REFERENCE_ENGINES else "flux-kontext") if reference else
                         image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
         "clip_fps": {}, "mode": mode, "quality": quality or ("sharp" if mode == "images" else "standard"),
@@ -330,15 +340,26 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
     return p
 
 
+def model_path(cfg, f):
+    """Where a model file (e.g. "unet/x.gguf") lives: the main models folder or one of extra_model_dirs; None if absent."""
+    for root in [MODELS, *cfg.get("extra_model_dirs", [])]:
+        path = os.path.join(root, *f.split("/"))
+        if os.path.exists(path):
+            return path
+    return None
+
+
 def engines():
+    cfg = load_config()
+
     def ready(f):  # present and not still being written by a download
-        path = os.path.join(MODELS, f)
-        return os.path.exists(path) and time.time() - os.path.getmtime(path) > 90
+        path = model_path(cfg, f)
+        return bool(path) and time.time() - os.path.getmtime(path) > 90
 
     def entry(key, e):
         return {"id": key, "label": e["label"], "installed": all(ready(f) for f in e["files"])}
-    cfg = load_config()
     return {
+        "reference_engines": list(comfy.REFERENCE_ENGINES),
         "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()],
         "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
         "t2v": [entry(k, e) for k, e in comfy.T2V_ENGINES.items()],
@@ -352,7 +373,7 @@ def engines():
 
 def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None, video_res=None):
     p = load(pid)
-    if image_engine in comfy.IMAGE_ENGINES and image_engine != "flux-kontext":
+    if image_engine in comfy.IMAGE_ENGINES and image_engine not in comfy.REFERENCE_ENGINES:
         p["reference"] = ""
     if quality in ("standard", "sharp", "high", "ultra"):
         p["quality"] = quality
@@ -377,7 +398,7 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
 def set_reference(pid, reference):
     p = load(pid)
     p["reference"] = reference if reference in list_characters(user_of(pid)) else ""
-    if p["reference"]:
+    if p["reference"] and p.get("image_engine") not in comfy.REFERENCE_ENGINES:
         p["image_engine"] = "flux-kontext"
     save(p)
     return p
@@ -459,7 +480,7 @@ def use_version(pid, index, name):
 
 def do_keyframes(p, indices=None, reseed=False, engine=None):
     cfg = load_config()
-    c = comfy.Comfy(cfg["comfy_url"])
+    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     q = p.get("quality", "standard")
@@ -479,7 +500,9 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         if reseed or key not in p["keyframe_seeds"]:
             # one shared seed for the first pass helps keep the character consistent
             p["keyframe_seeds"][key] = random.randint(1, 2**31 - 1) if reseed else p["seed"]
-        use = engine or ("flux-kontext" if ref else p.get("image_engine", "flux-dev"))
+        use = engine or p.get("image_engine", "flux-dev")
+        if ref and use != "gpt-image" and use not in comfy.REFERENCE_ENGINES:
+            use = "flux-kontext"
         log(p, f"keyframe {i + 1}/{n}: generating with {use}")
         t = time.time()
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
@@ -492,14 +515,14 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
             continue
         prefix = f"aics/{p['id']}/kf{i:02d}"
         if ref:
-            wf = comfy.kontext_workflow(cfg, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key], prefix, steps)
-            pol = cfg.get("kontext_polish", {})
-            if pol.get("enabled", True) and os.path.exists(os.path.join(MODELS, "unet", cfg["zimage"]["unet"])):
+            wf = comfy.reference_workflow(cfg, use, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key],
+                                          prefix, steps)
+            pol = cfg.get("kontext_polish", {})  # Kontext alone looks plasticky; the newer engines don't need it
+            if use == "flux-kontext" and pol.get("enabled", True) and model_path(cfg, "unet/" + cfg["zimage"]["unet"]):
                 wf = comfy.add_zimage_polish(cfg, wf, "photo, " + keyframe_prompt(p, i), p["keyframe_seeds"][key],
                                              pol.get("denoise", 0.4))
         else:
-            wf = comfy.image_workflow(cfg, p.get("image_engine", "flux-dev"), keyframe_prompt(p, i), w, h,
-                                      p["keyframe_seeds"][key], prefix, steps)
+            wf = comfy.image_workflow(cfg, use, keyframe_prompt(p, i), w, h, p["keyframe_seeds"][key], prefix, steps)
         if hq:
             wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p
@@ -526,12 +549,12 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
 def do_animate(p, only=None):
     cfg = load_config()
     ff = find_ffmpeg(cfg["ffmpeg"])
-    c = comfy.Comfy(cfg["comfy_url"])
+    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     w, h = video_size(cfg, p)
     engine = p.get("video_engine", "wan22-14b")
-    fps = {"ltxv-2b": cfg["ltxv"]["fps"], "hunyuan15": cfg["hunyuan15"]["fps"]}.get(engine, cfg["video"]["fps"])
+    fps = engine_fps(cfg, engine)
     n = len(p["plan"]["keyframes"])
     for i in range(n):
         if not os.path.exists(pdir(p["id"], "keyframes", f"kf_{i:02d}.png")):
@@ -548,16 +571,7 @@ def do_animate(p, only=None):
         log(p, f"clip {i + 1}/{n - 1}: animating with {engine} (this is the slow part)")
         out = c.run(comfy.video_workflow(cfg, engine, prompt, a, b, w, h, p["seed"] + i, f"aics/{p['id']}/clip{i:02d}"))
         frames = next(o["images"] for o in out.values() if o.get("images"))
-        fdir = pdir(p["id"], "clips", f"frames_{i:02d}")
-        shutil.rmtree(fdir, ignore_errors=True)
-        os.makedirs(fdir)
-        for k, fr in enumerate(frames):
-            with open(os.path.join(fdir, f"{k:04d}.png"), "wb") as f:
-                f.write(c.fetch(fr))
-        run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(fdir, "%04d.png"), *H264,
-                        pdir(p["id"], "clips", f"clip_{i:02d}.mp4")])
-        p.setdefault("clip_fps", {})[str(i)] = fps
-        p["clips_version"] = time.time()
+        save_clip_frames(p, c, ff, i, frames, fps, out)
         log(p, f"clip {i + 1}/{n - 1}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
     if all(glob.glob(pdir(p["id"], "clips", f"frames_{i:02d}", "*.png")) for i in range(n - 1)):
         stitch(p, cfg, ff)
@@ -569,12 +583,12 @@ def do_t2v(p, only=None):
     """Video-only mode: each scene is generated straight from text, then the clips are joined."""
     cfg = load_config()
     ff = find_ffmpeg(cfg["ffmpeg"])
-    c = comfy.Comfy(cfg["comfy_url"])
+    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     w, h = video_size(cfg, p)
     engine = p.get("t2v_engine", "wan22-5b")
-    fps = cfg["ltxv"]["fps"] if engine == "ltxv-2b" else cfg["wan5b"]["fps"]
+    fps = engine_fps(cfg, engine)
     n = len(p["plan"]["keyframes"])
     c.free()
     for i in (range(n) if only is None else [int(only)]):
@@ -585,20 +599,39 @@ def do_t2v(p, only=None):
         log(p, f"scene {i + 1}/{n}: generating video with {engine}")
         out = c.run(comfy.t2v_workflow(cfg, engine, prompt, w, h, p["seed"] + i, f"aics/{p['id']}/scene{i:02d}"))
         frames = next(o["images"] for o in out.values() if o.get("images"))
-        save_clip_frames(p, c, ff, i, frames, fps)
+        save_clip_frames(p, c, ff, i, frames, fps, out)
         log(p, f"scene {i + 1}/{n}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
     if all(glob.glob(pdir(p["id"], "clips", f"frames_{i:02d}", "*.png")) for i in range(n)):
         stitch(p, cfg, ff)
 
 
-def save_clip_frames(p, c, ff, i, frames, fps):
+def engine_fps(cfg, engine):
+    return {"ltxv-2b": cfg["ltxv"]["fps"], "hunyuan15": cfg["hunyuan15"]["fps"], "wan22-5b": cfg["wan5b"]["fps"],
+            **{e: cfg[e]["fps"] for e in comfy.LTX2_ENGINES}}.get(engine, cfg["video"]["fps"])
+
+
+def save_clip_audio(c, out, dest):
+    """Engines with sound (LTX-2.x) return a SaveAudio file: keep it at dest. Returns dest, or None (old file removed)."""
+    aud = next((o["audio"][0] for o in (out or {}).values() if o.get("audio")), None)
+    if os.path.exists(dest):
+        os.remove(dest)
+    if not aud:
+        return None
+    with open(dest, "wb") as f:
+        f.write(c.fetch(aud))
+    return dest
+
+
+def save_clip_frames(p, c, ff, i, frames, fps, out=None):
     fdir = pdir(p["id"], "clips", f"frames_{i:02d}")
     shutil.rmtree(fdir, ignore_errors=True)
     os.makedirs(fdir)
     for k, fr in enumerate(frames):
         with open(os.path.join(fdir, f"{k:04d}.png"), "wb") as f:
             f.write(c.fetch(fr))
-    run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(fdir, "%04d.png"), *H264,
+    audio = save_clip_audio(c, out, pdir(p["id"], "clips", f"audio_{i:02d}.flac"))
+    run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(fdir, "%04d.png"),
+                    *(["-i", audio, "-c:a", "aac", "-shortest"] if audio else []), *H264,
                     pdir(p["id"], "clips", f"clip_{i:02d}.mp4")])
     p.setdefault("clip_fps", {})[str(i)] = fps
     p["clips_version"] = time.time()
@@ -608,7 +641,7 @@ def do_animate_image(p, index, motion=""):
     """Images-only projects: turn one finished picture into a 5-second clip."""
     cfg = load_config()
     ff = find_ffmpeg(cfg["ffmpeg"])
-    c = comfy.Comfy(cfg["comfy_url"])
+    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     i = int(index)
@@ -616,7 +649,7 @@ def do_animate_image(p, index, motion=""):
     if not os.path.exists(src):
         raise RuntimeError(f"picture {i + 1} isn't generated yet")
     engine = p.get("video_engine", "wan22-14b")
-    fps = {"ltxv-2b": cfg["ltxv"]["fps"], "hunyuan15": cfg["hunyuan15"]["fps"]}.get(engine, cfg["video"]["fps"])
+    fps = engine_fps(cfg, engine)
     w, h = video_size(cfg, p)
     c.free()
     a = c.upload_image(src, f"aics_{p['id']}_kf{i:02d}.png")
@@ -634,7 +667,9 @@ def do_animate_image(p, index, motion=""):
         with open(os.path.join(fdir, f"{n_:04d}.png"), "wb") as f:
             f.write(c.fetch(fr))
     vw, vh = video_size(cfg, p)
+    audio = save_clip_audio(c, out, pdir(p["id"], "clips", f"imgaudio_{i:02d}.flac"))
     run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(fdir, "%04d.png"),
+                    *(["-i", audio, "-c:a", "aac", "-shortest"] if audio else []),
                     "-vf", f"scale={vw}:{vh}:flags=lanczos,setsar=1", *H264, pdir(p["id"], "clips", f"img_{i:02d}.mp4")])
     shutil.rmtree(fdir, ignore_errors=True)
     p.setdefault("image_clips", {})[str(i)] = time.time()
@@ -667,6 +702,28 @@ def write_caption(p):
         caption = pl.get("caption", "").strip()
         tags = [t for t in pl.get("hashtags", []) if t.lower() not in caption.lower()]
         f.write(caption + ("\n\n" + " ".join(tags) if tags else "") + "\n")
+
+
+def stitch_audio(p, ff, bounds, clip_fps, t2v):
+    """One soundtrack for the final video from the clips' own sound (LTX-2.x); silence where a clip has none.
+    Each piece is cut to its clip's slot on the timeline, so sound stays in sync. None when no clip has sound."""
+    files = [pdir(p["id"], "clips", f"audio_{i:02d}.flac") for i in range(len(bounds))]
+    if not any(os.path.exists(f) for f in files):
+        return None
+    inputs, parts = [], []
+    for i, ((s, e), f) in enumerate(zip(bounds, files)):
+        skip = 0 if t2v or i == 0 else 1 / clip_fps[i]  # the first frame was dropped (same keyframe as the previous clip)
+        if os.path.exists(f):
+            inputs += ["-i", f]
+            src = f"[{len(inputs) // 2 - 1}:a]atrim=start={skip:.4f},asetpts=PTS-STARTPTS,"
+        else:
+            src = "anullsrc=r=48000:cl=stereo,"
+        parts.append(f"{src}aresample=48000,aformat=channel_layouts=stereo,apad,atrim=0:{e - s:.4f},"
+                     f"asetpts=PTS-STARTPTS[a{i}]")
+    graph = ";".join(parts) + ";" + "".join(f"[a{i}]" for i in range(len(bounds))) + f"concat=n={len(bounds)}:v=0:a=1[out]"
+    dest = pdir(p["id"], "clips", "soundtrack.wav")
+    run_ffmpeg(ff, [*inputs, "-filter_complex", graph, "-map", "[out]", dest])
+    return dest
 
 
 def stitch(p, cfg, ff):
@@ -712,13 +769,15 @@ def stitch(p, cfg, ff):
 
     write_caption(p)
 
+    audio = stitch_audio(p, ff, bounds, clip_fps, t2v)
     vw, vh = video_size(cfg, p)  # engines round sizes differently (LTX: multiples of 32); deliver the exact size
     run_ffmpeg(ff, ["-framerate", str(fps), "-i", os.path.join(seq, "%05d.png"),
+                    *(["-i", audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-shortest"] if audio else []),
                     "-vf", f"scale={vw}:{vh}:flags=lanczos,setsar=1", *H264, "final.mp4"],
                cwd=pdir(p["id"]))
     if cues:
         style = "Fontname=Arial,Fontsize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=40"
-        run_ffmpeg(ff, ["-i", "final.mp4", "-vf", f"subtitles=subtitles.srt:force_style='{style}'", *H264,
+        run_ffmpeg(ff, ["-i", "final.mp4", "-vf", f"subtitles=subtitles.srt:force_style='{style}'", "-c:a", "copy", *H264,
                         "final_subtitled.mp4"], cwd=pdir(p["id"]))
     shutil.rmtree(seq, ignore_errors=True)
     p["final_version"] = time.time()
