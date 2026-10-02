@@ -205,6 +205,23 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
             user += f"(Who the character is, for context only: {character})\n"
     elif character:
         user += f"The character must look like this: {character}\n"
+    user += ("Follow the post idea closely: every keyframe must come from it (same character, setting, actions, "
+             "props, mood and hook). Split it into the moments it describes; do not invent a different story.\n")
+    cli = _claude_cli() if cfg.get("claude_planner", True) else None
+    if cli:  # Claude on this PC plans the scenes too, so the plan matches the improved prompt
+        try:
+            r = subprocess.run([cli, "-p", "--output-format", "text", "--max-turns", "1"],
+                               input=PLAN_SYSTEM + "\n\n" + user, capture_output=True, text=True, encoding="utf-8",
+                               timeout=240, cwd=os.path.dirname(os.path.abspath(__file__)))
+            if r.returncode == 0 and r.stdout.strip():
+                data = _extract_json(r.stdout)
+                if has_reference:
+                    data["character"] = ""
+                plan_ = normalize_plan(data, n_keyframes, idea, "" if has_reference else character)
+                plan_["planner"] = "claude"
+                return plan_
+        except Exception:
+            pass  # fall back to the local model below
     last_err = None
     for _ in range(3):
         try:

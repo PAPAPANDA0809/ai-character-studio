@@ -230,7 +230,7 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "t2v_engine": cfg.get("default_t2v_engine", "wan22-5b"),
     }
     save(p)
-    log(p, f"planned {n_keyframes} {dict(images='images', t2v='scenes').get(mode, 'keyframes')} with {cfg['llm']['provider']}")
+    log(p, f"planned {n_keyframes} {dict(images='images', t2v='scenes').get(mode, 'keyframes')} with {plan.get('planner') or cfg['llm']['provider']}")
     return p
 
 
