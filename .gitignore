@@ -10,3 +10,4 @@ __pycache__/
 app/characters/
 models/
 setup/pending.txt
+setup/.download.lock
