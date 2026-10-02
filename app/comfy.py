@@ -6,6 +6,8 @@ import urllib.request
 import uuid
 
 CLIENT_ID = uuid.uuid4().hex
+# ComfyUI runs on this PC: never go through the Windows system proxy (a VPN app's proxy resets uploads to it)
+DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 class Stopped(Exception):
@@ -18,13 +20,13 @@ class Comfy:
         self.should_stop = should_stop  # polled while waiting on a prompt
 
     def _get(self, path, timeout=30):
-        with urllib.request.urlopen(self.url + path, timeout=timeout) as r:
+        with DIRECT.open(self.url + path, timeout=timeout) as r:
             return r.read()
 
     def _post(self, path, payload, timeout=60):
         req = urllib.request.Request(self.url + path, data=json.dumps(payload).encode(),
                                      headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with DIRECT.open(req, timeout=timeout) as r:
             body = r.read()
             return json.loads(body) if body else {}
 
@@ -44,7 +46,7 @@ class Comfy:
                 f"Content-Type: image/png\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
         req = urllib.request.Request(self.url + "/upload/image", data=body,
                                      headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
-        with urllib.request.urlopen(req, timeout=60) as r:
+        with DIRECT.open(req, timeout=60) as r:
             return json.loads(r.read())["name"]
 
     def free(self):

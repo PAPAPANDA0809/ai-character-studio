@@ -23,7 +23,7 @@ def ollama_alive(cfg):
     if cfg["llm"]["provider"] != "ollama":
         return None
     try:
-        urllib.request.urlopen(cfg["llm"]["ollama_url"] + "/api/tags", timeout=3)
+        llm.open_url(cfg["llm"]["ollama_url"] + "/api/tags", timeout=3)
         return True
     except Exception:
         return False

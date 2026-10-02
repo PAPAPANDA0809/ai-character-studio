@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import urllib.parse
 import urllib.request
 
 PLAN_SYSTEM = """You are a creative director for short social media videos featuring a recurring character.
@@ -35,10 +36,21 @@ The number of motions must be exactly one less than the number of keyframes.
 Do not mention the character's name inside image_prompt; describe the look instead."""
 
 
+# Servers on this PC (Ollama, LM Studio) are reached directly: a Windows system proxy (VPN app) can break them.
+# Internet endpoints keep using the system proxy.
+DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def open_url(req, timeout):
+    url = req.full_url if isinstance(req, urllib.request.Request) else req
+    local = urllib.parse.urlparse(url).hostname in ("127.0.0.1", "localhost", "::1")
+    return (DIRECT.open if local else urllib.request.urlopen)(req, timeout=timeout)
+
+
 def _post(url, payload, headers=None, timeout=600):
     data = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with open_url(req, timeout) as r:
         return json.loads(r.read())
 
 
