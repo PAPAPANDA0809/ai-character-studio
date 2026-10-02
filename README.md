@@ -40,6 +40,10 @@ In `app\config.json` → `llm.provider`:
 
 No restart needed; config is re-read on every request.
 
+When Claude isn't available on the PC, `llm.local_rewrite` decides what happens:
+- `false` (default): Plan scenes uses your prompt exactly as written (a single picture gets it word for word; several keyframes get it plus a shot type each, so they differ), and Improve says Claude is needed.
+- `true`: the local model above rewrites the idea into scenes and Improve uses it too.
+
 ## Speed tips
 
 - ComfyUI runs with `--disable-pinned-memory --cache-ram 6` so the 14B video model doesn't push Windows into heavy paging on 32 GB RAM.

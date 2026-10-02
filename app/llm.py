@@ -151,6 +151,9 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
         return text, f"Claude ({resp.model})"
     if cfg["provider"] == "template":
         return idea, "no AI configured"
+    if not cfg.get("local_rewrite", False):
+        raise RuntimeError("Improve needs Claude, which isn't available on this PC right now. "
+                           "Plan scenes will use your prompt exactly as written.")
     text = chat(cfg, ENHANCE_SYSTEM, user, want_json=False)
     text = text.split("</think>")[-1].strip()  # small local models sometimes leak their reasoning
     return text, f"local {cfg.get('ollama_model') if cfg['provider'] == 'ollama' else cfg.get('openai_model')}"
@@ -164,11 +167,12 @@ def _extract_json(text):
     return json.loads(m.group(0))
 
 
-def template_plan(idea, n, character=""):
-    character = character or "a friendly young content creator with short dark hair, wearing a casual denim jacket"
+def template_plan(idea, n, character="", default_character=True):
+    if default_character:
+        character = character or "a friendly young content creator with short dark hair, wearing a casual denim jacket"
     beats = ["opening wide shot", "medium shot, starting the action", "close-up, reacting",
              "medium shot, continuing the action", "wide shot, finishing", "close-up, smiling at the camera"]
-    kfs = [{"image_prompt": f"{idea}, {beats[i % len(beats)]}", "subtitle": ""} for i in range(n)]
+    kfs = [{"image_prompt": idea if n == 1 else f"{idea}, {beats[i % len(beats)]}", "subtitle": ""} for i in range(n)]
     return {
         "title": idea[:60], "character": character, "setting": "",
         "keyframes": kfs,
@@ -231,7 +235,11 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
                 plan_["planner"] = "claude"
                 return plan_
         except Exception:
-            pass  # fall back to the local model below
+            pass  # fall back below
+    if not cfg.get("local_rewrite", False):  # no Claude: keep the user's own words, the local model rewrites nothing
+        plan_ = template_plan(idea, n_keyframes, "" if has_reference else character, default_character=False)
+        plan_["planner"] = "your own words (Claude not available)"
+        return plan_
     last_err = None
     for _ in range(3):
         try:
