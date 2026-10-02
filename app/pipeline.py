@@ -311,7 +311,8 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "seed": int(seed) if seed not in (None, "") else random.randint(1, 2**31 - 1),
         "plan": plan, "keyframe_seeds": {}, "status": "planned", "log": [],
         "reference": reference,
-        "image_engine": image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
+        "image_engine": "flux-kontext" if reference else
+                        image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
         "clip_fps": {}, "mode": mode, "quality": quality or ("sharp" if mode == "images" else "standard"),
         "video_res": video_res if video_res in ("480p", "720p") else "480p",
@@ -344,6 +345,8 @@ def engines():
 
 def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None, video_res=None):
     p = load(pid)
+    if image_engine in comfy.IMAGE_ENGINES and image_engine != "flux-kontext":
+        p["reference"] = ""
     if quality in ("standard", "sharp", "high", "ultra"):
         p["quality"] = quality
     if video_res in ("480p", "720p"):
@@ -365,6 +368,8 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
 def set_reference(pid, reference):
     p = load(pid)
     p["reference"] = reference if reference in list_characters(user_of(pid)) else ""
+    if p["reference"]:
+        p["image_engine"] = "flux-kontext"
     save(p)
     return p
 

@@ -79,7 +79,9 @@ class Comfy:
 IMAGE_ENGINES = {
     "z-image": {"label": "Z-Image Turbo (best photoreal, ~30s)",
                 "files": ["unet/z_image_turbo-Q8_0.gguf", "text_encoders/qwen_3_4b_fp8_mixed.safetensors"]},
-    "flux-dev": {"label": "FLUX.1 dev (best quality, ~50s)", "files": ["unet/flux1-dev-Q4_K_S.gguf"]},
+    "flux-kontext": {"label": "FLUX Kontext (uses your character picture, ~1.5 min)",
+                     "files": ["unet/flux1-kontext-dev-Q4_K_S.gguf"]},
+    "flux-dev": {"label": "FLUX.1 dev (~50s)", "files": ["unet/flux1-dev-Q4_K_S.gguf"]},
     "flux-schnell": {"label": "FLUX.1 schnell (fast drafts, ~20s)", "files": ["unet/flux1-schnell-Q4_K_S.gguf"]},
     "sdxl-juggernaut": {"label": "Juggernaut XL (SDXL photoreal, ~30s)",
                         "files": ["checkpoints/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"]},
@@ -183,6 +185,8 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None)
         return sdxl_workflow(cfg, prompt, width, height, seed, prefix)
     if engine == "qwen-image":
         return qwen_image_workflow(cfg, prompt, width, height, seed, prefix)
+    if engine == "flux-kontext":
+        return flux_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)
     if engine == "z-image":
         return zimage_workflow(cfg, prompt, width, height, seed, prefix)
     return flux_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)

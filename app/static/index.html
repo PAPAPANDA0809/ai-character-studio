@@ -186,6 +186,7 @@
         </div>
         <label>Character</label>
         <div class="chars" id="chars"></div>
+        <div id="chars-hint" style="font-size:12px;color:var(--muted);margin-top:6px">Character pictures work with the <b>FLUX Kontext</b> image engine. <a href="#" id="use-kontext">Switch to it</a></div>
         <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       </div>
       <div class="glass pad">
@@ -314,11 +315,17 @@ const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id 
 async function refreshEngines() {
   ENG = await api('/api/engines');
   $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
+  if (CHARS) renderChars();
   $('#vid-eng').innerHTML = engOptions(ENG.video, $('#vid-eng').value || ENG.default_video);
   $('#t2v-eng').innerHTML = engOptions(ENG.t2v, $('#t2v-eng').value || ENG.default_t2v);
 }
 
 function renderChars() {
+  const ok = $('#img-eng').value === 'flux-kontext';
+  if (!ok) NEW.ref = '';
+  $('#chars').style.opacity = ok ? '' : '.35';
+  $('#chars').style.pointerEvents = ok ? '' : 'none';
+  $('#chars-hint').style.display = ok ? 'none' : '';
   $('#chars').innerHTML = `<div class="char ${NEW.ref ? '' : 'on'}" data-c=""><div class="pic">∅</div><span>None</span></div>` +
     CHARS.map(c => `<div class="char ${c === NEW.ref ? 'on' : ''}" data-c="${esc(c)}"><div class="pic" style="background-image:url('/characters/${encodeURIComponent(c)}')"></div><span>${esc(c.replace(/\.\w+$/, ''))}</span></div>`).join('') +
     `<div class="char" id="char-up"><div class="pic" style="border:2px dashed var(--line)">＋</div><span>Upload</span></div>`;
@@ -326,6 +333,8 @@ function renderChars() {
   $('#char-up').onclick = () => $('#ref-file').click();
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
+$('#img-eng').onchange = renderChars;
+$('#use-kontext').onclick = e => { e.preventDefault(); $('#img-eng').value = 'flux-kontext'; renderChars(); };
 $('#ref-file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   const r = await fetch('/api/characters?name=' + encodeURIComponent(f.name), {method: 'POST', body: f});
@@ -495,13 +504,12 @@ function render() {
     <div class="glass pad">
       <div class="grid2">
         <div><label style="margin-top:0">Make</label><select id="f-mode" ${busy ? 'disabled' : ''}>${[['video', 'Images + video'], ['t2v', 'Video only'], ['images', 'Images only']].map(([v, l]) => `<option value="${v}" ${(P.mode || 'video') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V ? 'disabled' : ''}>${refOpts}</select></div>
+        <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V || (P.image_engine !== 'flux-kontext' && !P.reference) ? 'disabled' : ''}>${refOpts}</select>
+          ${P.image_engine !== 'flux-kontext' && !P.reference && !isT2V ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Image engine "FLUX Kontext"</div>` : ''}</div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
           ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine</label><select id="f-img-eng" ${busy || P.reference ? 'disabled' : ''}>${P.reference
-          ? `<option>FLUX Kontext (needed to copy your character picture)</option>`
-          : (ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : '')}</select>
-          ${P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">To use Z-Image, set Character picture to "No character picture"</div>` : ''}</div>
+        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine</label><select id="f-img-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.reference ? 'flux-kontext' : (P.image_engine || ENG.default_image)) : ''}</select>
+          ${P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Picking another engine removes the character picture</div>` : ''}</div>
         <div><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
           ${['480p', '720p'].map(v => `<option value="${v}" ${(P.video_res || '480p') === v ? 'selected' : ''}>${v}${v === '720p' ? ' · ~2-3× slower' : ''}</option>`).join('')}</select></div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
