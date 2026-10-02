@@ -114,9 +114,16 @@
   .final video { width:100%; border-radius:14px; background:#000; max-height:70vh; }
   .log { font:12px/1.5 ui-monospace,Consolas,monospace; color:var(--muted); max-height:180px; overflow:auto; white-space:pre-wrap; padding:12px; }
   /* galleries */
-  .gal { columns:4 200px; column-gap:12px; }
-  .gal .it { break-inside:avoid; margin-bottom:12px; border-radius:14px; overflow:hidden; position:relative; cursor:pointer; border:1px solid var(--line); background:rgba(0,0,0,.4); }
-  .gal img, .gal video { width:100%; display:block; }
+  .gal { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+  .gal .it { border-radius:14px; overflow:hidden; position:relative; cursor:pointer; border:1px solid var(--line); background:rgba(0,0,0,.4); aspect-ratio:9/16; }
+  .gal img, .gal video { width:100%; height:100%; object-fit:cover; display:block; }
+  .pick { position:absolute; top:8px; left:8px; z-index:2; width:26px; height:26px; border-radius:8px; border:2px solid #fff;
+          background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; font-size:15px; color:#041014; }
+  .selecting .pick { display:flex; } .picked .pick { background:var(--mint); border-color:var(--mint); }
+  .picked { outline:3px solid var(--mint); outline-offset:-3px; }
+  .selbar { display:flex; gap:8px; align-items:center; margin:-4px 0 14px; }
+  .selbar .del { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
+  .pcard { position:relative; }
   .gal .cap { position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px; font-size:12px; background:linear-gradient(transparent,rgba(0,0,0,.8)); }
   .gal .play { position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; font-size:12px; }
   .empty { color:var(--muted); text-align:center; padding:50px 10px; }
@@ -138,7 +145,7 @@
     .bnav button svg { width:22px; height:22px; stroke:currentColor; }
     .bnav button.on { color:var(--mint); }
     .actions { bottom:calc(84px + env(safe-area-inset-bottom)); }
-    .gal { columns:2 140px; column-gap:10px; }
+    .gal { grid-template-columns:repeat(2,1fr); gap:10px; }
     .scenes { grid-template-columns:1fr 1fr; gap:10px; }
   }
   @media (max-width:480px) { .scenes { grid-template-columns:1fr; } }
@@ -209,14 +216,14 @@
   </section>
 
   <!-- PROJECTS -->
-  <section class="view" id="v-projects"><h2>Projects</h2><div class="plist" id="plist"></div></section>
+  <section class="view" id="v-projects"><h2>Projects</h2><div class="selbar" data-for="projects"></div><div class="plist" id="plist"></div></section>
 
   <!-- PROJECT EDITOR -->
   <section class="view" id="v-project"></section>
 
   <!-- GALLERIES -->
-  <section class="view" id="v-images"><h2>Images</h2><div class="gal" id="gal-images"></div></section>
-  <section class="view" id="v-videos"><h2>Videos</h2><div class="gal" id="gal-videos"></div></section>
+  <section class="view" id="v-images"><h2>Images</h2><div class="selbar" data-for="images"></div><div class="gal" id="gal-images"></div></section>
+  <section class="view" id="v-videos"><h2>Videos</h2><div class="selbar" data-for="videos"></div><div class="gal" id="gal-videos"></div></section>
 </main>
 
 <nav class="bnav" id="bnav"></nav>
@@ -239,7 +246,7 @@ $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}">${l}</butt
 $$('[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
 
 function show(v) {
-  VIEW = v;
+  VIEW = v; SEL.on = false; SEL.keys.clear();
   $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
   $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
   if (v === 'projects') refreshProjects();
@@ -370,21 +377,55 @@ async function refreshProjects() {
   const list = await api('/api/projects');
   $('#plist').innerHTML = list.length ? list.map(p => {
     const st = p.status || '', cls = /^(queued|running)/.test(st) ? 'run' : /^done/.test(st) ? 'done' : /^(error|stopped)/.test(st) ? 'err' : '';
-    return `<div class="glass pcard" data-id="${p.id}"><div class="th" style="background-image:url('${fileOf(p.id, 'keyframes/kf_00.png', 1)}')"></div>
+    return `<div class="glass pcard" data-id="${p.id}" data-key="${p.id}"><span class="pick">✓</span><div class="th" style="background-image:url('${fileOf(p.id, 'keyframes/kf_00.png', 1)}')"></div>
       <div style="min-width:0"><b>${esc(p.title)}</b><span style="color:var(--muted);font-size:12px">${fmtDate(p.created)}</span><br><span class="badge ${cls}">${esc(st.replace(':', ' · '))}</span></div></div>`;
   }).join('') : '<div class="empty">No projects yet. Create one!</div>';
-  $$('.pcard').forEach(el => el.onclick = () => openProject(el.dataset.id));
+  $$('.pcard').forEach(el => el.onclick = () => SEL.on ? togglePick(el) : openProject(el.dataset.id));
+  renderSelbar('projects');
 }
 async function openProject(id) { dirty = false; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project'); render(); poll(); }
+
+/* ---------- select & delete ---------- */
+const SEL = {on: false, kind: '', keys: new Set()};
+function renderSelbar(kind) {
+  const bar = document.querySelector(`.selbar[data-for="${kind}"]`);
+  const on = SEL.on && SEL.kind === kind;
+  bar.innerHTML = on
+    ? `<button id="sel-cancel">Cancel</button><span style="color:var(--muted);font-size:13px">${SEL.keys.size} selected</span>
+       <button class="del" id="sel-del" ${SEL.keys.size ? '' : 'disabled'}>🗑 Delete</button>`
+    : `<button id="sel-start">☐ Select</button>`;
+  const host = kind === 'projects' ? $('#plist') : $('#gal-' + kind);
+  host.classList.toggle('selecting', on);
+  if (!on) $$('.picked').forEach(e => e.classList.remove('picked'));
+  if (on) $('#sel-cancel').onclick = () => { SEL.on = false; SEL.keys.clear(); renderSelbar(kind); };
+  if (on) $('#sel-del').onclick = () => deletePicked(kind);
+  if (!on) $('#sel-start').onclick = () => { SEL.on = true; SEL.kind = kind; SEL.keys.clear(); renderSelbar(kind); };
+}
+function togglePick(el) {
+  const k = el.dataset.key;
+  SEL.keys.has(k) ? SEL.keys.delete(k) : SEL.keys.add(k);
+  el.classList.toggle('picked', SEL.keys.has(k));
+  renderSelbar(SEL.kind);
+}
+async function deletePicked(kind) {
+  const n = SEL.keys.size, what = kind === 'projects' ? `project${n > 1 ? 's' : ''} (with all their pictures and videos)` : `item${n > 1 ? 's' : ''}`;
+  if (!confirm(`Delete ${n} ${what}? They're moved to the Trash folder on the PC.`)) return;
+  const keys = [...SEL.keys];
+  await api('/api/delete', kind === 'projects' ? {projects: keys}
+    : {files: keys.map(k => { const [project, path] = k.split('|'); return {project, path}; })});
+  SEL.on = false; SEL.keys.clear();
+  kind === 'projects' ? refreshProjects() : refreshGallery(kind);
+}
 
 /* ---------- galleries ---------- */
 async function refreshGallery(kind) {
   const items = await api('/api/gallery/' + kind), el = $('#gal-' + kind);
   el.innerHTML = items.length ? items.map((it, i) => kind === 'images'
-    ? `<div class="it" data-i="${i}"><img loading="lazy" src="${fileOf(it.project, it.path, Math.floor(it.mtime))}"><div class="cap">${esc(it.label)}</div></div>`
-    : `<div class="it" data-i="${i}"><video preload="metadata" muted playsinline src="${fileOf(it.project, it.path, Math.floor(it.mtime))}#t=0.5"></video><div class="play">▶</div><div class="cap">${esc(it.label)}</div></div>`).join('')
+    ? `<div class="it" data-i="${i}" data-key="${esc(it.project + '|' + it.path)}"><span class="pick">✓</span><img loading="lazy" src="${fileOf(it.project, it.path, Math.floor(it.mtime))}"><div class="cap">${esc(it.label)}</div></div>`
+    : `<div class="it" data-i="${i}" data-key="${esc(it.project + '|' + it.path)}"><span class="pick">✓</span><video preload="metadata" muted playsinline src="${fileOf(it.project, it.path, Math.floor(it.mtime))}#t=0.5"></video><div class="play">▶</div><div class="cap">${esc(it.label)}</div></div>`).join('')
     : `<div class="empty">Nothing here yet.</div>`;
-  $$('#gal-' + kind + ' .it').forEach(t => t.onclick = () => lightbox(kind, items[+t.dataset.i]));
+  $$('#gal-' + kind + ' .it').forEach(t => t.onclick = () => SEL.on ? togglePick(t) : lightbox(kind, items[+t.dataset.i]));
+  renderSelbar(kind);
 }
 function lightbox(kind, it) {
   const src = fileOf(it.project, it.path, Math.floor(it.mtime));

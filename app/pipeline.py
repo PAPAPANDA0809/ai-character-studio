@@ -159,6 +159,47 @@ def gallery(kind, user):
     return sorted(items, key=lambda x: -x["mtime"])
 
 
+TRASH = os.path.join(APP_DIR, "trash")
+
+
+def _to_trash(user, src, rel):
+    """Deleted things are moved (not erased) to app/trash/<user>/<date>/... so a mistake can be undone by hand."""
+    dst = os.path.join(TRASH, user, time.strftime("%Y%m%d"), rel)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if os.path.exists(dst):
+        dst += f".{int(time.time() * 1000)}"
+    shutil.move(src, dst)
+
+
+def delete_items(user, projects=(), files=()):
+    """Delete whole projects and/or single files ({project, path}) owned by user. Returns how many were removed."""
+    n = 0
+    for pid in projects:
+        if user_of(pid) == user and os.path.isdir(pdir(pid)) and current["pid"] != pid:
+            _to_trash(user, pdir(pid), "projects/" + pid)
+            n += 1
+    for it in files:
+        pid, rel = it.get("project", ""), it.get("path", "")
+        if user_of(pid) != user or ".." in rel or not os.path.isdir(pdir(pid)):
+            continue
+        src = os.path.normpath(pdir(pid, *rel.split("/")))
+        if not src.startswith(os.path.normpath(pdir(pid))) or not os.path.isfile(src):
+            continue
+        _to_trash(user, src, f"files/{pid}/{rel}")
+        p = load(pid)
+        if rel.startswith("keyframes/history/"):
+            name = rel.rsplit("/", 1)[-1]
+            for vers in p.get("versions", {}).values():
+                if name in vers:
+                    vers.remove(name)
+        elif rel.startswith("clips/img_"):
+            p.get("image_clips", {}).pop(str(int(rel[-6:-4])), None)
+        p["keyframes_version"] = p["clips_version"] = time.time()
+        save(p)
+        n += 1
+    return n
+
+
 def log(p, msg):
     p.setdefault("log", []).append(time.strftime("%H:%M:%S ") + msg)
     p["log"] = p["log"][-200:]

@@ -209,6 +209,8 @@ class Handler(BaseHTTPRequestHandler):
                 text, engine = llm.enhance(pipeline.load_config()["llm"], b.get("idea", ""), b.get("mode", "video"),
                                            b.get("style", ""), b.get("character", ""))
                 return self.send_json({"text": text, "engine": engine})
+            if path == "/api/delete":
+                return self.send_json({"deleted": pipeline.delete_items(u, b.get("projects", []), b.get("files", []))})
             if path == "/api/plan":
                 p = pipeline.create_project(u, b["idea"], b.get("keyframes", 4), b.get("style", ""),
                                             b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),

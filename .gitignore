@@ -14,3 +14,4 @@ setup/.download.lock
 app/users.json
 app/sessions.json
 app/secrets.json
+app/trash/
