@@ -23,6 +23,7 @@ os.makedirs(PROJECTS, exist_ok=True)
 os.makedirs(CHARACTERS, exist_ok=True)
 
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
+QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
 
 
 def char_dir(user):
@@ -331,7 +332,8 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "image_engine": (image_engine if image_engine in comfy.REFERENCE_ENGINES else "flux-kontext") if reference else
                         image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
-        "clip_fps": {}, "mode": mode, "quality": quality or ("sharp" if mode == "images" else "standard"),
+        "clip_fps": {}, "mode": mode,
+        "quality": quality if quality in QUALITIES else ("sharp" if mode == "images" else "standard"),
         "video_res": video_res if video_res in ("480p", "720p") else "480p",
         "t2v_engine": cfg.get("default_t2v_engine", "wan22-5b"),
     }
@@ -375,7 +377,7 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
     p = load(pid)
     if image_engine in comfy.IMAGE_ENGINES and image_engine not in comfy.REFERENCE_ENGINES:
         p["reference"] = ""
-    if quality in ("standard", "sharp", "high", "ultra"):
+    if quality in QUALITIES:
         p["quality"] = quality
     if video_res in ("480p", "720p"):
         p["video_res"] = video_res
@@ -484,10 +486,10 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     q = p.get("quality", "standard")
-    hq = q in ("high", "sharp", "ultra")  # upscale pass; "high"/"ultra" also render bigger with more steps
-    table = {"high": "hires_sizes", "ultra": "hires_sizes", "sharp": "sharp_sizes"}.get(q)
+    hq = q in ("high", "sharp", "2k", "ultra")  # upscale pass; "high"/"2k"/"ultra" also render bigger with more steps
+    table = {"high": "hires_sizes", "2k": "hires_sizes", "ultra": "hires_sizes", "sharp": "sharp_sizes"}.get(q)
     w, h = (cfg[table].get(p.get("aspect", "portrait")) if table else None) or size(cfg, p)
-    steps = cfg["image"]["hq_steps"] if q in ("high", "ultra") else None
+    steps = cfg["image"]["hq_steps"] if q in ("high", "2k", "ultra") else None
     n = len(p["plan"]["keyframes"])
     indices = list(range(n)) if indices is None else [int(i) for i in indices]
     ref = p.get("reference")
@@ -525,7 +527,7 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
             wf = comfy.image_workflow(cfg, use, keyframe_prompt(p, i), w, h, p["keyframe_seeds"][key], prefix, steps)
         if hq:
             wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))
-        if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p
+        if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p / 2K / 4K
             ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
             wf = comfy.add_final_size(wf, ow, oh)
         try:
