@@ -345,14 +345,16 @@ def lora_entry(cfg, file, engine):
 
 
 def with_trigger(text, lora):
-    """A trained character only appears when its trigger word is in the prompt. Its name as people write it
-    ("@jacelyn", "Jacelyn") becomes the trigger word; if it is still missing, it goes in front."""
+    """Start the prompt the way the LoRA's training captions started ("jacelynrm, a woman, ..."): the trigger
+    word only holds the face when it leads the prompt (mid-sentence after the style text, the face drifted).
+    The name as people write it ("@jacelyn", "Jacelyn") also becomes the trigger word."""
     if not lora or not lora.get("trigger"):
         return text
     trig = lora["trigger"]
     if lora.get("label"):
         text = re.sub(rf"@?\b{re.escape(lora['label'])}\b", trig, text, flags=re.I)
-    return text if trig.lower() in text.lower() else f"{trig}, {text}"
+    head = f"{trig}, {lora['class']}" if lora.get("class") else trig
+    return text if text.lower().startswith(head.lower()) else f"{head}, {text}"
 
 
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
