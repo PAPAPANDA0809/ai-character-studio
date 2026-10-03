@@ -88,7 +88,9 @@ ENHANCE_SYSTEM = """You turn a rough social media post idea into a stronger crea
 Keep the user's intent, subject and language. The subject may be a person, an animal, a product, food, an object or a
 place; never add people the idea doesn't ask for. Write it the way an image model reads best: simple, concrete
 words - who or what, what they do, what they wear, where, the light and the framing (close-up / half body / full
-body). Keep poses simple and natural. Leave out metaphors, feelings about the post, "the hook", camera brands and
+body). Only describe what the framing shows: for half body or closer, leave out shoes, socks and anything else below
+the waist (the generator squeezes them into the frame, e.g. a sneaker floating at the hip). Keep poses simple and
+natural. Leave out metaphors, feelings about the post, "the hook", camera brands and
 tiny details (single strands of hair, condensation, exact finger positions) - each extra detail is a chance for
 the generator to get anatomy wrong. Follow the Format line exactly: a single photo is ONE moment in ONE frame
 (never a sequence, several shots, panels or a beginning/middle/end, or the generator draws a collage); a photo set
