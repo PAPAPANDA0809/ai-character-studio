@@ -228,7 +228,8 @@
   },
   "extra_model_dirs": ["D:/AICharacterStudio/models"],
   "loras": [
-    {"file": "jacelynrm_qwen21.safetensors", "label": "Jacelyn", "engine": "qwen-image-21", "trigger": "jacelynrm", "class": "a woman with round glasses", "strength": 1.0}
+    {"file": "jacelynrm_qwen21.safetensors", "label": "Jacelyn", "name": "Jacelyn", "engine": "qwen-image-21", "trigger": "jacelynrm", "class": "a woman with round glasses", "strength": 1.0},
+    {"file": "jacelynrm_qwen21_v2.safetensors", "label": "Jacelyn v2", "name": "Jacelyn", "engine": "qwen-image-21", "trigger": "jacelynrm", "class": "a woman with round glasses", "strength": 1.0}
   ],
   "flux2_klein": {
     "4b": {"unet": "flux-2-klein-4b-fp8.safetensors", "text_encoder": "qwen_3_4b_fp8_mixed.safetensors"},

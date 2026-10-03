@@ -351,8 +351,9 @@ def with_trigger(text, lora):
     if not lora or not lora.get("trigger"):
         return text
     trig = lora["trigger"]
-    if lora.get("label"):
-        text = re.sub(rf"@?\b{re.escape(lora['label'])}\b", trig, text, flags=re.I)
+    name = lora.get("name") or lora.get("label")  # versions share the character's name ("Jacelyn v2" -> "Jacelyn")
+    if name:
+        text = re.sub(rf"@?\b{re.escape(name)}\b", trig, text, flags=re.I)
     head = f"{trig}, {lora['class']}" if lora.get("class") else trig
     return text if text.lower().startswith(head.lower()) else f"{head}, {text}"
 
