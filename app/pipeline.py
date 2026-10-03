@@ -24,6 +24,7 @@ os.makedirs(CHARACTERS, exist_ok=True)
 
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
+NATIVE_HD = ("qwen-image-21", "flux2-klein-4b", "flux2-klein-9b")  # draw 720p/1080p directly, no 4x upscale pass
 
 
 def char_dir(user):
@@ -532,16 +533,24 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
             log(p, f"keyframe {i + 1}/{n}: done with GPT-image in {time.time() - t:.0f}s")
             continue
         prefix = f"aics/{p['id']}/kf{i:02d}"
+        rw, rh, upscale = w, h, hq
+        if use in NATIVE_HD and q in ("sharp", "high"):
+            # these engines draw 720p/1080p directly: sharper real detail and no 4x pass (which took 10 s to 7 min
+            # depending on RAM pressure; tested 3 Oct: 416 s vs 79 s for one 1080p Qwen-Image 2.1 picture)
+            upscale = False
+            if p.get("mode") == "images":
+                ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
+                rw, rh = (ow + 15) // 16 * 16, (oh + 15) // 16 * 16
         if ref:
-            wf = comfy.reference_workflow(cfg, use, reference_prompt(p, i), ref_name, w, h, p["keyframe_seeds"][key],
+            wf = comfy.reference_workflow(cfg, use, reference_prompt(p, i), ref_name, rw, rh, p["keyframe_seeds"][key],
                                           prefix, steps)
             pol = cfg.get("kontext_polish", {})  # Kontext alone looks plasticky; the newer engines don't need it
             if use == "flux-kontext" and pol.get("enabled", True) and model_path(cfg, "unet/" + cfg["zimage"]["unet"]):
                 wf = comfy.add_zimage_polish(cfg, wf, "photo, " + keyframe_prompt(p, i), p["keyframe_seeds"][key],
                                              pol.get("denoise", 0.4))
         else:
-            wf = comfy.image_workflow(cfg, use, keyframe_prompt(p, i), w, h, p["keyframe_seeds"][key], prefix, steps)
-        if hq:
+            wf = comfy.image_workflow(cfg, use, keyframe_prompt(p, i), rw, rh, p["keyframe_seeds"][key], prefix, steps)
+        if upscale:
             wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p / 2K / 4K
             ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
