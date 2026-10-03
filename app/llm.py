@@ -86,11 +86,15 @@ def chat(cfg, system, user, want_json=True):
 
 ENHANCE_SYSTEM = """You turn a rough social media post idea into a stronger creative brief for an AI image/video generator.
 Keep the user's intent, subject and language. The subject may be a person, an animal, a product, food, an object or a
-place; never add people the idea doesn't ask for. Make it specific and visual: who or what the subject is, what happens,
-the setting, mood, lighting, camera feel and the hook for the post. Follow the Format line exactly: a single photo
-is ONE moment in ONE frame (never a sequence, several shots, panels or a beginning/middle/end, or the generator
-draws a collage); a photo set gives each photo its own moment; a video has a clear beginning, middle and payoff.
-Write 3-6 sentences of plain prose. No headings, no lists, no preamble - return only the improved brief."""
+place; never add people the idea doesn't ask for. Write it the way an image model reads best: simple, concrete
+words - who or what, what they do, what they wear, where, the light and the framing (close-up / half body / full
+body). Keep poses simple and natural. Leave out metaphors, feelings about the post, "the hook", camera brands and
+tiny details (single strands of hair, condensation, exact finger positions) - each extra detail is a chance for
+the generator to get anatomy wrong. Follow the Format line exactly: a single photo is ONE moment in ONE frame
+(never a sequence, several shots, panels or a beginning/middle/end, or the generator draws a collage); a photo set
+gives each photo its own moment; a video has a short beginning, middle and end.
+Length: 40-70 words for photos, at most 100 words for videos. One plain paragraph. No headings, no lists, no
+preamble - return only the improved prompt."""
 
 
 def _secret(name):

@@ -345,10 +345,14 @@ def lora_entry(cfg, file, engine):
 
 
 def with_trigger(text, lora):
-    """A trained character only appears when its trigger word is in the prompt: add it in front if missing."""
-    if lora and lora.get("trigger") and lora["trigger"].lower() not in text.lower():
-        return f"{lora['trigger']}, {text}"
-    return text
+    """A trained character only appears when its trigger word is in the prompt. Its name as people write it
+    ("@jacelyn", "Jacelyn") becomes the trigger word; if it is still missing, it goes in front."""
+    if not lora or not lora.get("trigger"):
+        return text
+    trig = lora["trigger"]
+    if lora.get("label"):
+        text = re.sub(rf"@?\b{re.escape(lora['label'])}\b", trig, text, flags=re.I)
+    return text if trig.lower() in text.lower() else f"{trig}, {text}"
 
 
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
