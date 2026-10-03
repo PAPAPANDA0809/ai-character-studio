@@ -242,8 +242,13 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
                 if has_reference:
                     data["character"] = ""
                 plan_ = normalize_plan(data, n_keyframes, idea, "" if has_reference else character)
-                if n_keyframes == 1 and mode != "video" and not has_reference:  # a single picture/scene is the prompt itself, word for word
+                if n_keyframes == 1 and mode != "video":
+                    # a single picture/scene IS the user's prompt, word for word (also with a character picture);
+                    # Claude only writes title/caption/hashtags. Its character/setting text would be appended to the
+                    # prompt, so only what the user typed in the Character box is kept.
                     plan_["keyframes"][0]["image_prompt"] = idea
+                    plan_["character"] = "" if has_reference else character
+                    plan_["setting"] = ""
                 plan_["planner"] = "claude"
                 return plan_
         except Exception:
