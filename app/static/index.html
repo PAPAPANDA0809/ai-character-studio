@@ -131,6 +131,10 @@
   .lb { position:fixed; inset:0; z-index:50; background:rgba(3,4,7,.92); backdrop-filter:blur(8px); display:none; flex-direction:column; align-items:center; justify-content:center; padding:20px; gap:14px; }
   .lb.on { display:flex; }
   .lb img, .lb video { max-width:100%; max-height:76vh; border-radius:14px; }
+  .lb .zoom { max-width:100%; border-radius:14px; overflow:hidden; touch-action:none; cursor:zoom-in; line-height:0; }
+  .lb .zoom img { display:block; border-radius:0; transform-origin:0 0; user-select:none; -webkit-user-drag:none; }
+  .lb .zoom.zoomed { cursor:grab; }
+  .lb .zoom.zoomed:active { cursor:grabbing; }
   .lb .row { justify-content:center; }
   /* bottom nav (mobile) */
   .bnav { display:none; }
@@ -438,12 +442,64 @@ async function refreshGallery(kind) {
   $$('#gal-' + kind + ' .it').forEach(t => t.onclick = e => (e.target.closest('.pick') || SEL.on) ? togglePick(t) : lightbox(kind, items[+t.dataset.i]));
   renderSelbar(kind);
 }
+// Lightbox pictures: mouse wheel / pinch zooms around the pointer, drag pans once zoomed, double-click toggles.
+// The picture never leaves its frame (the frame is the picture's normal on-screen size).
+const ZOOM_HINT = '<span style="opacity:.7"> · scroll or pinch to zoom, drag to move, double-click to reset</span>';
+function makeZoom(img) {
+  if (!img) return;
+  const box = document.createElement('div');
+  box.className = 'zoom';
+  img.replaceWith(box);
+  box.appendChild(img);
+  img.draggable = false;
+  let s = 1, x = 0, y = 0, last = null, pinch = null;
+  const pts = new Map();
+  const apply = () => {
+    const w = box.clientWidth, h = box.clientHeight;
+    x = Math.min(0, Math.max(w - w * s, x));
+    y = Math.min(0, Math.max(h - h * s, y));
+    img.style.transform = `translate(${x}px,${y}px) scale(${s})`;
+    box.classList.toggle('zoomed', s > 1);
+  };
+  const zoomAt = (cx, cy, ns) => {
+    ns = Math.min(8, Math.max(1, ns));
+    const r = box.getBoundingClientRect(), px = cx - r.left, py = cy - r.top;
+    x = px - (px - x) * ns / s;
+    y = py - (py - y) * ns / s;
+    s = ns;
+    apply();
+  };
+  box.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, s * Math.exp(-e.deltaY * 0.0015)); }, {passive: false});
+  box.ondblclick = e => zoomAt(e.clientX, e.clientY, s > 1 ? 1 : 2.5);
+  box.onpointerdown = e => {
+    try { box.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional: dragging still works without it */ }
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    last = [e.clientX, e.clientY];
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = {d: Math.hypot(a[0] - b[0], a[1] - b[1]), s}; }
+  };
+  box.onpointermove = e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pts.size === 2 && pinch) {
+      const [a, b] = [...pts.values()];
+      return zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, pinch.s * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d);
+    }
+    if (s > 1) { x += e.clientX - last[0]; y += e.clientY - last[1]; apply(); }
+    last = [e.clientX, e.clientY];
+  };
+  box.onpointerup = box.onpointercancel = e => {
+    pts.delete(e.pointerId);
+    pinch = null;
+    last = [...pts.values()][0] || last;
+  };
+}
 function lightbox(kind, it) {
   const src = fileOf(it.project, it.path, Math.floor(it.mtime));
   $('#lb').innerHTML = (kind === 'images' ? `<img src="${src}">` : `<video src="${src}" controls autoplay playsinline></video>`) +
-    `<div style="color:var(--muted);font-size:13px">${esc(it.label)} · ${fmtDate(it.mtime)}</div>
+    `<div style="color:var(--muted);font-size:13px">${esc(it.label)} · ${fmtDate(it.mtime)}${kind === 'images' ? ZOOM_HINT : ''}</div>
      <div class="row"><a href="${src}" download><button class="primary">Download</button></a>
      <button id="lb-open">Open project</button><button id="lb-close">Close</button></div>`;
+  if (kind === 'images') makeZoom($('#lb img'));
   $('#lb').classList.add('on');
   $('#lb-close').onclick = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
   $('#lb-open').onclick = () => { $('#lb-close').onclick(); openProject(it.project); };
@@ -576,8 +632,9 @@ function render() {
   $$('[data-reanim]').forEach(b => b.onclick = run('animate', {only: +b.dataset.reanim}));
   $$('[data-ver]').forEach(img => img.onclick = () => {
     const src = file('keyframes/history/' + img.dataset.ver, 1), i = +img.dataset.vi;
-    $('#lb').innerHTML = `<img src="${src}"><div style="color:var(--muted);font-size:13px">Older version of picture ${i + 1}</div>
+    $('#lb').innerHTML = `<img src="${src}"><div style="color:var(--muted);font-size:13px">Older version of picture ${i + 1}${ZOOM_HINT}</div>
       <div class="row"><button class="primary" id="lb-use">Use this one</button><a href="${src}" download><button>⤓ Save</button></a><button id="lb-close">Close</button></div>`;
+    makeZoom($('#lb img'));
     $('#lb').classList.add('on');
     const close = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
     $('#lb-close').onclick = close;
