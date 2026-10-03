@@ -231,6 +231,9 @@
     "denoise": 0.22
   },
   "extra_model_dirs": ["D:/AICharacterStudio/models"],
+  "loras": [
+    {"file": "jacelynrm_qwen21.safetensors", "label": "Jacelyn", "engine": "qwen-image-21", "trigger": "jacelynrm", "strength": 1.0}
+  ],
   "flux2_klein": {
     "4b": {"unet": "flux-2-klein-4b-fp8.safetensors", "text_encoder": "qwen_3_4b_fp8_mixed.safetensors"},
     "9b": {"unet": "flux-2-klein-9b-Q4_K_M.gguf", "text_encoder": "qwen_3_8b_fp8mixed.safetensors"},

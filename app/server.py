@@ -228,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
                 p = pipeline.create_project(u, b["idea"], b.get("keyframes", 4), b.get("style", ""),
                                             b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),
                                             b.get("reference", ""), b.get("image_engine"), b.get("video_engine"),
-                                            b.get("mode", "video"), b.get("quality"), b.get("video_res"))
+                                            b.get("mode", "video"), b.get("quality"), b.get("video_res"), b.get("lora"))
                 return self.send_json(p)
             m = re.fullmatch(r"/api/projects/([\w\-]+)/(\w+)", path)
             if not m or not self.owns(u, m.group(1)):
@@ -237,7 +237,7 @@ class Handler(BaseHTTPRequestHandler):
             if action == "engines":
                 return self.send_json(pipeline.set_engines(pid, b.get("image_engine"), b.get("video_engine"),
                                                            b.get("mode"), b.get("t2v_engine"), b.get("quality"),
-                                                           b.get("video_res")))
+                                                           b.get("video_res"), b.get("lora")))
             if action == "reference":
                 return self.send_json(pipeline.set_reference(pid, b.get("reference", "")))
             if action == "plan":

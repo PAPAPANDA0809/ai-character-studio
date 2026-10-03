@@ -339,8 +339,20 @@ def start():
 
 # ---------------------------------------------------------------- steps
 
+def lora_entry(cfg, file, engine):
+    """The configured LoRA with this file, if it was trained for this image engine (else None)."""
+    return next((l for l in cfg.get("loras", []) if l["file"] == file and l["engine"] == engine), None)
+
+
+def with_trigger(text, lora):
+    """A trained character only appears when its trigger word is in the prompt: add it in front if missing."""
+    if lora and lora.get("trigger") and lora["trigger"].lower() not in text.lower():
+        return f"{lora['trigger']}, {text}"
+    return text
+
+
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
-                   image_engine=None, video_engine=None, mode="video", quality=None, video_res=None):
+                   image_engine=None, video_engine=None, mode="video", quality=None, video_res=None, lora=None):
     cfg = load_config()
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
@@ -365,6 +377,7 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "video_res": video_res if video_res in ("480p", "720p") else "480p",
         "t2v_engine": cfg.get("default_t2v_engine", "wan22-5b"),
     }
+    p["lora"] = lora if lora and lora_entry(cfg, lora, p["image_engine"]) else ""
     save(p)
     log(p, f"planned {n_keyframes} {dict(images='images', t2v='scenes').get(mode, 'keyframes')} with {plan.get('planner') or cfg['llm']['provider']}")
     return p
@@ -389,6 +402,7 @@ def engines():
     def entry(key, e):
         return {"id": key, "label": e["label"], "installed": all(ready(f) for f in e["files"])}
     return {
+        "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
         "reference_engines": list(comfy.REFERENCE_ENGINES),
         "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()],
         "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
@@ -401,8 +415,12 @@ def engines():
     }
 
 
-def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None, video_res=None):
+def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None, video_res=None,
+                lora=None):
     p = load(pid)
+    cfg = load_config()
+    if lora is not None:  # "" = no LoRA; a LoRA is only kept for the engine it was trained for (checked below)
+        p["lora"] = lora
     if image_engine in comfy.IMAGE_ENGINES and image_engine not in comfy.REFERENCE_ENGINES:
         p["reference"] = ""
     if quality in QUALITIES:
@@ -421,6 +439,8 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
         p["image_engine"] = image_engine
     if video_engine in comfy.VIDEO_ENGINES:
         p["video_engine"] = video_engine
+    if p.get("lora") and not lora_entry(cfg, p["lora"], p.get("image_engine")):
+        p["lora"] = ""  # switched to an engine the LoRA wasn't trained for
     save(p)
     return p
 
@@ -560,15 +580,21 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
             if p.get("mode") == "images":
                 ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
                 rw, rh = (ow + 15) // 16 * 16, (oh + 15) // 16 * 16
+        lora = lora_entry(cfg, p.get("lora", ""), use)  # a trained character, only for the engine it was made for
+        if lora and not model_path(cfg, "loras/" + lora["file"]):
+            raise RuntimeError(f'the trained character "{lora["label"]}" ({lora["file"]}) is not in models\\loras yet')
         if ref:
-            wf = comfy.reference_workflow(cfg, use, reference_prompt(p, i), ref_name, rw, rh, p["keyframe_seeds"][key],
-                                          prefix, steps)
+            wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i), lora), ref_name, rw, rh,
+                                          p["keyframe_seeds"][key], prefix, steps)
             pol = cfg.get("kontext_polish", {})  # Kontext alone looks plasticky; the newer engines don't need it
             if use == "flux-kontext" and pol.get("enabled", True) and model_path(cfg, "unet/" + cfg["zimage"]["unet"]):
                 wf = comfy.add_zimage_polish(cfg, wf, "photo, " + keyframe_prompt(p, i), p["keyframe_seeds"][key],
                                              pol.get("denoise", 0.4))
         else:
-            wf = comfy.image_workflow(cfg, use, keyframe_prompt(p, i), rw, rh, p["keyframe_seeds"][key], prefix, steps)
+            wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,
+                                      p["keyframe_seeds"][key], prefix, steps)
+        if lora:
+            wf = comfy.add_lora(wf, lora["file"], lora.get("strength", 1.0))
         if upscale:
             wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p / 2K / 4K

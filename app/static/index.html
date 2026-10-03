@@ -214,6 +214,8 @@
         <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
         <div class="presets" id="presets"></div>
         <div id="img-eng-wrap"><label>Image engine</label><select id="img-eng"></select></div>
+        <div id="lora-wrap" style="display:none"><label>Trained character</label><select id="lora-sel"></select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Keeps the trained character in every picture; its trigger word is added to the prompt for you.</div></div>
         <div id="vid-eng-wrap"><label>Video engine</label><select id="vid-eng"></select></div>
         <div id="t2v-eng-wrap"><label>Text-to-video engine</label><select id="t2v-eng"></select></div>
         <details><summary>Describe the character in words (optional)</summary>
@@ -311,6 +313,7 @@ function syncCreate() {
   $('#vid-eng-wrap').style.display = m === 'video' ? '' : 'none';
   $('#t2v-eng-wrap').style.display = m === 't2v' ? '' : 'none';
   $('#img-eng-wrap').style.display = m === 't2v' ? 'none' : '';
+  renderLora();
 }
 $$('#mode-seg button').forEach(b => b.onclick = () => { NEW.mode = b.dataset.mode; syncCreate(); });
 $$('#aspect-seg button').forEach(b => b.onclick = () => { NEW.aspect = b.dataset.aspect; syncCreate(); });
@@ -323,11 +326,23 @@ const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id 
 async function refreshEngines() {
   ENG = await api('/api/engines');
   $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
+  renderLora();
   if (CHARS) renderChars();
   $('#vid-eng').innerHTML = engOptions(ENG.video, $('#vid-eng').value || ENG.default_video);
   $('#t2v-eng').innerHTML = engOptions(ENG.t2v, $('#t2v-eng').value || ENG.default_t2v);
 }
 
+// trained characters (LoRAs) made for one image engine; not-yet-downloaded ones are listed but disabled
+function lorasFor(engine) { return ((typeof ENG !== 'undefined' && ENG && ENG.loras) || []).filter(l => l.engine === engine); }
+function loraOptions(engine, sel) {
+  return `<option value="">None</option>` + lorasFor(engine).map(l =>
+    `<option value="${esc(l.file)}" ${l.file === sel ? 'selected' : ''} ${l.installed ? '' : 'disabled'}>${esc(l.label)}${l.installed ? '' : ' · not downloaded yet'}</option>`).join('');
+}
+function renderLora() {
+  const eng = $('#img-eng').value, keep = $('#lora-sel').value;
+  $('#lora-wrap').style.display = lorasFor(eng).length && NEW.mode !== 't2v' ? '' : 'none';
+  $('#lora-sel').innerHTML = loraOptions(eng, keep);
+}
 // image engines that can use a character picture (the server's list; Kontext before it loads)
 const refEngines = () => (ENG && ENG.reference_engines) || ['flux-kontext'];
 // the one "Switch to one" picks: the fastest installed of them
@@ -354,7 +369,7 @@ function renderChars() {
   $('#char-up').onclick = () => $('#ref-file').click();
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
-$('#img-eng').onchange = renderChars;
+$('#img-eng').onchange = () => { renderChars(); renderLora(); };
 $('#use-kontext').onclick = e => { e.preventDefault(); $('#img-eng').value = bestRefEngine(); renderChars(); };
 $('#ref-file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -395,7 +410,7 @@ $('#btn-plan').onclick = async () => {
   $('#btn-plan').disabled = true; $('#plan-msg').style.display = 'flex';
   try {
     P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, reference: NEW.ref,
-      mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value,
+      mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value, lora: $('#lora-sel').value,
       keyframes: +$('#nkf').value, aspect: NEW.aspect, quality: NEW.quality || (NEW.mode === 'images' ? 'sharp' : 'standard'), video_res: NEW.vres});
     dirty = false; show('project'); render();
   } catch (e) { alert(e.message); }
@@ -581,6 +596,7 @@ function render() {
           ${!refEngines().includes(P.image_engine) && !P.reference && !isT2V ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with FLUX.2 klein, Qwen-Image 2.1 or FLUX Kontext</div>` : ''}</div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
           ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['2k', '2K (1440p)'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        ${lorasFor(P.image_engine).length && !isT2V ? `<div><label>Trained character</label><select id="f-lora" ${busy ? 'disabled' : ''}>${loraOptions(P.image_engine, P.lora || '')}</select></div>` : ''}
         <div style="${isT2V ? 'display:none' : ''}"><label>Image engine</label><select id="f-img-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select>
           ${P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Engines without "character picture OK" remove the character picture</div>` : ''}</div>
         <div><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
@@ -619,10 +635,11 @@ function render() {
   const setEng = async () => {
     await savePlan();
     try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value,
-      mode: $('#f-mode').value, t2v_engine: $('#f-t2v-eng').value, quality: $('#f-quality').value, video_res: $('#f-vres').value}); } catch (e) { alert(e.message); }
+      mode: $('#f-mode').value, t2v_engine: $('#f-t2v-eng').value, quality: $('#f-quality').value, video_res: $('#f-vres').value,
+      lora: $('#f-lora') ? $('#f-lora').value : undefined}); } catch (e) { alert(e.message); }
     render();
   };
-  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres'].forEach(s => $(s).onchange = setEng);
+  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres', '#f-lora'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
   const resize = async delta => {
     const pl2 = collectPlan();
     if (delta > 0) pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});

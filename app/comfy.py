@@ -544,6 +544,18 @@ def _wan_flf(cfg, prompt, start_name, end_name, width, height, seed, prefix):
     }
 
 
+def add_lora(wf, lora_name, strength=1.0):
+    """Put a LoRA (e.g. a trained character) between the workflow's model loader and everything that uses it."""
+    loader = next(k for k, n in wf.items() if n["class_type"] in ("UNETLoader", "UnetLoaderGGUF", "CheckpointLoaderSimple"))
+    for n in wf.values():
+        for key, v in n["inputs"].items():
+            if v == [loader, 0]:
+                n["inputs"][key] = ["45", 0]
+    wf["45"] = {"class_type": "LoraLoaderModelOnly",
+                "inputs": {"model": [loader, 0], "lora_name": lora_name, "strength_model": float(strength)}}
+    return wf
+
+
 def _unet(name):
     """GGUF files go through ComfyUI-GGUF, everything else through the built-in loader."""
     if name.endswith(".gguf"):
