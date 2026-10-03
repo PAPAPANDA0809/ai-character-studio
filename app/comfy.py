@@ -161,8 +161,8 @@ VIDEO_ENGINES = {
                             "text_encoders/byt5_small_glyphxl_fp16.safetensors",
                             "vae/hunyuanvideo15_vae_fp16.safetensors",
                             "clip_vision/sigclip_vision_patch14_384.safetensors"]},
-    "ltx23": {"label": "LTX-2.3 22B first+last frame, with sound (new 2026, slow on 8 GB)", "files": LTX23_FILES},
-    "ltx25": {"label": "LTX-2.5 22B first+last frame, with sound (newest, slow on 8 GB)", "files": LTX25_FILES},
+    "ltx23": {"label": "LTX-2.3 first+last frame, with sound (VERY SLOW here: ~2.5 h per 5 s clip on 32 GB RAM)", "files": LTX23_FILES},
+    "ltx25": {"label": "LTX-2.5 first+last frame, with sound (untested; slower than LTX-2.3, hours per clip)", "files": LTX25_FILES},
 }
 
 
@@ -172,8 +172,8 @@ T2V_ENGINES = {
                            "text_encoders/umt5-xxl-encoder-Q5_K_M.gguf"]},
     "ltxv-2b": {"label": "LTX-Video 2B text-to-video (fast, ~40s)",
                 "files": ["checkpoints/ltxv-2b-0.9.8-distilled.safetensors"]},
-    "ltx23": {"label": "LTX-2.3 22B text-to-video, with sound (new 2026, slow on 8 GB)", "files": LTX23_FILES},
-    "ltx25": {"label": "LTX-2.5 22B text-to-video, with sound (newest, slow on 8 GB)", "files": LTX25_FILES},
+    "ltx23": {"label": "LTX-2.3 text-to-video, with sound (VERY SLOW here: ~2.5 h per 5 s scene)", "files": LTX23_FILES},
+    "ltx25": {"label": "LTX-2.5 text-to-video, with sound (untested; slower than LTX-2.3, hours per scene)", "files": LTX25_FILES},
 }
 
 

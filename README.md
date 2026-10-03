@@ -43,6 +43,8 @@ Big video models live on `D:\AICharacterStudio\models` (HDD, slower to load); th
 | LTX-2.3 22B distilled (D:) | Q4_K_S GGUF 13 GB + Gemma 3 12B fp8 13 GB + connectors + VAEs | first+last frame, one picture, text | LTX-2 community licence |
 | LTX-2.5 22B distilled (D:) | Q4_K_S GGUF 15 GB + Gemma 4 12B int8 15 GB + VAEs | first+last frame, one picture, text | LTX-2 community licence |
 
+Measured on this PC (RTX 3070 Ti 8 GB, 32 GB RAM): klein 4B 8-16 s per picture (2K 38 s); klein 9B 30 s to 10+ min (paging); Qwen-Image 2.1 ~30 s, ~4 min with a character picture; LTX-2.3 one 5 s clip ~2.5 h (step time grew from 2 to 32 min as RAM ran out), so the LTX engines are labelled very slow. 64 GB RAM would likely make them practical.
+
 LTX-2.x makes sound with the video: each clip keeps its soundtrack and the final video joins them (silence under clips from engines without sound). The official workflows' prompt-rewriting LLMs (Qwen3.5 PE, Gemma 4 E2B) are not installed or used.
 
 ## Switching the text model
