@@ -84,8 +84,10 @@ def chat(cfg, system, user, want_json=True):
 
 
 ENHANCE_SYSTEM = """You turn a rough social media post idea into a stronger creative brief for an AI image/video generator.
-Keep the user's intent, characters and language. Make it specific and visual: who the character is, what happens
-(a clear beginning, middle and payoff), the setting, mood, lighting, camera feel and the hook for the post.
+Keep the user's intent, characters and language. Make it specific and visual: who the character is, what happens,
+the setting, mood, lighting, camera feel and the hook for the post. Follow the Format line exactly: a single photo
+is ONE moment in ONE frame (never a sequence, several shots, panels or a beginning/middle/end, or the generator
+draws a collage); a photo set gives each photo its own moment; a video has a clear beginning, middle and payoff.
 Write 3-6 sentences of plain prose. No headings, no lists, no preamble - return only the improved brief."""
 
 
@@ -114,12 +116,19 @@ def _claude_cli():
     return bundled[-1] if bundled else None
 
 
-def enhance(cfg, idea, mode="video", style="", character="", has_reference=False):
+def enhance(cfg, idea, mode="video", style="", character="", has_reference=False, count=None):
     """Rewrite a rough idea into a richer brief: Claude Code on this PC (owner's login), else a Claude API key,
-    else the local LLM.
+    else the local LLM. count = number of pictures/scenes the project will have.
     Returns (text, engine_label)."""
-    what = {"images": "a photo set / carousel", "t2v": "a short text-to-video", "video": "a short video built from keyframes"}
-    user = f"Idea: {idea}\nFormat: {what.get(mode, 'a short video')}\n"
+    n = int(count) if str(count or "").isdigit() else None
+    if mode == "images":
+        fmt = ("ONE single photo: one moment, one frame" if n == 1 else
+               f"a photo set of {n} separate photos" if n else "a photo set / carousel")
+    elif mode == "t2v":
+        fmt = "ONE 5-second video scene" if n == 1 else f"a short text-to-video of {n} scenes" if n else "a short text-to-video"
+    else:
+        fmt = "a short video built from keyframes"
+    user = f"Idea: {idea}\nFormat: {fmt}\n"
     if style:
         user += f"Visual style: {style}\n"
     if character:

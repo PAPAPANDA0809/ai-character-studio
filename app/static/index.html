@@ -366,7 +366,7 @@ $('#btn-enh').onclick = async () => {
   if (!idea) return $('#idea').focus();
   const b = $('#btn-enh'); b.disabled = true; b.textContent = '✨ Thinking…';
   try {
-    const r = await api('/api/enhance', {idea, mode: NEW.mode, style: $('#style').value, character: $('#character').value, reference: NEW.ref});
+    const r = await api('/api/enhance', {idea, mode: NEW.mode, style: $('#style').value, character: $('#character').value, reference: NEW.ref, keyframes: +$('#nkf').value});
     $('#idea2').value = r.text; $('#enh-by').textContent = '· by ' + r.engine;
   } catch (e) { alert(e.message); }
   b.disabled = false; b.textContent = '✨ Improve';
