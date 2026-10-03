@@ -64,7 +64,7 @@
     "fps": 24,
     "steps": 8
   },
-  "default_image_engine": "z-image",
+  "default_image_engine": "qwen-image-21",
   "default_video_engine": "wan22-14b",
   "qwen_image": {
     "unet": "qwen-image-Q3_K_M.gguf",
