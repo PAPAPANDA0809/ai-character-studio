@@ -194,7 +194,7 @@
         </div>
         <label>Character</label>
         <div class="chars" id="chars"></div>
-        <div id="chars-hint" style="font-size:12px;color:var(--muted);margin-top:6px">Character pictures work with the <b>FLUX.2 klein</b>, <b>Qwen-Image 2.1</b> and <b>FLUX Kontext</b> image engines. <a href="#" id="use-kontext">Switch to one</a></div>
+        <div id="chars-hint" style="font-size:12px;color:var(--muted);margin-top:6px">Character pictures work with the <b>Qwen-Image 2.1</b> image engine. <a href="#" id="use-kontext">Switch to it</a></div>
         <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       </div>
       <div class="glass pad">
@@ -207,7 +207,7 @@
         <p id="nkf-hint" style="color:var(--muted);font-size:12px;margin:8px 0 0"></p>
         <label>Picture resolution</label>
         <div class="seg small" id="q-seg" style="grid-template-columns:repeat(5,1fr)"><button data-q="standard">360p</button><button data-q="sharp">720p</button><button data-q="high">1080p</button><button data-q="2k">2K</button><button data-q="ultra">4K</button></div>
-        <p style="color:var(--muted);font-size:12px;margin:6px 0 0">Per picture with FLUX: 360p ~1 min · 720p ~1.5 min · 1080p ~3 min · 2K ~3 min · 4K ~3.5 min (Qwen-Image is much slower, FLUX.2 klein much faster)</p>
+        <p style="color:var(--muted);font-size:12px;margin:6px 0 0">Per picture with Qwen-Image 2.1: 720p ~30 s · 1080p ~1.5 min · 2K and 4K a few minutes (~4 min with a character picture)</p>
         <div id="vres-wrap"><label>Video resolution</label>
         <div class="seg small" id="vres-seg" style="grid-template-columns:1fr 1fr"><button data-v="480p">480p</button><button data-v="720p">720p · ~2-3× slower</button></div></div>
         <label>Visual style</label>
@@ -343,11 +343,11 @@ function renderLora() {
   $('#lora-wrap').style.display = lorasFor(eng).length && NEW.mode !== 't2v' ? '' : 'none';
   $('#lora-sel').innerHTML = loraOptions(eng, keep);
 }
-// image engines that can use a character picture (the server's list; Kontext before it loads)
-const refEngines = () => (ENG && ENG.reference_engines) || ['flux-kontext'];
-// the one "Switch to one" picks: the fastest installed of them
-const bestRefEngine = () => ['flux2-klein-4b', 'flux2-klein-9b', 'flux-kontext', 'qwen-image-21']
-  .find(id => refEngines().includes(id) && (ENG?.image || []).some(e => e.id === id && e.installed)) || 'flux-kontext';
+// image engines that can use a character picture (the server's list; Qwen-Image 2.1 before it loads)
+const refEngines = () => (ENG && ENG.reference_engines) || ['qwen-image-21'];
+// the one "Switch to it" picks: the first installed of them
+const bestRefEngine = () => refEngines()
+  .find(id => (ENG?.image || []).some(e => e.id === id && e.installed)) || refEngines()[0];
 function renderChars() {
   const ok = refEngines().includes($('#img-eng').value);
   if (!ok) NEW.ref = '';
@@ -593,7 +593,7 @@ function render() {
       <div class="grid2">
         <div><label style="margin-top:0">Make</label><select id="f-mode" ${busy ? 'disabled' : ''}>${[['video', 'Images + video'], ['t2v', 'Video only'], ['images', 'Images only']].map(([v, l]) => `<option value="${v}" ${(P.mode || 'video') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div><label style="margin-top:0">Character picture</label><select id="f-ref" ${busy || isT2V || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts}</select>
-          ${!refEngines().includes(P.image_engine) && !P.reference && !isT2V ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with FLUX.2 klein, Qwen-Image 2.1 or FLUX Kontext</div>` : ''}</div>
+          ${!refEngines().includes(P.image_engine) && !P.reference && !isT2V ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Qwen-Image 2.1</div>` : ''}</div>
         <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
           ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['2k', '2K (1440p)'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         ${lorasFor(P.image_engine).length && !isT2V ? `<div><label>Trained character</label><select id="f-lora" ${busy ? 'disabled' : ''}>${loraOptions(P.image_engine, P.lora || '')}</select></div>` : ''}

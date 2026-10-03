@@ -93,7 +93,7 @@
     "cfg": 5.0,
     "shift": 8.0
   },
-  "default_t2v_engine": "ltxv-2b",
+  "default_t2v_engine": "wan22-5b",
   "hires_sizes": {
     "portrait": [
       896,
@@ -225,10 +225,6 @@
   "gpt_image": {
     "model": "gpt-image-2",
     "quality": "high"
-  },
-  "kontext_polish": {
-    "enabled": true,
-    "denoise": 0.22
   },
   "extra_model_dirs": ["D:/AICharacterStudio/models"],
   "loras": [

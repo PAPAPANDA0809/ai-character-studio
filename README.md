@@ -26,26 +26,20 @@ N keyframes give N-1 clips of 5 s (81 frames at 16 fps).
 
 ## Models
 
-- Image: FLUX.1-dev Q4_K_S GGUF, T5-XXL Q5_K_M GGUF, CLIP-L, Flux VAE. 20 steps.
-- Image with a master character picture: FLUX.1 Kontext dev Q4_K_S GGUF (same encoders/VAE). Pick or upload the picture in the app; every keyframe then keeps that character.
-- Video: Wan 2.2 I2V A14B high-noise + low-noise Q4_K_S GGUF with the lightx2v 4-step LoRAs, UMT5-XXL Q5_K_M GGUF, Wan 2.1 VAE. Uses ComfyUI's `WanFirstLastFrameToVideo`.
-- Text: Ollama `qwen3:4b` (unloaded after each call so the GPU is free).
-
-### Added October 2026 (`setup/extra6.txt`)
-
-Big video models live on `D:\AICharacterStudio\models` (HDD, slower to load); the app and ComfyUI also look there (`extra_model_dirs` in `app\config.json`, second block in `extra_model_paths.yaml`).
+Trimmed on 3 Oct 2026 to the engines in use (about 138 GB of other models removed). Bigger models are meant to run on rented GPUs instead.
 
 | Engine | Files | Character picture | Licence |
 |---|---|---|---|
-| FLUX.2 klein 4B | fp8 4.1 GB + Qwen3-4B (shared with Z-Image) + flux2 VAE | yes | Apache 2.0 |
-| FLUX.2 klein 9B | Q4_K_M GGUF 5.9 GB + Qwen3-8B fp8 8.7 GB | yes | FLUX non-commercial |
-| Qwen-Image 2.1 | int8 7.3 GB + Qwen3-VL-8B int8 9.4 GB + VAE | yes | Qwen research licence (commercial use needs an agreement) |
-| LTX-2.3 22B distilled (D:) | Q4_K_S GGUF 13 GB + Gemma 3 12B fp8 13 GB + connectors + VAEs | first+last frame, one picture, text | LTX-2 community licence |
-| LTX-2.5 22B distilled (D:) | Q4_K_S GGUF 15 GB + Gemma 4 12B int8 15 GB + VAEs | first+last frame, one picture, text | LTX-2 community licence |
+| Qwen-Image 2.1 (default) | int8 7.3 GB + Qwen3-VL-8B int8 9.4 GB + VAE | yes | Qwen research licence (commercial use needs an agreement) |
+| Z-Image Turbo | Q8_0 GGUF 7.2 GB + Qwen3-4B fp8 5.6 GB + Flux VAE (`ae`) | no | Apache 2.0 |
+| Wan 2.2 14B (video) | I2V A14B high + low noise Q4_K_S GGUF, lightx2v 4-step LoRAs, UMT5-XXL Q5_K_M GGUF, Wan 2.1 VAE; uses `WanFirstLastFrameToVideo` | start/end pictures | Apache 2.0 |
+| Wan 2.2 5B (text-to-video) | TI2V-5B Q5_K_M GGUF + Wan 2.2 VAE | text only | Apache 2.0 |
 
-Measured on this PC (RTX 3070 Ti 8 GB, 32 GB RAM): klein 4B 8-16 s per picture (2K 38 s); klein 9B 30 s to 10+ min (paging); Qwen-Image 2.1 ~30 s, ~4 min with a character picture; LTX-2.3 one 5 s clip ~2.5 h (step time grew from 2 to 32 min as RAM ran out), so the LTX engines are labelled very slow. 64 GB RAM would likely make them practical.
+- Trained characters: LoRAs in `models\loras`, listed under `loras` in `app\config.json` (Jacelyn, for Qwen-Image 2.1).
+- Text: Ollama `qwen3:4b` (unloaded after each call so the GPU is free).
+- Upscaler: 4x-UltraSharp, for engines that don't draw HD directly.
 
-LTX-2.x makes sound with the video: each clip keeps its soundtrack and the final video joins them (silence under clips from engines without sound). The official workflows' prompt-rewriting LLMs (Qwen3.5 PE, Gemma 4 E2B) are not installed or used.
+Measured on this PC (RTX 3070 Ti 8 GB, 32 GB RAM): Qwen-Image 2.1 ~30 s per picture, ~4 min with a character picture; Wan 2.2 14B 18-24 min per 480p clip. The removed engines' workflow code is still in `app\comfy.py`; downloading their files again (`setup\extra*.txt`) and re-listing them in the engine tables brings them back. LTX-2.3 took ~2.5 h per 5 s clip here, which is why it was dropped.
 
 ## Switching the text model
 

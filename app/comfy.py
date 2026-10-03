@@ -117,6 +117,8 @@ class Comfy:
 
 
 # Engines shown in the app's dropdowns, best picture quality first (the user's ranking, 3 Oct 2026).
+# Trimmed 3 Oct 2026 to the engines in use; the other models were removed from disk (bigger ones will run on
+# rented GPUs). Their workflow functions below still work if the files are downloaded again and re-listed.
 # "files" are checked against the models folders to mark what's installed.
 IMAGE_ENGINES = {
     "qwen-image-21": {"label": "Qwen-Image 2.1 (best quality, ~30 s, ~4 min with character picture, research licence)",
@@ -124,26 +126,9 @@ IMAGE_ENGINES = {
                                 "text_encoders/qwen3vl_8b_int8_convrot.safetensors", "vae/qwen_image_2.1_vae_bf16.safetensors"]},
     "z-image": {"label": "Z-Image Turbo (excellent photoreal, ~45 s)",
                 "files": ["unet/z_image_turbo-Q8_0.gguf", "text_encoders/qwen_3_4b_fp8_mixed.safetensors"]},
-    "flux2-klein-4b": {"label": "FLUX.2 klein 4B (fastest ~15 s, character picture OK)",
-                       "files": ["unet/flux-2-klein-4b-fp8.safetensors", "text_encoders/qwen_3_4b_fp8_mixed.safetensors",
-                                 "vae/flux2-vae.safetensors"]},
-    "flux2-klein-9b": {"label": "FLUX.2 klein 9B (character picture OK, 30 s to 5+ min on 32 GB RAM, non-commercial licence)",
-                       "files": ["unet/flux-2-klein-9b-Q4_K_M.gguf", "text_encoders/qwen_3_8b_fp8mixed.safetensors",
-                                 "vae/flux2-vae.safetensors"]},
-    "qwen-image": {"label": "Qwen-Image 1 (older; good with text in the image, ~1.5 min)",
-                   "files": ["unet/qwen-image-Q3_K_M.gguf", "loras/Qwen-Image-Lightning-8steps-V2.0-bf16.safetensors",
-                             "text_encoders/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", "vae/qwen_image_vae.safetensors"]},
-    "flux-dev": {"label": "FLUX.1 dev (~50s)", "files": ["unet/flux1-dev-Q4_K_S.gguf"]},
-    "sdxl-juggernaut": {"label": "Juggernaut XL (SDXL photoreal, ~30s)",
-                        "files": ["checkpoints/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"]},
-    "flux-kontext": {"label": "FLUX Kontext (character picture, ~1.5 min)",
-                     "files": ["unet/flux1-kontext-dev-Q4_K_S.gguf"]},
-    "flux-schnell": {"label": "FLUX.1 schnell (fast drafts, ~20s)", "files": ["unet/flux1-schnell-Q4_K_S.gguf"]},
 }
 # Engines that can use the character picture as a reference
-REFERENCE_ENGINES = ("flux-kontext", "flux2-klein-4b", "flux2-klein-9b", "qwen-image-21")
-REFERENCE_ENGINE = {"label": "FLUX.1 Kontext (uses the master character picture)",
-                    "files": ["unet/flux1-kontext-dev-Q4_K_S.gguf"]}
+REFERENCE_ENGINES = ("qwen-image-21",)
 
 LTX23_FILES = ["unet/ltx-2.3-22b-distilled-Q4_K_S.gguf", "checkpoints/ltx-2.3-22b-distilled_embeddings_connectors.safetensors",
                "vae/ltx-2.3-22b-distilled_video_vae.safetensors", "checkpoints/ltx-2.3-22b-distilled_audio_vae.safetensors",
@@ -154,16 +139,6 @@ LTX2_ENGINES = ("ltx23", "ltx25")
 VIDEO_ENGINES = {
     "wan22-14b": {"label": "Wan 2.2 14B first+last frame (best quality, ~20 min/clip)",
                   "files": ["unet/Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf", "unet/Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf"]},
-    "ltxv-2b": {"label": "LTX-Video 2B first+last frame (fast, ~1 min/clip)",
-                "files": ["checkpoints/ltxv-2b-0.9.8-distilled.safetensors"]},
-    "hunyuan15": {"label": "HunyuanVideo 1.5 480p (~8 min/clip, start frame only)",
-                  "files": ["diffusion_models/hunyuanvideo1.5_480p_i2v_step_distilled_fp8_scaled.safetensors",
-                            "text_encoders/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
-                            "text_encoders/byt5_small_glyphxl_fp16.safetensors",
-                            "vae/hunyuanvideo15_vae_fp16.safetensors",
-                            "clip_vision/sigclip_vision_patch14_384.safetensors"]},
-    "ltx23": {"label": "LTX-2.3 first+last frame, with sound (VERY SLOW here: ~2.5 h per 5 s clip on 32 GB RAM)", "files": LTX23_FILES},
-    "ltx25": {"label": "LTX-2.5 first+last frame, with sound (untested; slower than LTX-2.3, hours per clip)", "files": LTX25_FILES},
 }
 
 
@@ -171,10 +146,6 @@ T2V_ENGINES = {
     "wan22-5b": {"label": "Wan 2.2 5B text-to-video (experimental, ~6 min, weak at 9:16)",
                  "files": ["unet/Wan2.2-TI2V-5B-Q5_K_M.gguf", "vae/wan2.2_vae.safetensors",
                            "text_encoders/umt5-xxl-encoder-Q5_K_M.gguf"]},
-    "ltxv-2b": {"label": "LTX-Video 2B text-to-video (fast, ~40s)",
-                "files": ["checkpoints/ltxv-2b-0.9.8-distilled.safetensors"]},
-    "ltx23": {"label": "LTX-2.3 text-to-video, with sound (VERY SLOW here: ~2.5 h per 5 s scene)", "files": LTX23_FILES},
-    "ltx25": {"label": "LTX-2.5 text-to-video, with sound (untested; slower than LTX-2.3, hours per scene)", "files": LTX25_FILES},
 }
 
 

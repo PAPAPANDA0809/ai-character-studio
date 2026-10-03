@@ -375,8 +375,8 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "seed": int(seed) if seed not in (None, "") else random.randint(1, 2**31 - 1),
         "plan": plan, "keyframe_seeds": {}, "status": "planned", "log": [],
         "reference": reference,
-        "image_engine": (image_engine if image_engine in comfy.REFERENCE_ENGINES else "flux-kontext") if reference else
-                        image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "flux-dev"),
+        "image_engine": (image_engine if image_engine in comfy.REFERENCE_ENGINES else comfy.REFERENCE_ENGINES[0]) if reference else
+                        image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "qwen-image-21"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
         "clip_fps": {}, "mode": mode,
         "quality": quality if quality in QUALITIES else ("sharp" if mode == "images" else "standard"),
@@ -414,9 +414,8 @@ def engines():
         "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
         "t2v": [entry(k, e) for k, e in comfy.T2V_ENGINES.items()],
         "default_t2v": cfg.get("default_t2v_engine", "wan22-5b"),
-        "reference": entry("flux-kontext", comfy.REFERENCE_ENGINE),
         "gpt_image": cloud.available(),
-        "default_image": cfg.get("default_image_engine", "flux-dev"),
+        "default_image": cfg.get("default_image_engine", "qwen-image-21"),
         "default_video": cfg.get("default_video_engine", "wan22-14b"),
     }
 
@@ -455,7 +454,7 @@ def set_reference(pid, reference):
     p = load(pid)
     p["reference"] = reference if reference in list_characters(user_of(pid)) else ""
     if p["reference"] and p.get("image_engine") not in comfy.REFERENCE_ENGINES:
-        p["image_engine"] = "flux-kontext"
+        p["image_engine"] = comfy.REFERENCE_ENGINES[0]
     save(p)
     return p
 
@@ -564,9 +563,11 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         if reseed or key not in p["keyframe_seeds"]:
             # one shared seed for the first pass helps keep the character consistent
             p["keyframe_seeds"][key] = random.randint(1, 2**31 - 1) if reseed else p["seed"]
-        use = engine or p.get("image_engine", "flux-dev")
+        use = engine or p.get("image_engine")
+        if use != "gpt-image" and use not in comfy.IMAGE_ENGINES:  # older project made with a removed engine
+            use = cfg.get("default_image_engine", "qwen-image-21")
         if ref and use != "gpt-image" and use not in comfy.REFERENCE_ENGINES:
-            use = "flux-kontext"
+            use = comfy.REFERENCE_ENGINES[0]
         log(p, f"keyframe {i + 1}/{n}: generating with {use}")
         t = time.time()
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
@@ -592,10 +593,6 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         if ref:
             wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i), lora), ref_name, rw, rh,
                                           p["keyframe_seeds"][key], prefix, steps)
-            pol = cfg.get("kontext_polish", {})  # Kontext alone looks plasticky; the newer engines don't need it
-            if use == "flux-kontext" and pol.get("enabled", True) and model_path(cfg, "unet/" + cfg["zimage"]["unet"]):
-                wf = comfy.add_zimage_polish(cfg, wf, "photo, " + keyframe_prompt(p, i), p["keyframe_seeds"][key],
-                                             pol.get("denoise", 0.4))
         else:
             wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,
                                       p["keyframe_seeds"][key], prefix, steps)
@@ -634,7 +631,7 @@ def do_animate(p, only=None):
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     w, h = video_size(cfg, p)
-    engine = p.get("video_engine", "wan22-14b")
+    engine = p.get("video_engine") if p.get("video_engine") in comfy.VIDEO_ENGINES else "wan22-14b"
     fps = engine_fps(cfg, engine)
     n = len(p["plan"]["keyframes"])
     for i in range(n):
@@ -669,7 +666,7 @@ def do_t2v(p, only=None):
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
     w, h = video_size(cfg, p)
-    engine = p.get("t2v_engine", "wan22-5b")
+    engine = p.get("t2v_engine") if p.get("t2v_engine") in comfy.T2V_ENGINES else "wan22-5b"
     fps = engine_fps(cfg, engine)
     n = len(p["plan"]["keyframes"])
     c.free()
@@ -731,7 +728,7 @@ def do_animate_image(p, index, motion=""):
     src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
     if not os.path.exists(src):
         raise RuntimeError(f"picture {i + 1} isn't generated yet")
-    engine = p.get("video_engine", "wan22-14b")
+    engine = p.get("video_engine") if p.get("video_engine") in comfy.VIDEO_ENGINES else "wan22-14b"
     fps = engine_fps(cfg, engine)
     w, h = video_size(cfg, p)
     c.free()
