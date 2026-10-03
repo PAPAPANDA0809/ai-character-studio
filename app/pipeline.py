@@ -25,6 +25,11 @@ os.makedirs(CHARACTERS, exist_ok=True)
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
 NATIVE_HD = ("qwen-image-21", "flux2-klein-4b", "flux2-klein-9b")  # draw 720p/1080p directly, no 4x upscale pass
+PERSON_WORDS = re.compile(r"(?i)\b(she|he|her|his|him|woman|women|man|men|girl|boy|lady|guy|person|people|model|"
+                          r"wife|husband|mom|mum|dad|kid|child|baby|face|smil\w*)\b")
+CLOTHING_WORDS = re.compile(r"(?i)\b(wear\w*|outfit|cloth\w*|dress\w*|shirt|t-shirt|tee|top|blouse|jacket|coat|raincoat|"
+                            r"hoodie|sweater|cardigan|skirt|shorts|jeans|pants|trousers|bikini|swimsuit|shoes|sneakers|"
+                            r"boots|sandals|heels|hat|cap|scarf|uniform|suit|gown|kimono|kebaya|hijab)\b")
 
 
 def char_dir(user):
@@ -444,16 +449,20 @@ def keyframe_prompt(p, i):
 
 
 def reference_prompt(p, i):
-    """Character-picture prompt: keep the person (face, hair, body) from the reference, but let the user's words
-    decide clothing, accessories, pose and scene; an outfit named in the prompt replaces the reference outfit."""
+    """Character-picture prompt: keep the subject from the reference (a person, animal, product or object) and let
+    the user's words decide clothing, pose and scene; an outfit named in the prompt replaces the reference outfit."""
     pl = p["plan"]
     scene = ". ".join(s.strip().rstrip(".") for s in [pl["keyframes"][i]["image_prompt"], pl.get("setting", "")]
                       if s and s.strip())
     style = p.get("style", "").strip()
-    return (f"Keep this exact same person from the reference image: same face, same eyes, same hair, same skin "
-            f"tone, same body proportions. Clothing, accessories, pose and scene follow this description; if it "
-            f"names an outfit, dress them in that outfit instead of the one in the reference image: {scene}. "
-            + (f"Style: {style}." if style else ""))
+    # Image models read "face", "hair", "people" (even in "do not add people") as a request to draw a person, so
+    # person and clothing words are only added when the user's own description is about a person / clothes.
+    keep = "Keep the exact same subject from the reference image, with its identity and details unchanged"
+    if PERSON_WORDS.search(scene):
+        keep += ": same face, eyes, hair, skin tone and body"
+    if CLOTHING_WORDS.search(scene):
+        keep += ". Use the clothing described here instead of the outfit in the reference image"
+    return f"{keep}. {scene}. " + (f"Style: {style}." if style else "")
 
 
 def video_size(cfg, p):

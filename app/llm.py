@@ -14,15 +14,16 @@ import subprocess
 import urllib.parse
 import urllib.request
 
-PLAN_SYSTEM = """You are a creative director for short social media videos featuring a recurring character.
+PLAN_SYSTEM = """You are a creative director for short social media posts built around one main subject: a person, an
+animal, a product, food, an object or a place - whatever the post idea is about. Never add people the idea doesn't ask for.
 Given a post idea, you plan a sequence of KEYFRAMES. A video model will animate a 5-second clip
 between each pair of consecutive keyframes, so consecutive keyframes must be visually continuous
-(same character, same outfit, similar location, only a moderate change in pose, camera or action).
+(same subject, same look, similar location, only a moderate change in pose, camera or action).
 
 Return ONLY a JSON object with this shape:
 {
   "title": "short title",
-  "character": "one detailed sentence describing the character's fixed look: age, face, hair, outfit, colours",
+  "character": "one detailed sentence describing the main subject's fixed look (for a person: age, face, hair, outfit, colours; for anything else: shape, colours, materials); empty if there is no recurring subject",
   "setting": "one sentence describing the main location and lighting",
   "keyframes": [
     {"image_prompt": "full visual description of this still frame (subject, pose, framing, background, lighting)",
@@ -84,7 +85,8 @@ def chat(cfg, system, user, want_json=True):
 
 
 ENHANCE_SYSTEM = """You turn a rough social media post idea into a stronger creative brief for an AI image/video generator.
-Keep the user's intent, characters and language. Make it specific and visual: who the character is, what happens,
+Keep the user's intent, subject and language. The subject may be a person, an animal, a product, food, an object or a
+place; never add people the idea doesn't ask for. Make it specific and visual: who or what the subject is, what happens,
 the setting, mood, lighting, camera feel and the hook for the post. Follow the Format line exactly: a single photo
 is ONE moment in ONE frame (never a sequence, several shots, panels or a beginning/middle/end, or the generator
 draws a collage); a photo set gives each photo its own moment; a video has a clear beginning, middle and payoff.
@@ -134,11 +136,13 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
     if character:
         user += f"Character: {character}\n"
     if has_reference:
-        user += ("The character's face and body come from a reference photo, so do NOT describe their face, hair or "
-                 "body. If the idea mentions clothing or an outfit (even vaguely, like 'a summer outfit'), describe "
+        user += ("The main subject's look comes from a reference picture. It may be a person, an animal, a product, "
+                 "food or an object - go by the idea and do NOT add a person (hands, model, someone holding it) unless "
+                 "the idea asks for one. Don't describe the subject's face, hair, body, shape or design. If it is a "
+                 "person and the idea mentions clothing or an outfit (even vaguely, like 'a summer outfit'), describe "
                  "it concretely: each garment, colour, fabric, shoes and accessories - otherwise the generator copies "
-                 "the outfit from the reference photo. Also describe the scene, pose, action, expression, mood and "
-                 "camera.\n")
+                 "the outfit from the reference picture. Also describe the scene, placement or pose, action, mood "
+                 "and camera.\n")
     cli = _claude_cli()
     if cli:  # Claude Code on this PC, signed in with the owner's Claude account
         r = subprocess.run([cli, *CLI_ARGS],
@@ -205,22 +209,23 @@ def template_plan(idea, n, character="", default_character=True):
     }
 
 
-REFERENCE_RULE = ("IMPORTANT: the character's appearance comes from a reference picture. In image_prompt and motions, "
-                  "call them only 'the character' and NEVER describe their face, fur, hair or body. If the post idea "
-                  "mentions an outfit, clothing or accessories (even vaguely), describe that outfit concretely - "
-                  "each garment, colour, fabric, shoes, accessories - and repeat the same description in every "
-                  "image_prompt (otherwise don't mention clothing); also describe pose, action, expression, framing, "
-                  "location and lighting. "
+REFERENCE_RULE = ("IMPORTANT: the main subject's appearance comes from a reference picture. It may be a person, an animal, "
+                  "a product, food or an object - go by the post idea, and NEVER add a person (hands, model, someone "
+                  "holding it) the idea doesn't ask for. In image_prompt and motions call it only 'the subject' and do "
+                  "NOT describe its face, fur, hair, body, shape or design. If it is a person and the post idea mentions "
+                  "an outfit, clothing or accessories (even vaguely), describe that outfit concretely - each garment, "
+                  "colour, fabric, shoes, accessories - and repeat it in every image_prompt (otherwise don't mention "
+                  "clothing); also describe pose or placement, action, framing, location and lighting. "
                   "Set \"character\" to an empty string.")
 
 
 IMAGES_RULE = ("This is a PHOTO SET (carousel post), not a video: the keyframes are independent images of the same "
-               "character with varied poses, framing and moments. Return an empty \"motions\" list.")
+               "subject with varied poses, angles, framing and moments. Return an empty \"motions\" list.")
 
 
 T2V_RULE = ("This is a TEXT-TO-VIDEO post: each keyframe is a separate 5-second video scene. In image_prompt describe "
             "the scene AND the action/camera movement that happens during those 5 seconds, fully self-contained "
-            "(repeat the character's look in every scene). Return an empty \"motions\" list.")
+            "(repeat the subject's look in every scene). Return an empty \"motions\" list.")
 
 
 def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mode="video"):
@@ -243,7 +248,7 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
             user += f"(Who the character is, for context only: {character})\n"
     elif character:
         user += f"The character must look like this: {character}\n"
-    user += ("Follow the post idea closely: every keyframe must come from it (same character, setting, actions, "
+    user += ("Follow the post idea closely: every keyframe must come from it (same subject, setting, actions, "
              "props, mood and hook). Split it into the moments it describes, reusing its own wording for each "
              "moment; do not invent a different story, new props or new characters.\n")
     cli = _claude_cli() if cfg.get("claude_planner", True) else None
