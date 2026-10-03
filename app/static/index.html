@@ -597,7 +597,9 @@ let pollTimer = null;
 async function poll() {
   clearTimeout(pollTimer);
   if (!P) return;
-  const fresh = await api('/api/projects/' + P.id);
+  let fresh;
+  try { fresh = await api('/api/projects/' + P.id); }
+  catch (e) { pollTimer = setTimeout(poll, 5000); return; }  // app restarting or network blip: keep checking, don't freeze on "Generating…"
   const key = x => JSON.stringify([x.status, x.log?.length, x.keyframes_version, x.clips_version, x.final_version]);
   if (key(fresh) !== key(P)) {
     if (!dirty && VIEW === 'project') { P = fresh; render(); }

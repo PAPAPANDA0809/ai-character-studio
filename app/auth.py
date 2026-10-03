@@ -27,6 +27,11 @@ def _write(path, data):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    for _ in range(40):  # Windows: "Access is denied" while a request thread is reading the file; retry briefly
+        try:
+            return os.replace(tmp, path)
+        except PermissionError:
+            time.sleep(0.05)
     os.replace(tmp, path)
 
 

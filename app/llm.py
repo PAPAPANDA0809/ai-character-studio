@@ -125,8 +125,9 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
     if character:
         user += f"Character: {character}\n"
     if has_reference:
-        user += ("The character's look comes from a reference photo, so do NOT describe their face, hair, body, "
-                 "clothing, glasses or accessories. Describe only the scene, pose, action, expression, mood and camera.\n")
+        user += ("The character's face and body come from a reference photo, so do NOT describe their face, hair or "
+                 "body. Keep any outfit, clothing or accessories the idea asks for; describe the scene, pose, action, "
+                 "expression, mood and camera.\n")
     cli = _claude_cli()
     if cli:  # Claude Code on this PC, signed in with the owner's Claude account
         r = subprocess.run([cli, *CLI_ARGS],
@@ -194,8 +195,9 @@ def template_plan(idea, n, character="", default_character=True):
 
 
 REFERENCE_RULE = ("IMPORTANT: the character's appearance comes from a reference picture. In image_prompt and motions, "
-                  "call them only 'the character' and NEVER describe their face, fur, hair, body, clothing, hats, "
-                  "glasses or accessories; describe only pose, action, expression, framing, location and lighting. "
+                  "call them only 'the character' and NEVER describe their face, fur, hair or body. If the post idea "
+                  "names an outfit, clothing or accessories, repeat them in every image_prompt (otherwise don't "
+                  "mention clothing); also describe pose, action, expression, framing, location and lighting. "
                   "Set \"character\" to an empty string.")
 
 

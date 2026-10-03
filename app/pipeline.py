@@ -111,12 +111,23 @@ def load(pid):
 _save_lock = threading.Lock()
 
 
+def replace_file(tmp, dest):
+    """os.replace, retried: on Windows it fails with "Access is denied" while another thread is reading dest
+    (the page polls project.json every 3 s), which used to kill the running job."""
+    for _ in range(40):
+        try:
+            return os.replace(tmp, dest)
+        except PermissionError:
+            time.sleep(0.05)
+    os.replace(tmp, dest)
+
+
 def save(p):
     with _save_lock:
         tmp = pdir(p["id"], "project.json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(p, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, pdir(p["id"], "project.json"))
+        replace_file(tmp, pdir(p["id"], "project.json"))
 
 
 def list_projects(user):
@@ -432,13 +443,15 @@ def keyframe_prompt(p, i):
 
 
 def reference_prompt(p, i):
-    """Kontext prompt: describe the new scene and tell it to keep the reference character unchanged."""
+    """Character-picture prompt: keep the person (face, hair, body) from the reference, but let the user's words
+    decide clothing, accessories, pose and scene; an outfit named in the prompt replaces the reference outfit."""
     pl = p["plan"]
     scene = ". ".join(s.strip().rstrip(".") for s in [pl["keyframes"][i]["image_prompt"], pl.get("setting", "")]
                       if s and s.strip())
     style = p.get("style", "").strip()
-    return (f"Keep this exact same person from the reference image: same face, same eyes, same glasses and "
-            f"accessories, same hair, same body proportions. Change only the scene and pose: {scene}. "
+    return (f"Keep this exact same person from the reference image: same face, same eyes, same hair, same skin "
+            f"tone, same body proportions. Clothing, accessories, pose and scene follow this description; if it "
+            f"names an outfit, dress them in that outfit instead of the one in the reference image: {scene}. "
             + (f"Style: {style}." if style else ""))
 
 
