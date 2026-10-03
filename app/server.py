@@ -218,6 +218,10 @@ class Handler(BaseHTTPRequestHandler):
                                            b.get("style", ""), b.get("character", ""), bool(b.get("reference")),
                                            b.get("keyframes"))
                 return self.send_json({"text": text, "engine": engine})
+            if path == "/api/characters/delete":
+                if not pipeline.delete_character(u, b.get("name", "")):
+                    return self.send_json({"error": "not found"}, 404)
+                return self.send_json({"ok": True})
             if path == "/api/delete":
                 return self.send_json({"deleted": pipeline.delete_items(u, b.get("projects", []), b.get("files", []))})
             if path == "/api/plan":

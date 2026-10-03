@@ -193,6 +193,14 @@ def _to_trash(user, src, rel):
     shutil.move(src, dst)
 
 
+def delete_character(user, name):
+    """Move one of the user's character pictures to the trash. Only names from their own list are accepted."""
+    if name not in list_characters(user):
+        return False
+    _to_trash(user, os.path.join(char_dir(user), name), "characters/" + name)
+    return True
+
+
 def delete_items(user, projects=(), files=()):
     """Delete whole projects and/or single files ({project, path}) owned by user. Returns how many were removed."""
     n = 0
@@ -519,6 +527,8 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
     n = len(p["plan"]["keyframes"])
     indices = list(range(n)) if indices is None else [int(i) for i in indices]
     ref = p.get("reference")
+    if ref and ref not in list_characters(user_of(p["id"])):
+        raise RuntimeError(f'the character picture "{ref}" was deleted; pick another one (or None) under Character picture')
     if ref:
         ref_name = c.upload_image(os.path.join(char_dir(user_of(p["id"])), ref),
                                   "aics_ref_" + re.sub(r"[^\w.\-]", "_", user_of(p["id"]) + "_" + ref))

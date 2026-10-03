@@ -72,6 +72,10 @@
   .char .pic { width:64px; height:64px; border-radius:16px; border:2px solid transparent; background:rgba(0,0,0,.35) center/cover; display:flex; align-items:center; justify-content:center; font-size:22px; color:var(--muted); }
   .char.on .pic { border-color:var(--mint); box-shadow:0 0 16px rgba(46,242,181,.4); }
   .char span { display:block; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .char { position:relative; }
+  .char .del { position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; border:1px solid var(--line);
+               background:#1a1d23; color:var(--muted); font-size:13px; line-height:20px; padding:0; display:flex; align-items:center; justify-content:center; }
+  .char .del:hover { color:#fff; background:#c0392b; border-color:#c0392b; }
   .presets { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
   .presets button { font-size:12px; padding:6px 10px; font-weight:500; border-radius:99px; }
   details { margin-top:14px; } summary { cursor:pointer; color:var(--muted); font-size:13px; list-style:none; }
@@ -336,9 +340,17 @@ function renderChars() {
   $('#chars').style.pointerEvents = ok ? '' : 'none';
   $('#chars-hint').style.display = ok ? 'none' : '';
   $('#chars').innerHTML = `<div class="char ${NEW.ref ? '' : 'on'}" data-c=""><div class="pic">∅</div><span>None</span></div>` +
-    CHARS.map(c => `<div class="char ${c === NEW.ref ? 'on' : ''}" data-c="${esc(c)}"><div class="pic" style="background-image:url('/characters/${encodeURIComponent(c)}')"></div><span>${esc(c.replace(/\.\w+$/, ''))}</span></div>`).join('') +
+    CHARS.map(c => `<div class="char ${c === NEW.ref ? 'on' : ''}" data-c="${esc(c)}"><div class="pic" style="background-image:url('/characters/${encodeURIComponent(c)}')"></div><span>${esc(c.replace(/\.\w+$/, ''))}</span><button class="del" data-del-char="${esc(c)}" title="Delete this character picture">×</button></div>`).join('') +
     `<div class="char" id="char-up"><div class="pic" style="border:2px dashed var(--line)">＋</div><span>Upload</span></div>`;
   $$('#chars [data-c]').forEach(el => el.onclick = () => { NEW.ref = el.dataset.c; renderChars(); });
+  $$('#chars [data-del-char]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const name = b.dataset.delChar;
+    if (!confirm(`Delete the character picture "${name.replace(/\.\w+$/, '')}"? It moves to the app's trash folder.`)) return;
+    try { await api('/api/characters/delete', {name}); } catch (err) { return alert(err.message); }
+    if (NEW.ref === name) NEW.ref = '';
+    refreshChars();
+  });
   $('#char-up').onclick = () => $('#ref-file').click();
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
