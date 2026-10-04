@@ -360,13 +360,19 @@ function renderChars() {
   $('#chars').innerHTML = `<div class="char ${NEW.refs.length ? '' : 'on'}" data-c=""><div class="pic">∅</div><span>None</span></div>` +
     CHARS.map(c => { const k = NEW.refs.indexOf(c); return `<div class="char ${k >= 0 ? 'on' : ''}" data-c="${esc(c)}">${k >= 0 ? `<span class="num">${k + 1}</span>` : ''}<div class="pic" style="background-image:url('/characters/${encodeURIComponent(c)}')"></div><span>${esc(c.replace(/\.\w+$/, ''))}</span><button class="del" data-del-char="${esc(c)}" title="Delete this character picture">×</button></div>`; }).join('') +
     `<div class="char" id="char-up"><div class="pic" style="border:2px dashed var(--line)">＋</div><span>Upload</span></div>`;
-  $$('#chars [data-c]').forEach(el => el.onclick = () => {  // tap to add (next number) or remove; None clears
+  $$('#chars [data-c]').forEach(el => el.onclick = () => {  // None clears; a picture opens a preview to use or remove it
     const c = el.dataset.c, k = NEW.refs.indexOf(c);
-    if (!c) NEW.refs = [];
-    else if (k >= 0) NEW.refs.splice(k, 1);
-    else if (NEW.refs.length < 3) NEW.refs.push(c);
-    else return alert('Up to 3 character pictures. Tap a picked one to remove it first.');
-    renderChars();
+    if (!c) { NEW.refs = []; return renderChars(); }
+    const full = NEW.refs.length >= 3 && k < 0;
+    $('#lb').innerHTML = `<img src="/characters/${encodeURIComponent(c)}"><div style="color:var(--muted);font-size:13px">${esc(c.replace(/\.\w+$/, ''))}${k >= 0 ? ` · picture ${k + 1}` : ''}${ZOOM_HINT}</div>
+      <div class="row">${k >= 0 ? '<button id="lb-ref">Remove</button>'
+        : `<button class="primary" id="lb-ref" ${full ? 'disabled' : ''}>Use as picture ${NEW.refs.length + 1}</button>`}<button id="lb-close">Close</button></div>
+      ${full ? '<div style="color:var(--muted);font-size:12px">Up to 3 pictures: remove one first.</div>' : ''}`;
+    makeZoom($('#lb img'));
+    $('#lb').classList.add('on');
+    const close = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
+    $('#lb-close').onclick = close;
+    $('#lb-ref').onclick = () => { k >= 0 ? NEW.refs.splice(k, 1) : NEW.refs.push(c); close(); renderChars(); };
   });
   $$('#chars [data-del-char]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
