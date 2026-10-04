@@ -132,6 +132,13 @@
   .gal img, .gal video { width:100%; height:100%; object-fit:cover; display:block; }
   .pick { position:absolute; top:8px; left:8px; z-index:2; width:26px; height:26px; border-radius:8px; border:2px solid #fff;
           background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; font-size:15px; color:transparent; cursor:pointer; }
+  /* with a mouse: tick box and card buttons appear on hover (always while selecting, on picked cards and on a set pin);
+     touch screens can't hover, so they keep them visible */
+  @media (hover:hover) {
+    .pcard .pick, .gal .it .pick, .pcard .pbtns button { opacity:0; transition:opacity .15s; }
+    .pcard:hover .pick, .gal .it:hover .pick, .pcard:hover .pbtns button, .pcard .pbtns .pin.on,
+    body.selecting .pick, .picked .pick { opacity:1; }
+  }
   .picked .pick { background:var(--mint); border-color:var(--mint); color:#041014; }
   .picked { outline:3px solid var(--mint); outline-offset:-3px; }
   .selbar { display:flex; gap:8px; align-items:center; margin:-4px 0 14px; }
@@ -319,7 +326,7 @@ $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}">${l}</butt
 $$('[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
 
 function show(v) {
-  VIEW = v; SEL.on = false; SEL.keys.clear();
+  VIEW = v; SEL.on = false; SEL.keys.clear(); document.body.classList.remove('selecting');
   if (v !== 'project') document.querySelector('main').classList.remove('wide');
   $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
   $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
@@ -542,6 +549,7 @@ const SEL = {on: false, kind: '', keys: new Set()};
 function renderSelbar(kind) {
   const bar = document.querySelector(`.selbar[data-for="${kind}"]`);
   SEL.on = SEL.keys.size > 0; SEL.kind = kind;
+  document.body.classList.toggle('selecting', SEL.on);
   bar.innerHTML = SEL.on
     ? `<span style="font-size:13px">${SEL.keys.size} selected</span>${kind === 'projects' ? '' : '<button id="sel-dl">⬇ Download</button>'}<button class="del" id="sel-del">🗑 Delete</button><button id="sel-cancel">Clear</button>`
     : `<span style="color:var(--muted);font-size:12px">Tick the boxes to select items to ${kind === 'projects' ? 'delete' : 'download or delete'}</span>`;
