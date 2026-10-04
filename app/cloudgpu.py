@@ -124,12 +124,16 @@ def start():
     return True
 
 
-def _start(faulty=0):
-    """faulty = pods given up on because their card didn't work (community hosts): up to 2 more are tried."""
+def _start(faulty=0, first=0):
+    """faulty = pods given up on because their card didn't work (community hosts): up to 2 more are tried, starting
+    at the next entry of tries (RunPod handed the same broken host out again for the same card type).
+    first = where in tries to start."""
     c = cfg()
+    tried = first
     try:
         pod, label, why = None, "", ""
-        for gpu, label, cloud in c["tries"]:  # cheapest first; the next one when none is free
+        for tried in range(first, len(c["tries"])):  # cheapest first; the next one when none is free
+            gpu, label, cloud = c["tries"][tried]
             if state["status"] != "starting":
                 return  # stopped meanwhile
             _set(gpu=label, message=f"Renting an {label} ({'community' if cloud == 'COMMUNITY' else 'secure'} cloud)…")
@@ -176,10 +180,10 @@ def _start(faulty=0):
         _open_tunnel()
         _set(status="ready", message=f"{state['gpu']} ready", last_used=time.time())
     except Exception as e:
-        if "FAULTY_GPU" in str(e) and faulty < 2:
+        if "FAULTY_GPU" in str(e) and faulty < 2 and tried + 1 < len(c["tries"]):
             _delete("The rented card didn't work", error=True)
-            _set(status="starting", message="That card was faulty; renting another one…")
-            return _start(faulty + 1)
+            _set(status="starting", message="That card was faulty; renting a different one…")
+            return _start(faulty + 1, tried + 1)
         _delete(f"Stopped: {e}".replace("FAULTY_GPU", "the rented cards didn't work; try again later"), error=True)
 
 
