@@ -327,6 +327,8 @@ $$('[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
 
 function show(v) {
   VIEW = v; SEL.on = false; SEL.keys.clear(); document.body.classList.remove('selecting');
+  // the address remembers the tab (and the open project, set in openProject) so a refresh comes back here
+  if (v !== 'project') history.replaceState(null, '', v === 'create' ? location.pathname : '#' + v);
   if (v !== 'project') document.querySelector('main').classList.remove('wide');
   $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
   $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
@@ -542,7 +544,8 @@ async function renameProject(id, title) {  // true when renamed
     if (t === null || !t.trim() || t.trim() === title) return false;
     try { await api(`/api/projects/${id}/rename`, {title: t}); return true; } catch (e) { alert(e.message); return false; }
 }
-async function openProject(id) { dirty = false; STI = 0; STV = null; STE = false; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project'); render(); poll(); }
+async function openProject(id) { dirty = false; STI = 0; STV = null; STE = false; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
+  history.replaceState(null, '', '#project/' + encodeURIComponent(id)); render(); poll(); }
 
 /* ---------- select & delete ---------- */
 const SEL = {on: false, kind: '', keys: new Set()};
@@ -1031,7 +1034,13 @@ async function openAccount() {
 $('#me-chip').onclick = openAccount;
 $('#acct').onclick = e => { if (e.target.id === 'acct') $('#acct').classList.remove('on'); };
 
-loadMe().then(() => { syncCreate(); refreshStatus(); refreshChars(); refreshEngines(); show('create'); });
+loadMe().then(() => {
+  syncCreate(); refreshStatus();
+  const ready = Promise.all([refreshChars(), refreshEngines()]).catch(() => {});  // a project page lists both
+  const h = decodeURIComponent(location.hash.slice(1));  // back to the tab or project open before the refresh
+  if (h.startsWith('project/')) ready.then(() => openProject(h.slice(8))).catch(() => show('projects'));  // deleted meanwhile
+  else show(['projects', 'images', 'videos'].includes(h) ? h : 'create');
+});
 setInterval(refreshStatus, 6000);
 </script>
 </body>
