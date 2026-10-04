@@ -179,12 +179,26 @@ def _start(faulty=0, first=0):
             raise RuntimeError("setup took over 40 minutes")
         _open_tunnel()
         _set(status="ready", message=f"{state['gpu']} ready", last_used=time.time())
+        _free_local()
     except Exception as e:
         if "FAULTY_GPU" in str(e) and faulty < 2 and tried + 1 < len(c["tries"]):
             _delete("The rented card didn't work", error=True)
             _set(status="starting", message="That card was faulty; renting a different one…")
             return _start(faulty + 1, tried + 1)
         _delete(f"Stopped: {e}".replace("FAULTY_GPU", "the rented cards didn't work; try again later"), error=True)
+
+
+def _free_local():
+    """The PC's own ComfyUI keeps its last model on the 8 GB card (~2.5 GB), which made YouTube stutter while the
+    rented GPU did the work: unload it (the next local job loads it again)."""
+    try:
+        with open(os.path.join(APP_DIR, "config.json"), encoding="utf-8") as f:
+            local = json.load(f)["comfy_url"]
+        req = urllib.request.Request(local + "/free", data=b'{"unload_models": true, "free_memory": true}',
+                                     headers={"Content-Type": "application/json"})
+        DIRECT.open(req, timeout=10).read()
+    except Exception:
+        pass  # ComfyUI not running: nothing to free
 
 
 def _send_loras():
