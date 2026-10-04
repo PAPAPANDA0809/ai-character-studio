@@ -24,7 +24,7 @@ os.makedirs(CHARACTERS, exist_ok=True)
 
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
-NATIVE_HD = ("qwen-image-21", "flux2-klein-4b", "flux2-klein-9b")  # draw 720p/1080p directly, no 4x upscale pass
+NATIVE_HD = ("qwen-image-21", "z-image")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
 PERSON_WORDS = re.compile(r"(?i)\b(she|he|her|his|him|woman|women|man|men|girl|boy|lady|guy|person|people|model|"
                           r"wife|husband|mom|mum|dad|kid|child|baby|face|smil\w*)\b")
 CLOTHING_WORDS = re.compile(r"(?i)\b(wear\w*|outfit|cloth\w*|dress\w*|shirt|t-shirt|tee|top|blouse|jacket|coat|raincoat|"
