@@ -227,8 +227,7 @@
     "quality": "high"
   },
   "extra_model_dirs": ["D:/AICharacterStudio/models"],
-  "cloud_gpu": {"gpu": "NVIDIA GeForce RTX 4090", "label": "RTX 4090", "cloud": "COMMUNITY", "fallback_cloud": "SECURE",
-                "idle_minutes": 15, "max_hours": 4, "local_port": 8190},
+  "cloud_gpu": {"idle_minutes": 15, "max_hours": 4, "local_port": 8190},
   "loras": [
     {"file": "jacelynrm_qwen21.safetensors", "label": "Jacelyn", "name": "Jacelyn", "engine": "qwen-image-21", "trigger": "jacelynrm", "class": "a woman with round glasses", "strength": 1.0},
     {"file": "jacelynrm_qwen21_v2.safetensors", "label": "Jacelyn v2", "name": "Jacelyn", "engine": "qwen-image-21", "trigger": "jacelynrm", "class": "a woman with round glasses", "strength": 1.0}

@@ -8,12 +8,21 @@ import json, os, re, subprocess, threading, time, urllib.request
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(APP_DIR, "cloud_gpu.json")  # the running pod, so a restart can find it
-KNOWN_HOSTS = os.path.join(APP_DIR, "cloud_known_hosts")
 SETUP = os.path.join(APP_DIR, "cloud_setup.sh")
 RUNPODCTL = os.path.expanduser(r"~\.local\bin\runpodctl.exe")
-SSH = r"C:\Windows\System32\OpenSSH\ssh.exe"
-SCP = r"C:\Windows\System32\OpenSSH\scp.exe"
-KEY = os.path.expanduser(r"~\.runpod\ssh\runpodctl-ssh-key")
+# Git's ssh, not Windows' own: Windows OpenSSH refuses the RunPod key because the key file is also readable by a
+# sandbox group ("UNPROTECTED PRIVATE KEY FILE"). Git's ssh takes /c/... style paths.
+SSH = r"C:\Program Files\Git\usr\bin\ssh.exe"
+SCP = r"C:\Program Files\Git\usr\bin\scp.exe"
+
+
+def msys(path):
+    path = os.path.abspath(path).replace(os.sep, "/")
+    return "/" + path[0].lower() + path[2:]
+
+
+KEY = msys(os.path.expanduser(r"~\.runpod\ssh\runpodctl-ssh-key"))
+KNOWN_HOSTS = msys(os.path.join(APP_DIR, "cloud_known_hosts"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the VPN's system proxy breaks localhost
 
@@ -27,7 +36,11 @@ tunnel = [None]    # the ssh -L process
 def cfg():
     with open(os.path.join(APP_DIR, "config.json"), encoding="utf-8") as f:
         c = json.load(f).get("cloud_gpu", {})
-    return {"gpu": "NVIDIA GeForce RTX 4090", "label": "RTX 4090", "cloud": "COMMUNITY", "fallback_cloud": "SECURE",
+    # tries: [RunPod GPU id, label, cloud type] in order, cheapest first (prices per hour, Oct 2026)
+    return {"tries": [["NVIDIA GeForce RTX 4090", "RTX 4090", "COMMUNITY"],   # $0.34
+                      ["NVIDIA GeForce RTX 5090", "RTX 5090", "COMMUNITY"],   # $0.69
+                      ["NVIDIA GeForce RTX 4090", "RTX 4090", "SECURE"],      # $0.74
+                      ["NVIDIA GeForce RTX 5090", "RTX 5090", "SECURE"]],     # $0.99
             "image": "runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2404", "disk_gb": 60, "local_port": 8190,
             "idle_minutes": 15, "max_hours": 4, **c}
 
@@ -50,7 +63,7 @@ def info():
         s = dict(state)
     up = time.time() - s["started"] if s["started"] else 0
     idle_left = c["idle_minutes"] * 60 - (time.time() - s["last_used"]) if s["status"] == "ready" and not active[0] else None
-    return {**s, "label": c["label"], "minutes": round(up / 60), "cost": round(up / 3600 * s["price"], 2),
+    return {**s, "label": s["gpu"] or c["tries"][0][1], "minutes": round(up / 60), "cost": round(up / 3600 * s["price"], 2),
             "idle_stop_in": max(0, round(idle_left / 60)) if idle_left is not None else None,
             "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": bool(active[0])}
 
@@ -85,8 +98,8 @@ def _ssh(cmd, timeout=40, data=None):
                  "-o", "ConnectTimeout=20", "-o", "BatchMode=yes", f"root@{state['ip']}", cmd], timeout, data)
 
 
-def _create(c, cloud):
-    args = [RUNPODCTL, "pod", "create", "--name", "reelmint-fast-gpu", "--image", c["image"], "--gpu-id", c["gpu"],
+def _create(c, gpu, cloud):
+    args = [RUNPODCTL, "pod", "create", "--name", "reelmint-fast-gpu", "--image", c["image"], "--gpu-id", gpu,
             "--cloud-type", cloud, "--container-disk-in-gb", str(c["disk_gb"]), "--ports", "22/tcp", "--wait", "--wait-timeout", "8m"]
     if cloud == "COMMUNITY":
         args.append("--public-ip")  # ssh straight to the pod
@@ -113,19 +126,25 @@ def start():
 def _start():
     c = cfg()
     try:
-        pod, why = _create(c, c["cloud"])
-        if not pod and c.get("fallback_cloud"):
-            _set(message=f"No {c['label']} free on the cheaper community cloud; trying RunPod's secure cloud…")
-            pod, why = _create(c, c["fallback_cloud"])
+        pod, label, why = None, "", ""
+        for gpu, label, cloud in c["tries"]:  # cheapest first; the next one when none is free
+            _set(gpu=label, message=f"Renting an {label} ({'community' if cloud == 'COMMUNITY' else 'secure'} cloud)…")
+            pod, why = _create(c, gpu, cloud)
+            if pod:
+                break
         if not pod:
-            return _set(status="error", message=f"Couldn't rent a {c['label']}: {why}")
+            return _set(status="error", gpu="", message=f"No GPU free right now ({why}). Try again in a few minutes.")
         ssh = pod.get("ssh", {})
         _set(pod=pod["id"], ip=ssh.get("ip", ""), port=int(ssh.get("port", 0)), price=float(pod.get("costPerHr", 0)),
-             gpu=c["label"], started=time.time(), last_used=time.time(), loras=[], message="Installing ComfyUI and Qwen-Image 2.1…")
+             gpu=label, started=time.time(), last_used=time.time(), loras=[], message="Installing ComfyUI and Qwen-Image 2.1…")
         with open(SETUP, "rb") as f:
             script = f.read().replace(b"\r\n", b"\n")
-        code, out, err = _ssh("cat > /root/setup.sh && setsid nohup bash /root/setup.sh > /root/setup.log 2>&1 < /dev/null & echo started",
-                              timeout=60, data=script)
+        for _ in range(12):  # ssh can answer before the pod has installed the key: retry for ~2 minutes
+            code, out, err = _ssh("cat > /root/setup.sh && setsid nohup bash /root/setup.sh > /root/setup.log 2>&1 < /dev/null & echo started",
+                                  timeout=60, data=script)
+            if "started" in out or state["status"] != "starting":
+                break
+            time.sleep(10)
         if "started" not in out:
             raise RuntimeError("couldn't reach the pod: " + (err.strip().splitlines() or ["no answer"])[-1])
         threading.Thread(target=_send_loras, daemon=True).start()
@@ -145,7 +164,7 @@ def _start():
         else:
             raise RuntimeError("setup took over 40 minutes")
         _open_tunnel()
-        _set(status="ready", message=f"{c['label']} ready", last_used=time.time())
+        _set(status="ready", message=f"{state['gpu']} ready", last_used=time.time())
     except Exception as e:
         _delete(f"Stopped: {e}", error=True)
 
@@ -159,7 +178,7 @@ def _send_loras():
         if l.get("engine") != "qwen-image-21" or not os.path.exists(src) or not state["pod"]:
             continue
         code, out, err = _run([SCP, "-q", "-i", KEY, "-P", str(state["port"]), "-o", "StrictHostKeyChecking=no",
-                               "-o", f"UserKnownHostsFile={KNOWN_HOSTS}", "-o", "BatchMode=yes", src,
+                               "-o", f"UserKnownHostsFile={KNOWN_HOSTS}", "-o", "BatchMode=yes", msys(src),
                                f"root@{state['ip']}:/root/loras/{l['file']}"], timeout=3600)
         if code == 0:
             with lock:

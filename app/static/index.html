@@ -975,7 +975,7 @@ function renderGpu() {
   const g = GPU, s = g.status, admin = ME && ME.admin, live = s === 'starting' || s === 'ready' || s === 'stopping';
   $('#gpubox').innerHTML = `<div class="glass pad" style="width:100%;max-width:440px">
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">⚡ Fast GPU</h2><button id="gp-close">✕</button></div>
-    <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rents an ${esc(g.label)} on RunPod (~$0.34/h, up to $0.74/h if the cheap ones are taken).
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rents the cheapest free card on RunPod: RTX 4090 ($0.34/h), else RTX 5090 ($0.69/h), else the more reliable secure-cloud 4090 ($0.74/h) or 5090 ($0.99/h).
       While it's on, <b>Qwen-Image 2.1</b> pictures and edits run there (~10–15 s each instead of ~1.5 min); videos and Z-Image stay on this PC.
       Getting it ready takes about 8–10 minutes.</p>
     <div class="progress" style="margin:0 0 12px;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
@@ -986,7 +986,7 @@ function renderGpu() {
       ${g.loras.length ? `<br>Trained characters on it: ${g.loras.map(esc).join(', ')}` : s !== 'stopping' ? '<br>Trained characters are still uploading' : ''}</div>` : ''}
     ${admin ? `<div class="row" style="margin-top:14px">${live
         ? `<button class="stop" id="gp-stop" style="flex:1" ${s === 'stopping' ? 'disabled' : ''}>■ Stop and delete the GPU</button>`
-        : `<button class="primary" id="gp-start" style="flex:1">⚡ Start ${esc(g.label)}</button>`}</div>`
+        : `<button class="primary" id="gp-start" style="flex:1">⚡ Start fast GPU</button>`}</div>`
       : '<p style="color:var(--muted);font-size:12px">Only the admin can start or stop it.</p>'}</div>`;
   $('#gp-close').onclick = () => $('#gpubox').classList.remove('on');
   if ($('#gp-start')) $('#gp-start').onclick = async () => { try { GPU = await api('/api/cloud/start', {}); } catch (e) { return alert(e.message); } refreshGpu(); };
