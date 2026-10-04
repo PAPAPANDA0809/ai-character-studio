@@ -34,6 +34,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def send_json(self, obj, code=200):
+        if isinstance(obj, dict) and "plan" in obj and "id" in obj:  # a project: say which pictures exist on disk
+            obj = pipeline.with_present(obj)
         body = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")

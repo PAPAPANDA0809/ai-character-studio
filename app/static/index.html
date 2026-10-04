@@ -837,12 +837,14 @@ let STI = 0, STV = null, STE = false, STEXT = '';  // STEXT: the edit instructio
 function renderStudio() {
   const pl = P.plan, n = pl.keyframes.length, busy = running();
   if (STI >= n) STI = n - 1;
-  const i = STI, k = pl.keyframes[i], made = !!(P.keyframe_seeds || {})[i];
+  const i = STI, k = pl.keyframes[i];
+  const made = P.present ? !!P.present[i] : !!(P.keyframe_seeds || {})[i];  // the current picture exists on disk
   const ar = {portrait: '9/16', landscape: '16/9', square: '1/1'}[P.aspect] || '9/16';
   const cur = busy && /keyframe (\d+)\//.exec(P.message || ''), curIdx = cur ? +cur[1] - 1 : -1;
   const kfSrc = j => file(`keyframes/kf_${pad(j)}.png`, P.keyframes_version);
   const vers = ((P.versions || {})[i] || []).slice().reverse();
   if (STV && !vers.includes(STV)) STV = null;
+  if (!made && vers.length && !STV) STV = vers[0];  // current picture deleted: show the newest older version
   if (!made) STE = false;
   const src = STV ? file('keyframes/history/' + STV, 1) : kfSrc(i);
   const pRefs = P.references || (P.reference ? [P.reference] : []);
@@ -856,13 +858,13 @@ function renderStudio() {
       <div class="st-zoom"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div></div>
     <div class="st-strip">
       ${n > 1 ? `<div class="lbl">Pictures</div>${pl.keyframes.map((_, j) => th(kfSrc(j), `data-pic="${j}"`, j === i, j + 1)).join('')}` : ''}
-      ${vers.length ? `<div class="lbl">Versions</div>${th(kfSrc(i), 'data-stv=""', !STV, 'now')}${vers.map(v => th(file('keyframes/history/' + v, 1), `data-stv="${esc(v)}"`, v === STV, '')).join('')}` : ''}
+      ${vers.length ? `<div class="lbl">Versions</div>${made ? th(kfSrc(i), 'data-stv=""', !STV, 'now') : ''}${vers.map(v => th(file('keyframes/history/' + v, 1), `data-stv="${esc(v)}"`, v === STV, '')).join('')}` : ''}
     </div>
     <div class="st-canvas">
       ${made || STV ? `<img id="st-img" src="${src}" alt="">` : empty}
       ${busy && curIdx === i ? `<div class="st-over"><div class="gen"><i class="spin"></i>${/editing/.test(P.message || '') ? 'Editing…' : 'Generating…'}</div></div>`
         : busy && /^queued:keyframes/.test(P.status) ? `<div class="st-over"><div class="gen dim">Queued</div></div>` : ''}
-      ${STV ? `<div class="st-ver">Older version<button class="primary" id="st-use" ${dis}>Use this one</button><button id="st-cur">Back to current</button></div>` : ''}
+      ${STV ? `<div class="st-ver">${made ? 'Older version' : 'Current picture was deleted'}<button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
     </div>
     <div class="st-prompt">
       ${made ? `<div class="st-modes"><button id="m-new" class="${STE ? '' : 'on'}" title="Draw the picture again from its prompt">New version</button>

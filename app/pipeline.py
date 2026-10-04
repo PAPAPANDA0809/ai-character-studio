@@ -136,6 +136,12 @@ def save(p):
         replace_file(tmp, pdir(p["id"], "project.json"))
 
 
+def with_present(p):
+    """A project for the page, plus which pictures exist on disk (one can be deleted from the Images tab)."""
+    return {**p, "present": [os.path.exists(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"))
+                             for i in range(len(p["plan"]["keyframes"]))]}
+
+
 def list_projects(user):
     out = []
     for d in sorted(project_ids(user), reverse=True):
@@ -223,6 +229,10 @@ def delete_items(user, projects=(), files=()):
             for vers in p.get("versions", {}).values():
                 if name in vers:
                     vers.remove(name)
+        elif m := re.fullmatch(r"keyframes/kf_(\d+)\.png", rel):
+            vers = p.get("versions", {}).get(str(int(m.group(1))), [])
+            if vers:  # the newest older version takes the deleted picture's place
+                os.replace(pdir(pid, "keyframes", "history", vers.pop()), src)
         elif rel.startswith("clips/img_"):
             p.get("image_clips", {}).pop(str(int(rel[-6:-4])), None)
         p["keyframes_version"] = p["clips_version"] = time.time()
