@@ -46,8 +46,11 @@ for idx in https://pypi.org/simple https://mirrors.aliyun.com/pypi/simple https:
   fi
 done
 [ -n "$ok" ] || { st "ERROR: Python packages failed to install (see /root/pip.log)"; exit 1; }
-# torchvision must match the image's torch build (CUDA 13); PyPI's 0.24.1 is the CUDA 12.8 one
-python3 -c "import torchvision" 2>/dev/null || pip install -q --break-system-packages --no-deps --timeout 15 --retries 8   --index-url https://download.pytorch.org/whl/cu130 torchvision==0.24.1 >> /root/pip.log 2>&1 || {
+# torchvision must match the image's torch build: PyPI's 0.24.1 is the CUDA 12.8 one, CUDA 13 needs pytorch.org's
+CU=$(python3 -c "import torch; print(torch.version.cuda.split('.')[0])" 2>/dev/null)
+[ "$CU" = "13" ] && TVIDX=https://download.pytorch.org/whl/cu130 || TVIDX=https://pypi.org/simple
+python3 -c "import torchvision" 2>/dev/null || pip install -q --break-system-packages --no-deps --timeout 15 --retries 8 \
+  --resume-retries 20 --index-url $TVIDX torchvision==0.24.1 >> /root/pip.log 2>&1 || {
   st "ERROR: torchvision failed to install (see /root/pip.log)"; exit 1; }
 
 while [ ! -f /root/dl_done ]; do
