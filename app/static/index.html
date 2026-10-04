@@ -126,6 +126,8 @@
   .pick { position:absolute; top:8px; left:8px; z-index:2; width:26px; height:26px; border-radius:8px; border:2px solid #fff;
           background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; font-size:15px; color:transparent; cursor:pointer; }
   .picked .pick { background:var(--mint); border-color:var(--mint); color:#041014; }
+  .pcard .ren { position:absolute; top:8px; right:8px; width:30px; height:30px; padding:0; border-radius:9px; font-size:14px; color:var(--muted); background:rgba(0,0,0,.35); }
+  .pcard .ren:hover { color:var(--text); }
   .picked { outline:3px solid var(--mint); outline-offset:-3px; }
   .selbar { display:flex; gap:8px; align-items:center; margin:-4px 0 14px; }
   .selbar .del { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
@@ -492,11 +494,20 @@ async function refreshProjects() {
   const list = await api('/api/projects');
   $('#plist').innerHTML = list.length ? list.map(p => {
     const st = p.status || '', cls = /^(queued|running)/.test(st) ? 'run' : /^done/.test(st) ? 'done' : /^(error|stopped)/.test(st) ? 'err' : '';
-    return `<div class="glass pcard" data-id="${p.id}" data-key="${p.id}"><span class="pick">✓</span><div class="th" style="background-image:url('${fileOf(p.id, 'keyframes/kf_00.png', 1)}')"></div>
+    return `<div class="glass pcard" data-id="${p.id}" data-key="${p.id}"><span class="pick">✓</span><button class="ren" data-ren="${p.id}" data-title="${esc(p.title)}" title="Rename">✎</button><div class="th" style="background-image:url('${fileOf(p.id, 'keyframes/kf_00.png', 1)}')"></div>
       <div style="min-width:0"><b>${esc(p.title)}</b><span style="color:var(--muted);font-size:12px">${fmtDate(p.created)}</span><br><span class="badge ${cls}">${esc(st.replace(':', ' · '))}</span></div></div>`;
   }).join('') : '<div class="empty">No projects yet. Create one!</div>';
   $$('.pcard').forEach(el => el.onclick = e => (e.target.closest('.pick') || SEL.on) ? togglePick(el) : openProject(el.dataset.id));
+  $$('.pcard [data-ren]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    if (await renameProject(b.dataset.ren, b.dataset.title)) refreshProjects();
+  });
   renderSelbar('projects');
+}
+async function renameProject(id, title) {  // true when renamed
+    const t = prompt('Project name', title);
+    if (t === null || !t.trim() || t.trim() === title) return false;
+    try { await api(`/api/projects/${id}/rename`, {title: t}); return true; } catch (e) { alert(e.message); return false; }
 }
 async function openProject(id) { dirty = false; STI = 0; STV = null; STE = false; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project'); render(); poll(); }
 
@@ -804,7 +815,7 @@ function renderStudio() {
   const th = (s, attrs, on, label) => `<button class="st-th ${on ? 'on' : ''}" ${attrs} style="background-image:url('${s}')">${label ? `<b>${label}</b>` : ''}</button>`;
   const dis = busy ? 'disabled' : '';
   $('#v-project').innerHTML = `<div class="studio" style="--ar:${ar}">
-    <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2>${esc(pl.title)}</h2>
+    <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2 id="st-title" title="Tap to rename" style="cursor:pointer">${esc(pl.title)} <span style="font-size:13px;color:var(--muted)">✎</span></h2>
       <div class="st-zoom"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div></div>
     <div class="st-strip">
       ${n > 1 ? `<div class="lbl">Pictures</div>${pl.keyframes.map((_, j) => th(kfSrc(j), `data-pic="${j}"`, j === i, j + 1)).join('')}` : ''}
@@ -869,6 +880,7 @@ function renderStudio() {
   [$('#kp' + i), $('#st-edit')].forEach(ta => { fit(ta); ta.addEventListener('input', () => fit(ta)); });
   const again = async fn => { await savePlan(); fn && fn(); render(); };  // keep typed text when switching what's shown
   $('#btn-back').onclick = () => show('projects');
+  $('#st-title').onclick = async () => { await savePlan(); if (await renameProject(P.id, pl.title)) { P = await api('/api/projects/' + P.id); render(); } };
   const run = (task, body) => async () => { await savePlan(); await api(`/api/projects/${P.id}/${task}`, body || {}); poll(); };
   const send = async () => {
     if (busy) return;

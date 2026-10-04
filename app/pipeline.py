@@ -496,6 +496,16 @@ def update_plan(pid, plan):
     return p
 
 
+def rename(pid, title):
+    p = load(pid)
+    title = " ".join(str(title or "").split())[:80]
+    if not title:
+        raise ValueError("the name can't be empty")
+    p["plan"]["title"] = title
+    save(p)
+    return p
+
+
 def keyframe_prompt(p, i):
     pl = p["plan"]
     parts = [p.get("style", ""), pl["keyframes"][i]["image_prompt"], pl.get("character", ""), pl.get("setting", "")]
