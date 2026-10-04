@@ -436,10 +436,10 @@ function renderSelbar(kind) {
   const bar = document.querySelector(`.selbar[data-for="${kind}"]`);
   SEL.on = SEL.keys.size > 0; SEL.kind = kind;
   bar.innerHTML = SEL.on
-    ? `<span style="font-size:13px">${SEL.keys.size} selected</span><button class="del" id="sel-del">🗑 Delete</button><button id="sel-cancel">Clear</button>`
-    : `<span style="color:var(--muted);font-size:12px">Tick the boxes to select items to delete</span>`;
+    ? `<span style="font-size:13px">${SEL.keys.size} selected</span>${kind === 'projects' ? '' : '<button id="sel-dl">⬇ Download</button>'}<button class="del" id="sel-del">🗑 Delete</button><button id="sel-cancel">Clear</button>`
+    : `<span style="color:var(--muted);font-size:12px">Tick the boxes to select items to ${kind === 'projects' ? 'delete' : 'download or delete'}</span>`;
   if (!SEL.on) $$('.picked').forEach(e => e.classList.remove('picked'));
-  if (SEL.on) { $('#sel-cancel').onclick = () => { SEL.keys.clear(); renderSelbar(kind); }; $('#sel-del').onclick = () => deletePicked(kind); }
+  if (SEL.on) { $('#sel-cancel').onclick = () => { SEL.keys.clear(); renderSelbar(kind); }; $('#sel-del').onclick = () => deletePicked(kind); if ($('#sel-dl')) $('#sel-dl').onclick = () => downloadPicked(kind); }
 }
 function togglePick(el) {
   const k = el.dataset.key, kind = el.classList.contains('pcard') ? 'projects' : el.closest('.gal').id.replace('gal-', '');
@@ -448,6 +448,27 @@ function togglePick(el) {
   SEL.keys.has(k) ? SEL.keys.delete(k) : SEL.keys.add(k);
   el.classList.toggle('picked', SEL.keys.has(k));
   renderSelbar(SEL.kind);
+}
+async function downloadPicked(kind) {
+  // phones (https only): one share sheet with "Save N images" to the photo gallery; otherwise one download per file
+  const items = [...SEL.keys].map(k => {
+    const [project, path] = k.split('|'), cap = document.querySelector(`.it[data-key="${CSS.escape(k)}"] .cap`);
+    const ext = path.slice(path.lastIndexOf('.')), base = (cap ? cap.textContent : project).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
+    return {url: fileOf(project, path, 0), name: (base || 'reelmint') + ext};
+  });
+  const seen = {};  // "Lazy_Morning_Smile_1.png" twice (older versions) -> add a number
+  items.forEach(it => { const n = seen[it.name] = (seen[it.name] || 0) + 1; if (n > 1) it.name = it.name.replace(/(\.\w+)$/, `_${n}$1`); });
+  if (navigator.canShare && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    try {
+      const files = await Promise.all(items.map(async it => new File([await (await fetch(it.url)).blob()], it.name, {type: {'.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'}[it.name.slice(it.name.lastIndexOf('.')).toLowerCase()] || 'image/png'})));
+      if (navigator.canShare({files})) { await navigator.share({files}); return; }
+    } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  for (const it of items) {
+    const a = document.createElement('a'); a.href = it.url; a.download = it.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    await new Promise(r => setTimeout(r, 400));  // browsers drop rapid back-to-back downloads
+  }
 }
 async function deletePicked(kind) {
   const n = SEL.keys.size, what = kind === 'projects' ? `project${n > 1 ? 's' : ''} (with all their pictures and videos)` : `item${n > 1 ? 's' : ''}`;
