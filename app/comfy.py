@@ -1,5 +1,6 @@
 """Minimal ComfyUI API client plus the two workflows (Flux keyframe, Wan 2.2 first-last-frame)."""
 import json
+import os
 import time
 import urllib.parse
 import urllib.request
@@ -15,9 +16,10 @@ class Stopped(Exception):
 
 
 class Comfy:
-    def __init__(self, url, should_stop=None):
+    def __init__(self, url, should_stop=None, remote=False):
         self.url = url.rstrip("/")
         self.should_stop = should_stop  # polled while waiting on a prompt
+        self.remote = remote  # a rented GPU behind a slow upload: big pictures go up as JPEG
 
     def _get(self, path, timeout=30):
         with DIRECT.open(self.url + path, timeout=timeout) as r:
@@ -41,12 +43,19 @@ class Comfy:
         boundary = uuid.uuid4().hex
         with open(path, "rb") as f:
             data = f.read()
+        ctype = "image/png"
+        if self.remote and len(data) > 600_000:  # a 1080p PNG is ~3 MB: ~0.4 MB as a high-quality JPEG
+            import io
+            from PIL import Image
+            buf = io.BytesIO()
+            Image.open(io.BytesIO(data)).convert("RGB").save(buf, "JPEG", quality=95)
+            data, ctype, name = buf.getvalue(), "image/jpeg", os.path.splitext(name)[0] + ".jpg"
         body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"overwrite\"\r\n\r\ntrue\r\n"
                 f"--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{name}\"\r\n"
-                f"Content-Type: image/png\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+                f"Content-Type: {ctype}\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
         req = urllib.request.Request(self.url + "/upload/image", data=body,
                                      headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
-        with DIRECT.open(req, timeout=60) as r:
+        with DIRECT.open(req, timeout=300 if self.remote else 60) as r:
             return json.loads(r.read())["name"]
 
     def free(self):

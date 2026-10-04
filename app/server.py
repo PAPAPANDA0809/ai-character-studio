@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # embedded Pytho
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import auth
+import cloudgpu
 import comfy
 import llm
 import pipeline
@@ -146,6 +147,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(pipeline.list_characters(u))
             if m := re.fullmatch(r"/api/gallery/(images|videos)", path):
                 return self.send_json(pipeline.gallery(m.group(1), u))
+            if path == "/api/cloud":
+                return self.send_json(cloudgpu.info())
             if path == "/api/engines":
                 return self.send_json(pipeline.engines())
             if path == "/api/users":
@@ -225,6 +228,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not pipeline.delete_character(u, b.get("name", "")):
                     return self.send_json({"error": "not found"}, 404)
                 return self.send_json({"ok": True})
+            if path in ("/api/cloud/start", "/api/cloud/stop"):  # rented GPU: costs money, so admins only
+                if not auth.is_admin(u):
+                    return self.send_json({"error": "admins only"}, 403)
+                (cloudgpu.start if path.endswith("start") else cloudgpu.stop)()
+                return self.send_json(cloudgpu.info())
             if path == "/api/delete":
                 return self.send_json({"deleted": pipeline.delete_items(u, b.get("projects", []), b.get("files", []))})
             if path == "/api/plan":

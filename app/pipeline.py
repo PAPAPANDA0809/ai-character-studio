@@ -12,6 +12,7 @@ import time
 import traceback
 
 import cloud
+import cloudgpu
 import comfy
 import llm
 
@@ -347,6 +348,7 @@ def start():
     _reset_stale()
     threading.Thread(target=_clear_comfy_orphans, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=cloudgpu.resume, daemon=True).start()  # a rented GPU from before the restart
 
 
 # ---------------------------------------------------------------- steps
@@ -594,12 +596,25 @@ def use_version(pid, index, name):
 
 
 def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
+    """Qwen-Image 2.1 pictures and edits run on the rented GPU while a fast-GPU session is ready; everything else here."""
+    remote = cloudgpu.url()
+    if remote and engine != "gpt-image" and (edit or p.get("image_engine") == "qwen-image-21"):
+        lora = lora_entry(load_config(), p.get("lora", ""), "qwen-image-21")
+        if not lora or cloudgpu.has_lora(lora["file"]):
+            log(p, f"using the rented {cloudgpu.info()['label']}")
+            with cloudgpu.using():
+                return _keyframes(p, indices, reseed, engine, edit, remote)
+        log(p, f'the trained character "{lora["label"]}" is still uploading to the rented GPU, so this runs on this PC')
+    return _keyframes(p, indices, reseed, engine, edit)
+
+
+def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=None):
     """edit = an instruction ("make her hair red"): Qwen-Image 2.1 changes the finished picture as told; the
-    result becomes a new version like any regenerated picture."""
+    result becomes a new version like any regenerated picture. remote = ComfyUI on the rented GPU."""
     cfg = load_config()
-    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
+    c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
     if not c.alive():
-        raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
+        raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
     q = p.get("quality", "standard")
     hq = q in ("high", "sharp", "2k", "ultra")  # upscale pass; "high"/"2k"/"ultra" also render bigger with more steps
     table = {"high": "hires_sizes", "2k": "hires_sizes", "ultra": "hires_sizes", "sharp": "sharp_sizes"}.get(q)
@@ -669,7 +684,7 @@ def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p / 2K / 4K
             ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
             wf = comfy.add_final_size(wf, ow, oh)
-        if last_engine[0] != use:  # unload the previous engine's models first: 32 GB RAM can't cache several big ones
+        if not remote and last_engine[0] != use:  # unload the previous engine's models first: 32 GB RAM can't cache several big ones
             c.free()
             last_engine[0] = use
         try:

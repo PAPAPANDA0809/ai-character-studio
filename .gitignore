@@ -16,3 +16,5 @@ app/sessions.json
 app/secrets.json
 app/trash/
 training/
+app/cloud_gpu.json
+app/cloud_known_hosts
