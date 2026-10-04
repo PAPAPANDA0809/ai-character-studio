@@ -41,7 +41,8 @@ def cfg():
                       ["NVIDIA GeForce RTX 5090", "RTX 5090", "COMMUNITY"],   # $0.69
                       ["NVIDIA GeForce RTX 4090", "RTX 4090", "SECURE"],      # $0.74
                       ["NVIDIA GeForce RTX 5090", "RTX 5090", "SECURE"]],     # $0.99
-            "image": "runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2404", "disk_gb": 60, "local_port": 8190,
+            # CUDA 13 build: ComfyUI's fast int8 kernels need it ("You need pytorch with cu130")
+            "image": "runpod/pytorch:1.4.0-cu1300-torch291-ubuntu2404", "disk_gb": 60, "local_port": 8190,
             "idle_minutes": 15, "max_hours": 4, **c}
 
 
@@ -123,7 +124,8 @@ def start():
     return True
 
 
-def _start():
+def _start(faulty=0):
+    """faulty = pods given up on because their card didn't work (community hosts): up to 2 more are tried."""
     c = cfg()
     try:
         pod, label, why = None, "", ""
@@ -169,7 +171,11 @@ def _start():
         _open_tunnel()
         _set(status="ready", message=f"{state['gpu']} ready", last_used=time.time())
     except Exception as e:
-        _delete(f"Stopped: {e}", error=True)
+        if "FAULTY_GPU" in str(e) and faulty < 2:
+            _delete("The rented card didn't work", error=True)
+            _set(status="starting", message="That card was faulty; renting another one…")
+            return _start(faulty + 1)
+        _delete(f"Stopped: {e}".replace("FAULTY_GPU", "the rented cards didn't work; try again later"), error=True)
 
 
 def _send_loras():

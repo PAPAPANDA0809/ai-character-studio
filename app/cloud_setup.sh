@@ -1,5 +1,5 @@
 #!/bin/bash
-# Reelmint fast-GPU pod (RunPod, runpod/pytorch image with torch 2.9.1): ComfyUI v0.38.0 (the version on the PC)
+# Reelmint fast-GPU pod (RunPod, runpod/pytorch image with torch 2.9.1 for CUDA 13): ComfyUI v0.38.0 (the version on the PC)
 # with Qwen-Image 2.1. Progress goes to /root/status, ending in READY or ERROR: ...; trained characters are
 # copied into /root/loras by the app.
 # Lessons from the first pods: pip resolving the full requirements tried to replace torch (gigabytes), and
@@ -7,6 +7,10 @@
 # with short timeouts, retries and a mirror as fallback; Hugging Face downloads are fast everywhere.
 st() { echo "$*" > /root/status; }
 cd /root
+
+# community hosts can hand out a card PyTorch can't use ("CUDA unknown error"): find out before downloading anything
+st "testing the GPU"
+python3 -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null || { st "ERROR: FAULTY_GPU"; exit 1; }
 
 st "installing ComfyUI"
 [ -d ComfyUI ] || git clone -q --depth 1 --branch v0.38.0 https://github.com/comfyanonymous/ComfyUI || { st "ERROR: could not download ComfyUI"; exit 1; }
@@ -26,7 +30,7 @@ get() { curl -sS -L --retry 20 --retry-all-errors -C - -o "$2" "$1" || echo "$2"
 ) &
 
 st "installing Python packages"
-PKGS="torchvision==0.24.1 torchsde==0.2.6 trampoline==0.1.2 numpy==2.5.3 einops==0.8.2 transformers==5.17.0 tokenizers==0.23.2
+PKGS="torchsde==0.2.6 trampoline==0.1.2 numpy==2.5.3 einops==0.8.2 transformers==5.17.0 tokenizers==0.23.2
  sentencepiece==0.2.2 safetensors==0.8.0 huggingface-hub==1.33.0 hf-xet==1.6.0 regex==2026.9.29 packaging==26.3 aiohttp==3.14.3
  aiohappyeyeballs==2.7.1 aiosignal==1.4.0 attrs==26.1.0 frozenlist==1.8.0 multidict==6.9.1 propcache==0.5.4 yarl==1.25.1 idna==3.20
  pyyaml==6.0.3 pillow==12.3.0 scipy==1.18.1 tqdm==4.70.1 psutil==7.2.2 alembic==1.20.0 mako==1.4.3 markupsafe==3.0.3
@@ -42,6 +46,9 @@ for idx in https://pypi.org/simple https://mirrors.aliyun.com/pypi/simple https:
   fi
 done
 [ -n "$ok" ] || { st "ERROR: Python packages failed to install (see /root/pip.log)"; exit 1; }
+# torchvision must match the image's torch build (CUDA 13); PyPI's 0.24.1 is the CUDA 12.8 one
+python3 -c "import torchvision" 2>/dev/null || pip install -q --break-system-packages --no-deps --timeout 15 --retries 8   --index-url https://download.pytorch.org/whl/cu130 torchvision==0.24.1 >> /root/pip.log 2>&1 || {
+  st "ERROR: torchvision failed to install (see /root/pip.log)"; exit 1; }
 
 while [ ! -f /root/dl_done ]; do
   st "downloading Qwen-Image 2.1 ($(du -sm models 2>/dev/null | cut -f1) of ~17,500 MB)"
