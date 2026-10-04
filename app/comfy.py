@@ -233,11 +233,11 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None)
     return flux_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)
 
 
-def reference_workflow(cfg, engine, prompt, ref_name, width, height, seed, prefix, steps=None):
+def reference_workflow(cfg, engine, prompt, ref_name, width, height, seed, prefix, steps=None, edit=False):
     """A new picture that keeps the character from the uploaded reference picture(s). ref_name is one uploaded name
     or a list; only Qwen-Image 2.1 takes several, the older engines use the first."""
     if engine == "qwen-image-21":
-        return qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=ref_name, steps=steps)
+        return qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=ref_name, steps=steps, edit=edit)
     ref_name = ref_name if isinstance(ref_name, str) else ref_name[0]
     if engine in ("flux2-klein-4b", "flux2-klein-9b"):
         return flux2_klein_workflow(cfg, engine, prompt, width, height, seed, prefix, ref_name=ref_name)
@@ -572,7 +572,7 @@ def flux2_klein_workflow(cfg, engine, prompt, width, height, seed, prefix, ref_n
     return wf
 
 
-def qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=None, steps=None):
+def qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=None, steps=None, edit=False):
     """Qwen-Image 2.1 (ComfyUI's int8 files). With ref_name the picture goes into its encoder as image 1."""
     q = cfg["qwen_image_21"]
     wf = {
@@ -596,6 +596,10 @@ def qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=Non
         wf["5"]["inputs"][f"images.image_{k + 1}"] = [str(20 + k), 0]
     if names:
         wf["5"]["inputs"]["vae"] = ["4", 0]
+    if edit:  # draw on the edited picture's own grid (any other size shifts the edit); ~1.6 MP keeps detail on 8 GB
+        wf["5"]["inputs"]["resolution"] = 1280
+        wf["7"]["inputs"]["latent_image"] = ["5", 2]
+        del wf["6"]
     return wf
 
 

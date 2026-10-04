@@ -564,7 +564,9 @@ def use_version(pid, index, name):
     return p
 
 
-def do_keyframes(p, indices=None, reseed=False, engine=None):
+def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
+    """edit = an instruction ("make her hair red"): Qwen-Image 2.1 changes the finished picture as told; the
+    result becomes a new version like any regenerated picture."""
     cfg = load_config()
     c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
     if not c.alive():
@@ -594,7 +596,9 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
             use = cfg.get("default_image_engine", "qwen-image-21")
         if ref and use != "gpt-image" and use not in comfy.REFERENCE_ENGINES:
             use = comfy.REFERENCE_ENGINES[0]
-        log(p, f"keyframe {i + 1}/{n}: generating with {use}")
+        if edit:  # only Qwen-Image 2.1 edits; the picture itself is the reference
+            use = "qwen-image-21"
+        log(p, f"keyframe {i + 1}/{n}: {'editing' if edit else 'generating'} with {use}")
         t = time.time()
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
         if use == "gpt-image":  # cloud, pay-per-use: only when picked for this picture
@@ -616,7 +620,14 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         lora = lora_entry(cfg, p.get("lora", ""), use)  # a trained character, only for the engine it was made for
         if lora and not model_path(cfg, "loras/" + lora["file"]):
             raise RuntimeError(f'the trained character "{lora["label"]}" ({lora["file"]}) is not in models\\loras yet')
-        if ref:
+        if edit:
+            src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
+            if not os.path.exists(src):
+                raise RuntimeError(f"picture {i + 1} isn't generated yet; generate it before editing")
+            name = c.upload_image(src, f"aics_{p['id']}_edit{i:02d}.png")
+            # the instruction as typed: the trained character's trigger lead-in would read as a new picture request
+            wf = comfy.reference_workflow(cfg, use, edit, [name], rw, rh, p["keyframe_seeds"][key], prefix, steps, edit=True)
+        elif ref:
             wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i), lora), ref_names, rw, rh,
                                           p["keyframe_seeds"][key], prefix, steps)
         else:
@@ -637,7 +648,7 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
             img = next(o["images"][0] for o in out.values() if o.get("images"))
             data = c.fetch(img)
         except Exception as e:
-            if p["id"] in cancelled or not cloud.available():
+            if p["id"] in cancelled or not cloud.available() or edit:
                 raise
             # last resort: the local engine failed, so make this one picture with GPT-image
             log(p, f"keyframe {i + 1}/{n}: local engine failed ({str(e)[:80]}), using GPT-image instead")
