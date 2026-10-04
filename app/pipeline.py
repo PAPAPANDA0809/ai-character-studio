@@ -141,7 +141,8 @@ def list_projects(user):
     for d in sorted(project_ids(user), reverse=True):
         try:
             p = load(d)
-            out.append({"id": p["id"], "title": p["plan"]["title"], "status": p["status"], "created": p["created"]})
+            out.append({"id": p["id"], "title": p["plan"]["title"], "status": p["status"], "created": p["created"],
+                        "pinned": bool(p.get("pinned"))})
         except Exception:
             pass
     return out
@@ -494,6 +495,13 @@ def update_plan(pid, plan):
     p["plan"] = plan
     save(p)
     return p
+
+
+def pin(pid, pinned):
+    p = load(pid)
+    p["pinned"] = bool(pinned)
+    save(p)
+    return {"id": pid, "pinned": p["pinned"]}
 
 
 def rename(pid, title):

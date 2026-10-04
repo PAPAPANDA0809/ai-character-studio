@@ -241,6 +241,8 @@ class Handler(BaseHTTPRequestHandler):
                                                            b.get("video_res"), b.get("lora")))
             if action == "reference":
                 return self.send_json(pipeline.set_reference(pid, b.get("references") or b.get("reference", "")))
+            if action == "pin":
+                return self.send_json(pipeline.pin(pid, b.get("pinned")))
             if action == "rename":
                 return self.send_json(pipeline.rename(pid, b.get("title", "")))
             if action == "plan":

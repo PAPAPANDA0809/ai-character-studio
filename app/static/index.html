@@ -84,10 +84,17 @@
   summary::before { content:"▸ "; } details[open] summary::before { content:"▾ "; }
   .create-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:16px; align-items:start; }
   /* project list */
-  .plist { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
-  .pcard { display:flex; gap:12px; align-items:center; padding:10px; cursor:pointer; }
-  .pcard .th { width:56px; height:72px; border-radius:10px; background:rgba(0,0,0,.4) center/cover; flex:none; }
-  .pcard b { display:block; font:600 15px var(--display); }
+  .plist > h3:first-child { margin-top:0; }
+  .pgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; }
+  .pcard { display:flex; flex-direction:column; padding:0; overflow:hidden; cursor:pointer; }
+  .pcard .th { width:100%; aspect-ratio:4/5; background:rgba(0,0,0,.4) center 22%/cover; }
+  .pcard .pinfo { padding:10px 12px 12px; min-width:0; }
+  .pcard b { display:block; font:600 14px var(--display); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pcard .meta { display:flex; align-items:center; justify-content:space-between; gap:6px; color:var(--muted); font-size:12px; margin-top:3px; }
+  .pcard .meta .badge { margin:0; }
+  .pcard .pbtns { position:absolute; top:8px; right:8px; display:flex; gap:6px; z-index:2; }
+  .pcard .pbtns button { width:30px; height:30px; padding:0; border-radius:9px; font-size:13px; color:#fff; background:rgba(0,0,0,.55); border-color:rgba(255,255,255,.15); }
+  .pcard .pin { opacity:.75; } .pcard .pin.on { opacity:1; background:var(--mint); border-color:var(--mint); }
   .badge { display:inline-block; font-size:11px; padding:2px 8px; border-radius:99px; background:var(--glass2); color:var(--muted); margin-top:4px; }
   .badge.run { color:var(--cyan); } .badge.done { color:var(--mint); } .badge.err { color:var(--err); }
   /* project editor */
@@ -126,8 +133,6 @@
   .pick { position:absolute; top:8px; left:8px; z-index:2; width:26px; height:26px; border-radius:8px; border:2px solid #fff;
           background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; font-size:15px; color:transparent; cursor:pointer; }
   .picked .pick { background:var(--mint); border-color:var(--mint); color:#041014; }
-  .pcard .ren { position:absolute; top:8px; right:8px; width:30px; height:30px; padding:0; border-radius:9px; font-size:14px; color:var(--muted); background:rgba(0,0,0,.35); }
-  .pcard .ren:hover { color:var(--text); }
   .picked { outline:3px solid var(--mint); outline-offset:-3px; }
   .selbar { display:flex; gap:8px; align-items:center; margin:-4px 0 14px; }
   .selbar .del { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
@@ -210,6 +215,7 @@
     .bnav button.on { color:var(--mint); }
     .actions { bottom:calc(84px + env(safe-area-inset-bottom)); }
     .gal { grid-template-columns:repeat(2,1fr); gap:10px; }
+    .pgrid { grid-template-columns:repeat(2,1fr); gap:10px; }
     .scenes { grid-template-columns:1fr 1fr; gap:10px; }
   }
   @media (max-width:480px) { .scenes { grid-template-columns:1fr; } }
@@ -492,15 +498,35 @@ $('#btn-plan').onclick = async () => {
 /* ---------- projects ---------- */
 async function refreshProjects() {
   const list = await api('/api/projects');
-  $('#plist').innerHTML = list.length ? list.map(p => {
-    const st = p.status || '', cls = /^(queued|running)/.test(st) ? 'run' : /^done/.test(st) ? 'done' : /^(error|stopped)/.test(st) ? 'err' : '';
-    return `<div class="glass pcard" data-id="${p.id}" data-key="${p.id}"><span class="pick">✓</span><button class="ren" data-ren="${p.id}" data-title="${esc(p.title)}" title="Rename">✎</button><div class="th" style="background-image:url('${fileOf(p.id, 'keyframes/kf_00.png', 1)}')"></div>
-      <div style="min-width:0"><b>${esc(p.title)}</b><span style="color:var(--muted);font-size:12px">${fmtDate(p.created)}</span><br><span class="badge ${cls}">${esc(st.replace(':', ' · '))}</span></div></div>`;
-  }).join('') : '<div class="empty">No projects yet. Create one!</div>';
+  const card = p => {
+    const st = p.status || '', cls = /^(queued|running)/.test(st) ? 'run' : /^(error|stopped|interrupted)/.test(st) ? 'err' : '';
+    const time = new Date(p.created * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    return `<div class="glass pcard" data-id="${p.id}" data-key="${p.id}"><span class="pick">✓</span>
+      <div class="pbtns"><button class="pin ${p.pinned ? 'on' : ''}" data-pin="${p.id}" data-on="${p.pinned ? 1 : ''}" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">📌</button>
+        <button data-ren="${p.id}" data-title="${esc(p.title)}" title="Rename">✎</button></div>
+      <div class="th" style="background-image:url('${fileOf(p.id, 'keyframes/kf_00.png', 1)}')"></div>
+      <div class="pinfo"><b title="${esc(p.title)}">${esc(p.title)}</b>
+        <div class="meta"><span>${p.pinned ? fmtDate(p.created) : time}</span>${/^done/.test(st) ? '' : `<span class="badge ${cls}">${esc(st.split(':')[0])}</span>`}</div></div></div>`;
+  };
+  // pinned first, then one group per day (newest first): Today, Yesterday, Thu, Oct 2, ...
+  const day = t => new Date(t * 1000).toDateString(), today = new Date().toDateString(), yest = new Date(Date.now() - 864e5).toDateString();
+  const label = t => day(t) === today ? 'Today' : day(t) === yest ? 'Yesterday'
+    : new Date(t * 1000).toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric', year: new Date(t * 1000).getFullYear() === new Date().getFullYear() ? undefined : 'numeric'});
+  const groups = [];
+  const add = (name, p) => { const g = groups.find(x => x[0] === name); g ? g[1].push(p) : groups.push([name, [p]]); };
+  list.filter(p => p.pinned).forEach(p => add('📌 Pinned', p));
+  list.filter(p => !p.pinned).forEach(p => add(label(p.created), p));
+  $('#plist').innerHTML = list.length ? groups.map(([name, ps]) => `<h3>${esc(name)} · ${ps.length}</h3><div class="pgrid">${ps.map(card).join('')}</div>`).join('')
+    : '<div class="empty">No projects yet. Create one!</div>';
   $$('.pcard').forEach(el => el.onclick = e => (e.target.closest('.pick') || SEL.on) ? togglePick(el) : openProject(el.dataset.id));
   $$('.pcard [data-ren]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
     if (await renameProject(b.dataset.ren, b.dataset.title)) refreshProjects();
+  });
+  $$('.pcard [data-pin]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    try { await api(`/api/projects/${b.dataset.pin}/pin`, {pinned: !b.dataset.on}); } catch (err) { return alert(err.message); }
+    refreshProjects();
   });
   renderSelbar('projects');
 }
