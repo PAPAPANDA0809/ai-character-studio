@@ -142,7 +142,7 @@
   .picked .pick { background:var(--mint); border-color:var(--mint); color:#041014; }
   .picked { outline:3px solid var(--mint); outline-offset:-3px; }
   .selbar { display:flex; gap:8px; align-items:center; margin:-4px 0 14px; }
-  .selbar .del { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
+  .selbar .del, #st-delproj, #btn-delproj { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
   .pcard { position:relative; }
   .gal .cap { position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px; font-size:12px; background:linear-gradient(transparent,rgba(0,0,0,.8)); }
   .gal .play { position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; font-size:12px; }
@@ -544,6 +544,11 @@ async function renameProject(id, title) {  // true when renamed
     if (t === null || !t.trim() || t.trim() === title) return false;
     try { await api(`/api/projects/${id}/rename`, {title: t}); return true; } catch (e) { alert(e.message); return false; }
 }
+async function deleteProject(id, title) {  // to the PC's trash folder, then back to the list
+  if (!confirm(`Delete the project "${title}" with all its pictures and videos? It's moved to the Trash folder on the PC.`)) return;
+  try { await api('/api/delete', {projects: [id]}); } catch (e) { return alert(e.message); }
+  show('projects');
+}
 async function openProject(id) { dirty = false; STI = 0; STV = null; STE = false; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
   history.replaceState(null, '', '#project/' + encodeURIComponent(id)); render(); poll(); }
 
@@ -733,7 +738,7 @@ function render() {
         <div class="row" style="margin-top:8px"><a href="${file('final.mp4', P.final_version)}" download><button>⤓ Clean</button></a>
         <a href="${file('subtitles.srt', P.final_version)}" download><button>⤓ .srt</button></a></div></div></div>` : '';
   $('#v-project').innerHTML = `
-    <div class="topbar"><button id="btn-back">←</button><h2>${esc(pl.title)}</h2></div>
+    <div class="topbar"><button id="btn-back">←</button><h2 style="flex:1">${esc(pl.title)}</h2><button id="btn-delproj" class="del" ${busy ? 'disabled' : ''}>🗑 Delete project</button></div>
     ${busy ? `<div class="progress"><i class="spin"></i><span style="flex:1">${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">■ Stop</button></div>`
       : /^error/.test(P.status) ? `<div class="progress" style="border-color:var(--err)">⚠ ${esc(P.message)}</div>` : ''}
     <div class="glass pad">
@@ -779,6 +784,7 @@ function render() {
 
   $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
   $('#btn-back').onclick = () => show('projects');
+  $('#btn-delproj').onclick = async () => { await savePlan(); deleteProject(P.id, pl.title); };
   $$('.f-ref').forEach(sel => sel.onchange = async () => {  // the filled slots, in order; clearing one moves the rest up
     await savePlan();
     P = await api(`/api/projects/${P.id}/reference`, {references: $$('.f-ref').map(x => x.value).filter(Boolean)});
@@ -883,6 +889,7 @@ function renderStudio() {
       ${ENG && ENG.gpt_image ? `<button class="st-act" id="st-gpt" ${dis}><span>✧</span>Redo with GPT-image (~$0.17)</button>` : ''}
       <button class="st-act" id="st-vid" ${busy || !made ? 'disabled' : ''}><span>▶</span>Make video</button>
       ${made || STV ? `<a href="${src}" download="${esc(P.id)}_${i + 1}${STV ? '_older' : ''}.png"><button class="st-act"><span>⤓</span>Download${STV ? ' this version' : ''}</button></a>` : ''}
+      ${made || STV ? `<button class="st-act" id="st-delpic" ${dis}><span>🗑</span>${STV && made ? 'Delete this version' : 'Delete picture'}</button>` : ''}
       <div class="row" style="gap:8px"><button id="btn-add" style="flex:1" ${busy || n >= 12 ? 'disabled' : ''}>＋ Picture</button>
         <button id="btn-del" style="flex:1" ${busy || n <= 1 ? 'disabled' : ''}>− Last picture</button></div>
       ${clipV ? `<div class="glass"><label>Video of picture ${i + 1}</label><video src="${file(`clips/img_${pad(i)}.mp4`, clipV)}#t=0.1" controls loop playsinline style="width:100%;border-radius:10px"></video>
@@ -911,6 +918,7 @@ function renderStudio() {
         <button id="btn-copy" style="margin-top:10px;width:100%">⧉ Copy caption</button>
       </details>
       <details class="glass"><summary>Log</summary><div class="log" id="log" style="padding:8px 0 0">${esc((P.log || []).join('\n'))}</div></details>
+      <button id="st-delproj" class="del" style="width:100%" ${dis}>🗑 Delete project</button>
     </div></div>`;
 
   $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
@@ -957,6 +965,15 @@ function renderStudio() {
   $('#btn-del').onclick = () => { if (confirm(`Remove picture ${n}${made && i === n - 1 ? ' (the one shown)' : ''} from this project?`)) resize(-1); };
   $('#btn-save').onclick = () => { dirty = true; savePlan().then(render).catch(e => alert(e.message)); };
   $('#btn-copy').onclick = () => navigator.clipboard?.writeText($('#f-caption').value + '\n\n' + $('#f-tags').value).then(() => $('#btn-copy').textContent = '✓ Copied');
+  if ($('#st-delpic')) $('#st-delpic').onclick = async () => {  // the picture shown: an older version, or the current one
+    const older = !!STV && made, path = STV ? 'keyframes/history/' + STV : `keyframes/kf_${pad(i)}.png`;
+    const what = older ? 'this older version' : !made ? 'this version' : `picture ${i + 1}` + (vers.length ? ' (its newest older version takes its place)' : '');
+    if (!confirm(`Delete ${what}? It's moved to the Trash folder on the PC.`)) return;
+    await savePlan();
+    try { await api('/api/delete', {files: [{project: P.id, path}]}); } catch (e) { return alert(e.message); }
+    STV = null; P = await api('/api/projects/' + P.id); render();
+  };
+  $('#st-delproj').onclick = async () => { await savePlan(); deleteProject(P.id, pl.title); };
   if ($('#btn-stop')) $('#btn-stop').onclick = async () => { if (!confirm('Stop generating? Finished pictures are kept.')) return;
     await api(`/api/projects/${P.id}/stop`, {}); setTimeout(poll, 800); };
   const val = s => $(s) ? $(s).value : undefined;
