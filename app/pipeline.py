@@ -231,10 +231,16 @@ def delete_items(user, projects=(), files=()):
             for vers in p.get("versions", {}).values():
                 if name in vers:
                     vers.remove(name)
+            p.get("version_info", {}).pop(name, None)
         elif m := re.fullmatch(r"keyframes/kf_(\d+)\.png", rel):
-            vers = p.get("versions", {}).get(str(int(m.group(1))), [])
-            if vers:  # the newest older version takes the deleted picture's place
-                os.replace(pdir(pid, "keyframes", "history", vers.pop()), src)
+            k = str(int(m.group(1)))
+            vers = p.get("versions", {}).get(k, [])
+            p.get("pic_info", {}).pop(k, None)
+            if vers:  # the newest older version (and its prompt record) takes the deleted picture's place
+                name = vers.pop()
+                os.replace(pdir(pid, "keyframes", "history", name), src)
+                if name in p.get("version_info", {}):
+                    p.setdefault("pic_info", {})[k] = p["version_info"].pop(name)
         elif rel.startswith("clips/img_"):
             p.get("image_clips", {}).pop(str(int(rel[-6:-4])), None)
         p["keyframes_version"] = p["clips_version"] = time.time()
@@ -562,8 +568,14 @@ def size(cfg, p):
     return cfg["sizes"].get(p.get("aspect", "portrait"), cfg["sizes"]["portrait"])
 
 
-def save_keyframe(p, i, data):
-    """Write picture i; an existing picture is kept in keyframes/history so "New version" never loses it."""
+def pic_info(p, i, engine, edit=None):
+    """What a picture was made from, kept with it so an older version shows its own prompt."""
+    return {"prompt": p["plan"]["keyframes"][i]["image_prompt"], "edit": edit or "", "engine": engine, "time": time.time()}
+
+
+def save_keyframe(p, i, data, info=None):
+    """Write picture i; an existing picture is kept in keyframes/history so "New version" never loses it.
+    info (pic_info) is stored under pic_info[i] and travels to version_info[file] when the picture becomes a version."""
     cur = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
     if os.path.exists(cur):
         hist = pdir(p["id"], "keyframes", "history")
@@ -571,8 +583,13 @@ def save_keyframe(p, i, data):
         name = f"kf_{i:02d}_{int(time.time() * 1000)}.png"
         os.replace(cur, os.path.join(hist, name))
         p.setdefault("versions", {}).setdefault(str(i), []).append(name)
+        old = p.get("pic_info", {}).pop(str(i), None)
+        if old:
+            p.setdefault("version_info", {})[name] = old
     with open(cur, "wb") as f:
         f.write(data)
+    if info:
+        p.setdefault("pic_info", {})[str(i)] = info
 
 
 def use_version(pid, index, name):
@@ -585,11 +602,18 @@ def use_version(pid, index, name):
     hist = pdir(pid, "keyframes", "history")
     cur = pdir(pid, "keyframes", f"kf_{i:02d}.png")
     swap = f"kf_{i:02d}_{int(time.time() * 1000)}.png"
+    infos, vinfos = p.setdefault("pic_info", {}), p.setdefault("version_info", {})
     if os.path.exists(cur):
         os.replace(cur, os.path.join(hist, swap))
         vers.append(swap)
+        if str(i) in infos:
+            vinfos[swap] = infos.pop(str(i))
     os.replace(os.path.join(hist, name), cur)
     vers.remove(name)
+    infos.pop(str(i), None)
+    if name in vinfos:  # its prompt comes back with it
+        infos[str(i)] = vinfos.pop(name)
+        p["plan"]["keyframes"][i]["image_prompt"] = infos[str(i)]["prompt"]
     p["keyframes_version"] = time.time()
     save(p)
     return p
@@ -647,7 +671,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
         if use == "gpt-image":  # cloud, pay-per-use: only when picked for this picture
             data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
-            save_keyframe(p, i, data)
+            save_keyframe(p, i, data, pic_info(p, i, "gpt-image"))
             p.setdefault("keyframe_engines", {})[key] = "gpt-image"
             p["keyframes_version"] = time.time()
             log(p, f"keyframe {i + 1}/{n}: done with GPT-image in {time.time() - t:.0f}s")
@@ -698,7 +722,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             log(p, f"keyframe {i + 1}/{n}: local engine failed ({str(e)[:80]}), using GPT-image instead")
             data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
             use = "gpt-image"
-        save_keyframe(p, i, data)
+        save_keyframe(p, i, data, pic_info(p, i, use, edit))
         p.setdefault("keyframe_engines", {})[key] = use
         p["keyframes_version"] = time.time()
         log(p, f"keyframe {i + 1}/{n}: done in {time.time() - t:.0f}s")
