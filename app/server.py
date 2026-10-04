@@ -215,7 +215,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": True})
             if path == "/api/enhance":
                 text, engine = llm.enhance(pipeline.load_config()["llm"], b.get("idea", ""), b.get("mode", "video"),
-                                           b.get("style", ""), b.get("character", ""), bool(b.get("reference")),
+                                           b.get("style", ""), b.get("character", ""),
+                                           len(b.get("references") or []) or bool(b.get("reference")),
                                            b.get("keyframes"))
                 return self.send_json({"text": text, "engine": engine})
             if path == "/api/characters/delete":
@@ -227,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/plan":
                 p = pipeline.create_project(u, b["idea"], b.get("keyframes", 4), b.get("style", ""),
                                             b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),
-                                            b.get("reference", ""), b.get("image_engine"), b.get("video_engine"),
+                                            b.get("references") or b.get("reference", ""), b.get("image_engine"), b.get("video_engine"),
                                             b.get("mode", "video"), b.get("quality"), b.get("video_res"), b.get("lora"))
                 return self.send_json(p)
             m = re.fullmatch(r"/api/projects/([\w\-]+)/(\w+)", path)
@@ -239,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
                                                            b.get("mode"), b.get("t2v_engine"), b.get("quality"),
                                                            b.get("video_res"), b.get("lora")))
             if action == "reference":
-                return self.send_json(pipeline.set_reference(pid, b.get("reference", "")))
+                return self.send_json(pipeline.set_reference(pid, b.get("references") or b.get("reference", "")))
             if action == "plan":
                 return self.send_json(pipeline.update_plan(pid, b["plan"]))
             if action == "keyframes":

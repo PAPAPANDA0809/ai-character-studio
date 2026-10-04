@@ -149,6 +149,7 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
                  "it concretely: each garment, colour, fabric, shoes and accessories - otherwise the generator copies "
                  "the outfit from the reference picture. Also describe the scene, placement or pose, action, mood "
                  "and camera.\n")
+        user += MULTI_REF_RULE.format(n=int(has_reference)) if int(has_reference) > 1 else ""
     cli = _claude_cli()
     if cli:  # Claude Code on this PC, signed in with the owner's Claude account
         r = subprocess.run([cli, *CLI_ARGS],
@@ -224,6 +225,12 @@ REFERENCE_RULE = ("IMPORTANT: the main subject's appearance comes from a referen
                   "clothing); also describe pose or placement, action, framing, location and lighting. "
                   "Set \"character\" to an empty string.")
 
+# has_reference is the number of character pictures; with more than one the generator sees them as Picture 1, 2, 3
+MULTI_REF_RULE = ("There are {n} reference pictures, in order: picture 1 is the main subject; the others are extra "
+                  "references (another view of the subject, an outfit, a product, a place). Where the idea uses one "
+                  "of them (e.g. 'the dress from picture 2'), keep that exact wording 'picture 2' / 'picture 3' and say "
+                  "what to take from it, without describing what it looks like.\n")
+
 
 IMAGES_RULE = ("This is a PHOTO SET (carousel post), not a video: the keyframes are independent images of the same "
                "subject with varied poses, angles, framing and moments. Return an empty \"motions\" list.")
@@ -250,6 +257,7 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
         user += f"Visual style: {style}\n"
     if has_reference:
         user += REFERENCE_RULE + "\n"
+        user += MULTI_REF_RULE.format(n=int(has_reference)) if int(has_reference) > 1 else ""
         if character:
             user += f"(Who the character is, for context only: {character})\n"
     elif character:

@@ -358,13 +358,32 @@ def with_trigger(text, lora):
     return text if text.lower().startswith(head.lower()) else f"{head}, {text}"
 
 
+MAX_REFS = 3  # Qwen-Image 2.1 takes up to 16, but each one adds minutes on an 8 GB card
+
+
+def clean_refs(user, refs):
+    """Character pictures that exist for this user, in order, without repeats (one name or a list)."""
+    have = list_characters(user)
+    out = []
+    for r in ([refs] if isinstance(refs, str) else refs or []):
+        if r in have and r not in out:
+            out.append(r)
+    return out[:MAX_REFS]
+
+
+def refs_of(p):
+    """A project's character pictures in order (picture 1 is the main subject); older projects have one."""
+    return p.get("references") or ([p["reference"]] if p.get("reference") else [])
+
+
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
                    image_engine=None, video_engine=None, mode="video", quality=None, video_res=None, lora=None):
     cfg = load_config()
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
-    reference = reference if reference in list_characters(user) else ""
-    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=bool(reference), mode=mode)
+    refs = clean_refs(user, reference)
+    reference = refs[0] if refs else ""
+    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=len(refs), mode=mode)
     base = user + "--" + time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
     pid, k = base, 2
     while os.path.exists(pdir(pid)):  # same title in the same second
@@ -375,7 +394,7 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "id": pid, "created": time.time(), "idea": idea, "style": style, "aspect": aspect,
         "seed": int(seed) if seed not in (None, "") else random.randint(1, 2**31 - 1),
         "plan": plan, "keyframe_seeds": {}, "status": "planned", "log": [],
-        "reference": reference,
+        "reference": reference, "references": refs,
         "image_engine": (image_engine if image_engine in comfy.REFERENCE_ENGINES else comfy.REFERENCE_ENGINES[0]) if reference else
                         image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "qwen-image-21"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
@@ -428,7 +447,7 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
     if lora is not None:  # "" = no LoRA; a LoRA is only kept for the engine it was trained for (checked below)
         p["lora"] = lora
     if image_engine in comfy.IMAGE_ENGINES and image_engine not in comfy.REFERENCE_ENGINES:
-        p["reference"] = ""
+        p["reference"], p["references"] = "", []
     if quality in QUALITIES:
         p["quality"] = quality
     if video_res in ("480p", "720p"):
@@ -453,7 +472,8 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
 
 def set_reference(pid, reference):
     p = load(pid)
-    p["reference"] = reference if reference in list_characters(user_of(pid)) else ""
+    p["references"] = clean_refs(user_of(pid), reference)
+    p["reference"] = p["references"][0] if p["references"] else ""
     if p["reference"] and p.get("image_engine") not in comfy.REFERENCE_ENGINES:
         p["image_engine"] = comfy.REFERENCE_ENGINES[0]
     save(p)
@@ -491,11 +511,15 @@ def reference_prompt(p, i):
     style = p.get("style", "").strip()
     # Image models read "face", "hair", "people" (even in "do not add people") as a request to draw a person, so
     # person and clothing words are only added when the user's own description is about a person / clothes.
-    keep = "Keep the exact same subject from the reference image, with its identity and details unchanged"
+    n = len(refs_of(p))  # Qwen's encoder labels them "Picture 1", "Picture 2", ... in this order
+    src = "picture 1" if n > 1 else "the reference image"
+    keep = f"Keep the exact same subject from {src}, with its identity and details unchanged"
     if PERSON_WORDS.search(scene):
         keep += ": same face, eyes, hair, skin tone and body"
     if CLOTHING_WORDS.search(scene):
-        keep += ". Use the clothing described here instead of the outfit in the reference image"
+        keep += f". Use the clothing described here instead of the outfit in {src}"
+    if n > 1:
+        keep += f". Pictures 2{' and 3' if n > 2 else ''} are extra references: use them only as the description says"
     return f"{keep}. {scene}. " + (f"Style: {style}." if style else "")
 
 
@@ -552,12 +576,13 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
     steps = cfg["image"]["hq_steps"] if q in ("high", "2k", "ultra") else None
     n = len(p["plan"]["keyframes"])
     indices = list(range(n)) if indices is None else [int(i) for i in indices]
-    ref = p.get("reference")
-    if ref and ref not in list_characters(user_of(p["id"])):
-        raise RuntimeError(f'the character picture "{ref}" was deleted; pick another one (or None) under Character picture')
-    if ref:
-        ref_name = c.upload_image(os.path.join(char_dir(user_of(p["id"])), ref),
-                                  "aics_ref_" + re.sub(r"[^\w.\-]", "_", user_of(p["id"]) + "_" + ref))
+    refs = refs_of(p)
+    gone = [r for r in refs if r not in list_characters(user_of(p["id"]))]
+    if gone:
+        raise RuntimeError(f'the character picture "{gone[0]}" was deleted; pick another one (or None) under Character picture')
+    ref = bool(refs)
+    ref_names = [c.upload_image(os.path.join(char_dir(user_of(p["id"])), r),
+                                "aics_ref_" + re.sub(r"[^\w.\-]", "_", user_of(p["id"]) + "_" + r)) for r in refs]
     for i in indices:
         check_cancel(p)
         key = str(i)
@@ -592,7 +617,7 @@ def do_keyframes(p, indices=None, reseed=False, engine=None):
         if lora and not model_path(cfg, "loras/" + lora["file"]):
             raise RuntimeError(f'the trained character "{lora["label"]}" ({lora["file"]}) is not in models\\loras yet')
         if ref:
-            wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i), lora), ref_name, rw, rh,
+            wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i), lora), ref_names, rw, rh,
                                           p["keyframe_seeds"][key], prefix, steps)
         else:
             wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,

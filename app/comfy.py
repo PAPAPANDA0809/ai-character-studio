@@ -234,11 +234,13 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None)
 
 
 def reference_workflow(cfg, engine, prompt, ref_name, width, height, seed, prefix, steps=None):
-    """A new picture that keeps the character from the uploaded reference picture."""
-    if engine in ("flux2-klein-4b", "flux2-klein-9b"):
-        return flux2_klein_workflow(cfg, engine, prompt, width, height, seed, prefix, ref_name=ref_name)
+    """A new picture that keeps the character from the uploaded reference picture(s). ref_name is one uploaded name
+    or a list; only Qwen-Image 2.1 takes several, the older engines use the first."""
     if engine == "qwen-image-21":
         return qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=ref_name, steps=steps)
+    ref_name = ref_name if isinstance(ref_name, str) else ref_name[0]
+    if engine in ("flux2-klein-4b", "flux2-klein-9b"):
+        return flux2_klein_workflow(cfg, engine, prompt, width, height, seed, prefix, ref_name=ref_name)
     return kontext_workflow(cfg, prompt, ref_name, width, height, seed, prefix, steps)
 
 
@@ -588,9 +590,12 @@ def qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=Non
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["4", 0]}},
         "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": prefix}},
     }
-    if ref_name:
-        wf["20"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
-        wf["5"]["inputs"].update({"images.image_1": ["20", 0], "vae": ["4", 0]})
+    names = [ref_name] if isinstance(ref_name, str) else list(ref_name or [])
+    for k, name in enumerate(names):  # several references: the encoder sees them as Picture 1, 2, ...
+        wf[str(20 + k)] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        wf["5"]["inputs"][f"images.image_{k + 1}"] = [str(20 + k), 0]
+    if names:
+        wf["5"]["inputs"]["vae"] = ["4", 0]
     return wf
 
 
