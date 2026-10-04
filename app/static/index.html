@@ -200,7 +200,7 @@
       <div class="glass pad">
         <div class="grid2">
           <div><label style="margin-top:0" id="nkf-label">Keyframes</label>
-            <div class="stepper"><button data-step="-1">−</button><input id="nkf" type="number" value="3" min="1" max="12"><button data-step="1">+</button></div></div>
+            <div class="stepper"><button data-step="-1">−</button><input id="nkf" type="number" value="1" min="1" max="12"><button data-step="1">+</button></div></div>
           <div><label style="margin-top:0">Format</label>
             <div class="seg small" id="aspect-seg"><button data-aspect="portrait">9:16</button><button data-aspect="landscape">16:9</button><button data-aspect="square">1:1</button></div></div>
         </div>
@@ -244,7 +244,7 @@
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let P = null, dirty = false, CHARS = [], ENG = null, VIEW = 'create';
-const NEW = {mode: 'images', aspect: 'portrait', ref: '', quality: 'high', vres: '480p'};  // opens on 3 pictures, 9:16, 1080p
+const NEW = {mode: 'images', aspect: 'portrait', ref: '', quality: 'high', vres: '480p'};  // opens on 1 picture, 9:16, 1080p
 const ICON = {
   create: '<path d="M12 3v18M3 12h18"/>',
   projects: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/>',
