@@ -138,8 +138,9 @@ def save(p):
 
 def with_present(p):
     """A project for the page, plus which pictures exist on disk (one can be deleted from the Images tab)."""
-    return {**p, "present": [os.path.exists(pdir(p["id"], "keyframes", f"kf_{i:02d}.png"))
-                             for i in range(len(p["plan"]["keyframes"]))]}
+    n = len(p["plan"]["keyframes"])
+    return {**p, "present": [os.path.exists(pdir(p["id"], "keyframes", f"kf_{i:02d}.png")) for i in range(n)],
+            "clips_present": [os.path.exists(pdir(p["id"], "clips", f"clip_{i:02d}.mp4")) for i in range(n)]}
 
 
 def list_projects(user):

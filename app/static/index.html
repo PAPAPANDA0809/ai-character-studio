@@ -98,33 +98,14 @@
   .badge { display:inline-block; font-size:11px; padding:2px 8px; border-radius:99px; background:var(--glass2); color:var(--muted); margin-top:4px; }
   .badge.run { color:var(--cyan); } .badge.done { color:var(--mint); } .badge.err { color:var(--err); }
   /* project editor */
-  .topbar { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-  .topbar h2 { margin:0; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .progress { display:flex; align-items:center; gap:10px; padding:12px 14px; margin:10px 0; border-radius:14px;
     background:linear-gradient(90deg,rgba(46,242,181,.12),rgba(138,92,255,.12)); border:1px solid rgba(46,242,181,.25); font-size:14px; }
   .spin { width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.2); border-top-color:var(--mint); animation:sp 0.8s linear infinite; flex:none; }
   @keyframes sp { to { transform:rotate(360deg) } }
-  .scenes { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
-  .scene { padding:12px; display:flex; flex-direction:column; gap:8px; }
-  .scene .media { border-radius:12px; overflow:hidden; aspect-ratio:var(--ar,9/16); background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; cursor:pointer; position:relative; }
-  .scene .media img, .scene .media video { width:100%; height:100%; object-fit:cover; display:block; }
   .stop { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
-  .vers { display:flex; gap:6px; align-items:center; overflow-x:auto; padding:2px 0; }
-  .vers span { font-size:11px; color:var(--muted); margin-right:2px; flex:none; }
-  .vers img { width:44px; height:58px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:pointer; flex:none; }
   .gen { display:flex; flex-direction:column; align-items:center; gap:10px; color:var(--mint); font-weight:600; }
   .gen .spin { width:28px; height:28px; border-width:3px; }
   .gen.dim { color:var(--muted); font-weight:500; }
-  .scene .num { position:absolute; top:8px; left:8px; font:600 12px var(--display); padding:3px 8px; border-radius:99px; background:rgba(0,0,0,.6); color:var(--text); }
-  .scene label { margin:4px 0 2px; }
-  .scene textarea { font-size:13px; }
-  .motion { border-top:1px dashed var(--line); padding-top:8px; }
-  .motion video { width:100%; border-radius:10px; margin-bottom:6px; }
-  .actions { position:sticky; bottom:76px; z-index:10; display:flex; gap:8px; flex-wrap:wrap; padding:12px; margin-top:16px; border-radius:16px; background:rgba(12,15,21,.85); backdrop-filter:blur(14px); border:1px solid var(--line); }
-  .actions .primary { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  @media (max-width:820px) { .actions { flex-wrap:nowrap; padding:8px; gap:6px; } .actions button { padding:10px 11px; font-size:13px; } }
-  .final { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
-  .final video { width:100%; border-radius:14px; background:#000; max-height:70vh; }
   .log { font:12px/1.5 ui-monospace,Consolas,monospace; color:var(--muted); max-height:180px; overflow:auto; white-space:pre-wrap; padding:12px; }
   /* galleries */
   .gal { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
@@ -142,7 +123,7 @@
   .picked .pick { background:var(--mint); border-color:var(--mint); color:#041014; }
   .picked { outline:3px solid var(--mint); outline-offset:-3px; }
   .selbar { display:flex; gap:8px; align-items:center; margin:-4px 0 14px; }
-  .selbar .del, #st-delproj, #btn-delproj { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
+  .selbar .del, #st-delproj { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
   .pcard { position:relative; }
   .gal .cap { position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px; font-size:12px; background:linear-gradient(transparent,rgba(0,0,0,.8)); }
   .gal .play { position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; font-size:12px; }
@@ -165,12 +146,16 @@
   .st-zoom { display:flex; align-items:center; gap:2px; padding:3px; border-radius:99px; background:var(--glass); border:1px solid var(--line); }
   .st-zoom button { border-radius:99px; padding:6px 13px; background:none; border:0; }
   .st-zoom span { min-width:50px; text-align:center; font-size:13px; color:var(--muted); cursor:pointer; }
-  .st-strip { grid-area:strip; display:flex; flex-direction:column; align-items:center; gap:8px; overflow:auto; max-height:calc(100vh - 200px); padding:2px; }
+  .st-strip { grid-area:strip; display:flex; flex-direction:column; align-items:center; gap:8px; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; max-height:calc(100vh - 200px); padding:2px; }
   .st-strip .lbl { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-top:4px; }
   .st-th { position:relative; width:84px; aspect-ratio:var(--ar); border-radius:10px; overflow:hidden; border:2px solid transparent; cursor:pointer;
     background:rgba(0,0,0,.45) center/cover; flex:none; padding:0; }
   .st-th.on { border-color:var(--mint); box-shadow:0 0 14px rgba(46,242,181,.35); }
   .st-th b { position:absolute; left:4px; bottom:4px; font-size:11px; padding:1px 6px; border-radius:99px; background:rgba(0,0,0,.65); }
+  .st-th video { display:block; width:100%; height:100%; object-fit:cover; pointer-events:none; }
+  .st-th.dim { opacity:.55; border:2px dashed var(--line); }
+  .st-canvas video { display:block; max-width:100%; max-height:calc(100vh - 344px); border-radius:12px; background:#000; }
+  .st-panel .lbl { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
   .st-canvas { grid-area:canvas; position:relative; display:flex; align-items:center; justify-content:center; height:calc(100vh - 320px); min-height:320px;
     border-radius:18px; background:rgba(0,0,0,.25); border:1px solid var(--line); padding:12px; overflow:hidden; }
   .st-canvas .zoom { max-width:100%; border-radius:12px; overflow:hidden; touch-action:none; cursor:zoom-in; line-height:0; }
@@ -200,11 +185,11 @@
   .st-panel .progress { margin:0; }
   @media (max-width:820px) {
     .studio { grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "canvas" "strip" "prompt" "panel"; }
-    .st-strip { flex-direction:row; max-height:none; overflow-x:auto; align-items:center; }
+    .st-strip { flex-direction:row; max-height:none; overflow-x:auto; overflow-y:hidden; align-items:center; }
     .st-strip .lbl { writing-mode:vertical-rl; transform:rotate(180deg); margin:0; }
     .st-th { width:54px; }
     .st-canvas { height:auto; min-height:0; padding:8px; }
-    .st-canvas .zoom img { max-height:50vh; }
+    .st-canvas .zoom img, .st-canvas video { max-height:50vh; }
     .st-empty { height:50vh; }
     .st-panel { max-height:none; overflow:visible; }
   }
@@ -220,12 +205,9 @@
     .bnav button { flex:1; background:none; border:0; display:flex; flex-direction:column; align-items:center; gap:3px; font-size:11px; font-weight:500; color:var(--muted); padding:6px 0; }
     .bnav button svg { width:22px; height:22px; stroke:currentColor; }
     .bnav button.on { color:var(--mint); }
-    .actions { bottom:calc(84px + env(safe-area-inset-bottom)); }
     .gal { grid-template-columns:repeat(2,1fr); gap:10px; }
     .pgrid { grid-template-columns:repeat(2,1fr); gap:10px; }
-    .scenes { grid-template-columns:1fr 1fr; gap:10px; }
   }
-  @media (max-width:480px) { .scenes { grid-template-columns:1fr; } }
   nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
 </head>
@@ -549,7 +531,7 @@ async function deleteProject(id, title) {  // to the PC's trash folder, then bac
   try { await api('/api/delete', {projects: [id]}); } catch (e) { return alert(e.message); }
   show('projects');
 }
-async function openProject(id) { dirty = false; STI = 0; STV = null; STE = false; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
+async function openProject(id) { dirty = false; STI = 0; STK = 'kf'; STV = null; STE = false; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
   history.replaceState(null, '', '#project/' + encodeURIComponent(id)); render(); poll(); }
 
 /* ---------- select & delete ---------- */
@@ -678,7 +660,7 @@ function lightbox(kind, it) {
   $('#lb').classList.add('on');
   $('#lb-close').onclick = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
   $('#lb-open').onclick = async () => { $('#lb-close').onclick(); await openProject(it.project);
-    const m = /kf_(\d+)/.exec(it.path); if (m && P.mode === 'images') { STI = +m[1]; render(); } };  // land on that picture
+    const m = /kf_(\d+)/.exec(it.path); if (m) { STK = 'kf'; STI = +m[1]; render(); } };  // land on that picture
 }
 $('#lb').onclick = e => { if (e.target.id === 'lb') { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; } };
 
@@ -694,220 +676,133 @@ function collectPlan() {
 }
 async function savePlan() { if (!dirty) return; P = await api(`/api/projects/${P.id}/plan`, {plan: collectPlan()}); dirty = false; }
 
-function render() {
-  document.querySelector('main').classList.toggle('wide', P.mode === 'images');
-  if (P.mode === 'images') return renderStudio();
-  const pl = P.plan, n = pl.keyframes.length, busy = running();
-  const ar = {portrait: '9/16', landscape: '16/9', square: '1/1'}[P.aspect] || '9/16';
-  const hasKf = P.keyframes_version, isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
-  const word = isImg ? 'Image' : isT2V ? 'Scene' : 'Keyframe';
-  const pRefs = P.references || (P.reference ? [P.reference] : []);  // older projects have one picture
-  const refOpts = k => `<option value="">${k ? '—' : 'No character picture'}</option>` + CHARS.map(c => `<option value="${esc(c)}" ${c === pRefs[k] ? 'selected' : ''}>${esc(c)}</option>`).join('');
-  // which card is being made right now, from the job message ("keyframe 2/3: ...", "scene 1/2: ...", "clip 1/2: ...")
-  const cur = busy && /(keyframe|scene) (\d+)\//.exec(P.message || '');
-  const curIdx = cur ? +cur[2] - 1 : -1, queued = busy && /^queued/.test(P.status);
-  const waitLabel = i => i === curIdx ? '<div class="gen"><i class="spin"></i>Generating…</div>'
-    : (busy && (queued || i > curIdx) && /keyframes|t2v/.test(P.status)) ? '<div class="gen dim">Queued</div>' : 'not generated yet';
-  const cards = pl.keyframes.map((k, i) => {
-    const media = isT2V
-      ? (P.clips_version && i !== curIdx ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}#t=0.1" controls loop muted playsinline onerror="this.outerHTML=this.dataset.w" data-w='${waitLabel(i)}'></video>` : waitLabel(i))
-      : (hasKf && i !== curIdx ? `<img src="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" onerror="this.outerHTML=this.dataset.w" data-w='${waitLabel(i)}' data-full="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}">` : waitLabel(i));
-    const motion = isVid && i < n - 1 ? `<div class="motion"><label>Motion to ${word.toLowerCase()} ${i + 2} · clip ${i + 1}</label>
-        ${P.clips_version ? `<video src="${file(`clips/clip_${pad(i)}.mp4`, P.clips_version)}#t=0.1" controls loop muted playsinline onerror="this.remove()"></video>` : ''}
-        <textarea id="mo${i}" rows="3">${esc(pl.motions[i])}</textarea>
-        ${P.clips_version ? `<button data-reanim="${i}" ${busy ? 'disabled' : ''}>↻ Re-animate clip ${i + 1}</button>` : ''}</div>` : '';
-    return `<div class="glass scene"><div class="media" style="--ar:${ar}"><span class="num">${word} ${i + 1}</span>${media}</div>
-      ${((P.versions || {})[i] || []).length ? `<div class="vers"><span>Versions</span>${(P.versions[i]).slice().reverse().map(v =>
-        `<img src="${file('keyframes/history/' + v, 1)}" data-ver="${esc(v)}" data-vi="${i}" title="Tap to view or switch back">`).join('')}</div>` : ''}
-      <label>Prompt</label><textarea id="kp${i}" rows="4">${esc(k.image_prompt)}</textarea>
-      <label>On-screen text</label><input id="ks${i}" value="${esc(k.subtitle)}">
-      <div class="row">${isT2V ? `<button data-rescene="${i}" ${busy ? 'disabled' : ''}>↻ Regenerate scene</button>`
-        : `<button data-regen="${i}" ${busy ? 'disabled' : ''} title="Makes another take; the current one is kept under Versions">↻ New version</button>
-           ${ENG && ENG.gpt_image ? `<button data-gpt="${i}" ${busy ? 'disabled' : ''} title="Pay-per-use, about $0.17">✦ Redo with GPT-image</button>` : ''}`}
-        ${isImg && hasKf ? `<a href="${file(`keyframes/kf_${pad(i)}.png`, P.keyframes_version)}" download="${esc(P.id)}_${i + 1}.png"><button>⤓ Save</button></a>
-          <button data-animg="${i}" ${busy ? 'disabled' : ''}>▶ Make video</button>` : ''}</div>
-      ${isImg && (P.image_clips || {})[i] ? `<div class="motion"><label>Video of picture ${i + 1}</label>
-        <video src="${file(`clips/img_${pad(i)}.mp4`, (P.image_clips || {})[i])}#t=0.1" controls loop playsinline></video>
-        <a href="${file(`clips/img_${pad(i)}.mp4`, (P.image_clips || {})[i])}" download><button>⤓ Save video</button></a></div>` : ''}
-      ${motion}</div>`;
-  }).join('');
-  const finalBlock = P.final_version && !isImg ? `<h3>Final video</h3><div class="final">
-      <div class="glass pad"><video src="${file('final_subtitled.mp4', P.final_version)}#t=0.1" controls playsinline onerror="this.parentElement.remove()"></video>
-        <div class="row" style="margin-top:8px"><a href="${file('final_subtitled.mp4', P.final_version)}" download><button class="primary">⤓ With text</button></a></div></div>
-      <div class="glass pad"><video src="${file('final.mp4', P.final_version)}#t=0.1" controls playsinline></video>
-        <div class="row" style="margin-top:8px"><a href="${file('final.mp4', P.final_version)}" download><button>⤓ Clean</button></a>
-        <a href="${file('subtitles.srt', P.final_version)}" download><button>⤓ .srt</button></a></div></div></div>` : '';
-  $('#v-project').innerHTML = `
-    <div class="topbar"><button id="btn-back">←</button><h2 style="flex:1">${esc(pl.title)}</h2><button id="btn-delproj" class="del" ${busy ? 'disabled' : ''}>🗑 Delete project</button></div>
-    ${busy ? `<div class="progress"><i class="spin"></i><span style="flex:1">${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">■ Stop</button></div>`
-      : /^error/.test(P.status) ? `<div class="progress" style="border-color:var(--err)">⚠ ${esc(P.message)}</div>` : ''}
-    <div class="glass pad">
-      <div class="grid2">
-        <div><label style="margin-top:0">Make</label><select id="f-mode" ${busy ? 'disabled' : ''}>${[['video', 'Images + video'], ['t2v', 'Video only'], ['images', 'Images only']].map(([v, l]) => `<option value="${v}" ${(P.mode || 'video') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div><label style="margin-top:0">Character pictures <span style="font-weight:400;color:var(--muted)">· 1 = main, 2–3 extra</span></label>
-          ${[0, 1, 2].map(k => `<select class="f-ref" data-k="${k}" style="${k ? 'margin-top:6px' : ''}${k && !pRefs[k - 1] ? ';display:none' : ''}" ${busy || isT2V || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts(k)}</select>`).join('')}
-          ${!refEngines().includes(P.image_engine) && !P.reference && !isT2V ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Qwen-Image 2.1</div>` : ''}</div>
-        <div style="${isT2V ? 'display:none' : ''}"><label>Picture resolution</label><select id="f-quality" ${busy ? 'disabled' : ''}>
-          ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['2k', '2K (1440p)'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        ${lorasFor(P.image_engine).length && !isT2V ? `<div><label>Trained character</label><select id="f-lora" ${busy ? 'disabled' : ''}>${loraOptions(P.image_engine, P.lora || '')}</select></div>` : ''}
-        <div style="${isT2V ? 'display:none' : ''}"><label>Image engine</label><select id="f-img-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select>
-          ${P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Engines without "character picture OK" remove the character picture</div>` : ''}</div>
-        <div><label>Video resolution</label><select id="f-vres" ${busy ? 'disabled' : ''}>
-          ${['480p', '720p'].map(v => `<option value="${v}" ${(P.video_res || '480p') === v ? 'selected' : ''}>${v}${v === '720p' ? ' · ~2-3× slower' : ''}</option>`).join('')}</select></div>
-        <div style="${isT2V ? 'display:none' : ''}"><label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select></div>
-        <div style="${isT2V ? '' : 'display:none'}"><label>Text-to-video engine</label><select id="f-t2v-eng" ${busy ? 'disabled' : ''}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select></div>
-      </div>
-      <details><summary>Title, character and setting</summary>
-        <label>Title</label><input id="f-title" value="${esc(pl.title)}">
-        <label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea>
-        <label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea>
-      </details>
-    </div>
-    <h3>${isImg ? `Images · ${n}` : isT2V ? `Scenes · ${n} × 5s` : `Keyframes · ${n} → ${(n - 1) * 5}s video`}</h3>
-    <div class="scenes">${cards}</div>
-    <div class="actions">
-      ${isT2V ? `<button class="primary" id="btn-t2v" ${busy ? 'disabled' : ''}>▶ Generate video</button>`
-        : `<button class="primary" id="btn-kf" ${busy ? 'disabled' : ''}>✦ ${isImg ? 'Generate images' : 'Generate keyframes'}</button>`}
-      ${isVid ? `<button class="primary" id="btn-anim" ${busy || !hasKf ? 'disabled' : ''}>▶ Animate &amp; stitch</button>` : ''}
-      ${busy ? `<button id="btn-stop2" class="stop">■ Stop</button>` : ''}
-      <button id="btn-add" ${busy || n >= (isImg ? 12 : 8) ? 'disabled' : ''}>＋</button>
-      <button id="btn-del" ${busy || n <= (isVid ? 2 : 1) ? 'disabled' : ''}>−</button>
-      <button id="btn-save">Save</button>
-    </div>
-    ${finalBlock}
-    <h3>Caption</h3>
-    <div class="glass pad"><textarea id="f-caption" rows="3">${esc(pl.caption)}</textarea>
-      <label>Hashtags</label><input id="f-tags" value="${esc((pl.hashtags || []).join(' '))}">
-      <div class="row" style="margin-top:10px"><button id="btn-copy">⧉ Copy caption</button>
-        ${!isImg && P.clips_version ? `<button id="btn-stitch" ${busy ? 'disabled' : ''}>Re-stitch with new text</button>` : ''}</div></div>
-    <details><summary>Log</summary><div class="glass log" id="log">${esc((P.log || []).join('\n'))}</div></details>`;
-
-  $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
-  $('#btn-back').onclick = () => show('projects');
-  $('#btn-delproj').onclick = async () => { await savePlan(); deleteProject(P.id, pl.title); };
-  $$('.f-ref').forEach(sel => sel.onchange = async () => {  // the filled slots, in order; clearing one moves the rest up
-    await savePlan();
-    P = await api(`/api/projects/${P.id}/reference`, {references: $$('.f-ref').map(x => x.value).filter(Boolean)});
-    render();
-  });
-  const setEng = async () => {
-    await savePlan();
-    try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: $('#f-img-eng').value, video_engine: $('#f-vid-eng').value,
-      mode: $('#f-mode').value, t2v_engine: $('#f-t2v-eng').value, quality: $('#f-quality').value, video_res: $('#f-vres').value,
-      lora: $('#f-lora') ? $('#f-lora').value : undefined}); } catch (e) { alert(e.message); }
-    render();
-  };
-  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres', '#f-lora'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
-  const resize = async delta => {
-    const pl2 = collectPlan();
-    if (delta > 0) pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});
-    else pl2.keyframes.pop();
-    P = await api(`/api/projects/${P.id}/plan`, {plan: pl2}); dirty = false; render();
-  };
-  const stop = async () => { if (!confirm('Stop generating? Finished pictures/clips are kept.')) return;
-    await api(`/api/projects/${P.id}/stop`, {}); setTimeout(poll, 800); };
-  if ($('#btn-stop')) $('#btn-stop').onclick = stop;
-  if ($('#btn-stop2')) $('#btn-stop2').onclick = stop;
-  $('#btn-add').onclick = () => resize(1); $('#btn-del').onclick = () => resize(-1);
-  $('#btn-save').onclick = () => { dirty = true; savePlan().then(render).catch(e => alert(e.message)); };
-  $('#btn-copy').onclick = () => navigator.clipboard?.writeText($('#f-caption').value + '\n\n' + $('#f-tags').value).then(() => $('#btn-copy').textContent = '✓ Copied');
-  const run = (task, body) => async () => { await savePlan(); await api(`/api/projects/${P.id}/${task}`, body || {}); poll(); };
-  if (isT2V) $('#btn-t2v').onclick = run('t2v'); else $('#btn-kf').onclick = run('keyframes');
-  if (isVid) $('#btn-anim').onclick = run('animate');
-  if ($('#btn-stitch')) $('#btn-stitch').onclick = async () => { dirty = true; await run('stitch')(); };
-  $$('[data-regen]').forEach(b => b.onclick = run('keyframes', {indices: [+b.dataset.regen], reseed: true}));
-  $$('[data-reanim]').forEach(b => b.onclick = run('animate', {only: +b.dataset.reanim}));
-  $$('[data-ver]').forEach(img => img.onclick = () => {
-    const src = file('keyframes/history/' + img.dataset.ver, 1), i = +img.dataset.vi;
-    $('#lb').innerHTML = `<img src="${src}"><div style="color:var(--muted);font-size:13px">Older version of picture ${i + 1}${ZOOM_HINT}</div>
-      <div class="row"><button class="primary" id="lb-use">Use this one</button><a href="${src}" download><button>⤓ Save</button></a><button id="lb-close">Close</button></div>`;
-    makeZoom($('#lb img'));
-    $('#lb').classList.add('on');
-    const close = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
-    $('#lb-close').onclick = close;
-    $('#lb-use').onclick = async () => { await savePlan(); P = await api(`/api/projects/${P.id}/use_version`, {index: i, name: img.dataset.ver}); close(); render(); };
-  });
-  $$('[data-animg]').forEach(b => b.onclick = async () => {
-    const motion = prompt('How should it move? (leave empty for gentle natural motion)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
-    if (motion === null) return;
-    await run('animate_image', {index: +b.dataset.animg, motion})(); });
-  $$('[data-gpt]').forEach(b => b.onclick = async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
-    await run('keyframes', {indices: [+b.dataset.gpt], engine: 'gpt-image'})(); });
-  $$('[data-rescene]').forEach(b => b.onclick = run('t2v', {only: +b.dataset.rescene}));
-  $$('.scene img[data-full]').forEach(img => img.onclick = () => lightbox('images', {project: P.id, path: img.dataset.full.split('/files/' + P.id + '/')[1].split('?')[0], mtime: P.keyframes_version, label: pl.title}));
+function render() {  // every project type opens in the studio layout
+  document.querySelector('main').classList.add('wide');
+  renderStudio();
 }
 
-/* ---------- studio: Images-only projects, laid out like an image editor ---------- */
-// STI = the picture being worked on, STV = an older version being looked at (null = current), STE = prompt bar edits
-let STI = 0, STV = null, STE = false, STEXT = '';  // STEXT: the edit instruction being typed (survives refreshes)
+/* ---------- studio: every project, laid out like an image editor ---------- */
+// What's shown: STK = 'kf' (a picture / keyframe / scene), 'clip' (the motion from keyframe STI to STI+1) or 'final';
+// STI = its index, STV = an older version being looked at (null = current), STE = the prompt bar edits the picture,
+// STEXT = the edit instruction being typed (survives refreshes)
+let STI = 0, STK = 'kf', STV = null, STE = false, STEXT = '';
 function renderStudio() {
   const pl = P.plan, n = pl.keyframes.length, busy = running();
+  const isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
+  const word = isImg ? 'picture' : isT2V ? 'scene' : 'keyframe', Word = word[0].toUpperCase() + word.slice(1);
   if (STI >= n) STI = n - 1;
-  const i = STI, k = pl.keyframes[i];
-  const made = P.present ? !!P.present[i] : !!(P.keyframe_seeds || {})[i];  // the current picture exists on disk
+  if (STK === 'clip' && (!isVid || STI >= n - 1)) STK = 'kf';
+  if (STK === 'final' && (isImg || !P.final_version)) STK = 'kf';
+  const i = STI, k = pl.keyframes[i], sel = STK, onPic = sel === 'kf' && !isT2V;
+  const made = !isT2V && (P.present ? !!P.present[i] : !!(P.keyframe_seeds || {})[i]);  // the picture exists on disk
+  const clipMade = j => P.clips_present ? !!P.clips_present[j] : !!P.clips_version;
   const ar = {portrait: '9/16', landscape: '16/9', square: '1/1'}[P.aspect] || '9/16';
-  const cur = busy && /keyframe (\d+)\//.exec(P.message || ''), curIdx = cur ? +cur[1] - 1 : -1;
+  const cur = busy && /(keyframe|scene|clip) (\d+)\//.exec(P.message || '');
+  const curKind = cur ? {keyframe: 'kf', scene: 'kf', clip: 'clip'}[cur[1]] : '', curIdx = cur ? +cur[2] - 1 : -1;
   const kfSrc = j => file(`keyframes/kf_${pad(j)}.png`, P.keyframes_version);
-  const vers = ((P.versions || {})[i] || []).slice().reverse();
+  const clipSrc = j => file(`clips/clip_${pad(j)}.mp4`, P.clips_version);
+  const finalSrc = (f = 'final_subtitled.mp4') => file(f, P.final_version);
+  const vers = onPic ? ((P.versions || {})[i] || []).slice().reverse() : [];
   if (STV && !vers.includes(STV)) STV = null;
-  if (!made && vers.length && !STV) STV = vers[0];  // current picture deleted: show the newest older version
-  if (!made) STE = false;
+  if (onPic && !made && vers.length && !STV) STV = vers[0];  // current picture deleted: show the newest older version
+  if (!onPic || !made) STE = false;
   const src = STV ? file('keyframes/history/' + STV, 1) : kfSrc(i);
   const pRefs = P.references || (P.reference ? [P.reference] : []);
   const refOpts = r => `<option value="">${r ? '—' : 'No character picture'}</option>` + CHARS.map(c => `<option value="${esc(c)}" ${c === pRefs[r] ? 'selected' : ''}>${esc(c)}</option>`).join('');
-  const clipV = (P.image_clips || {})[i];
-  const empty = `<div class="st-empty">${busy ? '' : 'Not generated yet. Write the prompt below and press ↑'}</div>`;
-  const th = (s, attrs, on, label) => `<button class="st-th ${on ? 'on' : ''}" ${attrs} style="background-image:url('${s}')">${label ? `<b>${label}</b>` : ''}</button>`;
+  const clipV = isImg && (P.image_clips || {})[i];
   const dis = busy ? 'disabled' : '';
-  $('#v-project').innerHTML = `<div class="studio" style="--ar:${ar}">
-    <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2 id="st-title" title="Tap to rename" style="cursor:pointer">${esc(pl.title)} <span style="font-size:13px;color:var(--muted)">✎</span></h2>
-      <div class="st-zoom"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div></div>
-    <div class="st-strip">
-      ${n > 1 ? `<div class="lbl">Pictures</div>${pl.keyframes.map((_, j) => th(kfSrc(j), `data-pic="${j}"`, j === i, j + 1)).join('')}` : ''}
-      ${vers.length ? `<div class="lbl">Versions</div>${made ? th(kfSrc(i), 'data-stv=""', !STV, 'now') : ''}${vers.map(v => th(file('keyframes/history/' + v, 1), `data-stv="${esc(v)}"`, v === STV, '')).join('')}` : ''}
-    </div>
-    <div class="st-canvas">
-      ${made || STV ? `<img id="st-img" src="${src}" alt="">` : empty}
-      ${busy && curIdx === i ? `<div class="st-over"><div class="gen"><i class="spin"></i>${/editing/.test(P.message || '') ? 'Editing…' : 'Generating…'}</div></div>`
-        : busy && /^queued:keyframes/.test(P.status) ? `<div class="st-over"><div class="gen dim">Queued</div></div>` : ''}
-      ${STV ? `<div class="st-ver">${made ? 'Older version' : 'Current picture was deleted'}<button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
-    </div>
-    <div class="st-prompt">
-      ${made ? `<div class="st-modes"><button id="m-new" class="${STE ? '' : 'on'}" title="Draw the picture again from its prompt">New version</button>
-        <button id="m-edit" class="${STE ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this picture</button></div>` : ''}
+  const th = (s, attrs, on, label) => `<button class="st-th ${on ? 'on' : ''}" ${attrs} style="background-image:url('${s}')">${label ? `<b>${label}</b>` : ''}</button>`;
+  const thv = (s, attrs, on, label, ok) => `<button class="st-th ${on ? 'on' : ''} ${ok ? '' : 'dim'}" ${attrs}>${ok ? `<video src="${s}#t=0.5" muted playsinline preload="metadata"></video>` : ''}<b>${label}</b></button>`;
+  const vid = s => `<video id="st-video" src="${s}" controls loop playsinline></video>`;
+  const empty = t => `<div class="st-empty">${busy ? '' : t}</div>`;
+
+  // left strip: the project's pieces in order, then the versions of the selected picture
+  let strip = '';
+  if (isImg && n > 1) strip = `<div class="lbl">Pictures</div>` + pl.keyframes.map((_, j) => th(kfSrc(j), `data-pick="kf:${j}"`, sel === 'kf' && j === i, j + 1)).join('');
+  if (isVid) strip = `<div class="lbl">Keyframes</div>` + pl.keyframes.map((_, j) => th(kfSrc(j), `data-pick="kf:${j}"`, sel === 'kf' && j === i, j + 1) +
+    (j < n - 1 ? thv(clipSrc(j), `data-pick="clip:${j}" title="Clip ${j + 1}: keyframe ${j + 1} → ${j + 2}"`, sel === 'clip' && j === i, `▶ ${j + 1}`, clipMade(j)) : '')).join('');
+  if (isT2V) strip = `<div class="lbl">Scenes</div>` + pl.keyframes.map((_, j) => thv(clipSrc(j), `data-pick="kf:${j}"`, sel === 'kf' && j === i, j + 1, clipMade(j))).join('');
+  if (!isImg && P.final_version) strip += `<div class="lbl">Final</div>` + thv(finalSrc(), 'data-pick="final:0"', sel === 'final', '★', true);
+  if (vers.length) strip += `<div class="lbl">Versions</div>${made ? th(kfSrc(i), 'data-stv=""', !STV, 'now') : ''}` +
+    vers.map(v => th(file('keyframes/history/' + v, 1), `data-stv="${esc(v)}"`, v === STV, '')).join('');
+
+  // middle: the selected picture (zoomable) or video
+  const canvas = sel === 'final' ? vid(finalSrc())
+    : sel === 'clip' ? (clipMade(i) ? vid(clipSrc(i)) : empty(`Clip ${i + 1} isn't animated yet.<br>Describe the motion below and press ↑`))
+    : isT2V ? (clipMade(i) ? vid(clipSrc(i)) : empty('Not generated yet. Describe the scene below and press ↑'))
+    : made || STV ? `<img id="st-img" src="${src}" alt="">` : empty('Not generated yet. Write the prompt below and press ↑');
+  const working = busy && curKind === (sel === 'final' ? '-' : sel) && curIdx === i;
+  const overlay = working ? `<div class="st-over"><div class="gen"><i class="spin"></i>${/editing/.test(P.message || '') ? 'Editing…' : sel === 'clip' ? 'Animating…' : 'Generating…'}</div></div>`
+    : busy && /^queued/.test(P.status) && sel !== 'final' ? `<div class="st-over"><div class="gen dim">Queued</div></div>` : '';
+
+  // bottom: the prompt of what's selected
+  const promptBar = sel === 'final' ? '' : sel === 'clip'
+    ? `<div class="st-prompt"><div class="st-row"><textarea id="mo${i}" rows="1" placeholder="How it moves from keyframe ${i + 1} to ${i + 2}…">${esc(pl.motions[i] || '')}</textarea>
+        <button class="st-send" id="st-send" title="Animate this clip (Enter)" ${dis}>↑</button></div></div>`
+    : `<div class="st-prompt">
+      ${onPic && made ? `<div class="st-modes"><button id="m-new" class="${STE ? '' : 'on'}" title="Draw the picture again from its prompt">New version</button>
+        <button id="m-edit" class="${STE ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this ${word}</button></div>` : ''}
       <div class="st-row">
-        <textarea id="kp${i}" rows="1" placeholder="Describe the picture…" style="${STE ? 'display:none' : ''}">${esc(k.image_prompt)}</textarea>
-        <textarea id="st-edit" rows="1" placeholder="What should change? e.g. make her hair red · change the background to a beach · remove the bag" style="${STE ? '' : 'display:none'}">${esc(STEXT)}</textarea>
-        <button class="st-send" id="st-send" title="${STE ? 'Edit the picture' : 'Make a new version with this prompt'} (Enter)" ${dis}>↑</button></div>
-    </div>
-    <div class="st-panel">
-      ${busy ? `<div class="progress"><i class="spin"></i><span style="flex:1">${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">■ Stop</button></div>`
-        : /^error/.test(P.status) ? `<div class="progress" style="border-color:var(--err)">⚠ ${esc(P.message)}</div>` : ''}
-      <button class="st-act" id="st-regen" ${dis}><span>↻</span>${made ? 'New version' : 'Generate'}${n > 1 ? ` of picture ${i + 1}` : ''}</button>
-      ${n > 1 ? `<button class="st-act" id="st-all" ${dis}><span>✦</span>Generate all ${n} pictures</button>` : ''}
-      ${made ? `<button class="st-act" id="st-editmode" ${dis}><span>✎</span>Edit this picture</button>` : ''}
-      ${ENG && ENG.gpt_image ? `<button class="st-act" id="st-gpt" ${dis}><span>✧</span>Redo with GPT-image (~$0.17)</button>` : ''}
-      <button class="st-act" id="st-vid" ${busy || !made ? 'disabled' : ''}><span>▶</span>Make video</button>
-      ${made || STV ? `<a href="${src}" download="${esc(P.id)}_${i + 1}${STV ? '_older' : ''}.png"><button class="st-act"><span>⤓</span>Download${STV ? ' this version' : ''}</button></a>` : ''}
-      ${made || STV ? `<button class="st-act" id="st-delpic" ${dis}><span>🗑</span>${STV && made ? 'Delete this version' : 'Delete picture'}</button>` : ''}
-      <div class="row" style="gap:8px"><button id="btn-add" style="flex:1" ${busy || n >= 12 ? 'disabled' : ''}>＋ Picture</button>
-        <button id="btn-del" style="flex:1" ${busy || n <= 1 ? 'disabled' : ''}>− Last picture</button></div>
-      ${clipV ? `<div class="glass"><label>Video of picture ${i + 1}</label><video src="${file(`clips/img_${pad(i)}.mp4`, clipV)}#t=0.1" controls loop playsinline style="width:100%;border-radius:10px"></video>
-        <a href="${file(`clips/img_${pad(i)}.mp4`, clipV)}" download><button style="margin-top:8px;width:100%">⤓ Save video</button></a></div>` : ''}
-      <div class="glass">
-        <label>Picture resolution</label><select id="f-quality" ${dis}>
-          ${[['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['2k', '2K (1440p)'], ['ultra', '4K · slowest']].map(([v, l]) => `<option value="${v}" ${(P.quality || 'standard') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <textarea id="kp${i}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${STE ? 'display:none' : ''}">${esc(k.image_prompt)}</textarea>
+        ${onPic ? `<textarea id="st-edit" rows="1" placeholder="What should change? e.g. make her hair red · change the background to a beach · remove the bag" style="${STE ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
+        <button class="st-send" id="st-send" title="${STE ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}>↑</button></div></div>`;
+
+  // right: actions for what's selected, the whole project, then settings
+  const act = (id, icon, label, off) => `<button class="st-act" id="${id}" ${busy || off ? 'disabled' : ''}><span>${icon}</span>${label}</button>`;
+  const dl = (href, name, label) => `<a href="${href}" download="${esc(name)}"><button class="st-act"><span>⤓</span>${label}</button></a>`;
+  const of_ = n > 1 ? ` ${i + 1}` : '';
+  let acts = '';
+  if (onPic) acts += act('st-regen', '↻', `${made ? 'New version' : 'Generate'} of ${word}${of_}`) +
+    (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
+    (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT-image (~$0.17)') : '') +
+    (isImg ? act('st-vid', '▶', 'Make video', !made) : '') +
+    (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
+      act('st-delpic', '🗑', STV && made ? 'Delete this version' : `Delete ${word}`) : '');
+  if (sel === 'clip') acts += act('st-reanim', '▶', `${clipMade(i) ? 'Re-animate' : 'Animate'} clip ${i + 1}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_clip${i + 1}.mp4`, 'Download clip') : '');
+  if (isT2V && sel === 'kf') acts += act('st-rescene', '↻', `${clipMade(i) ? 'Regenerate' : 'Generate'} scene${of_}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_scene${i + 1}.mp4`, 'Download scene') : '');
+  if (!isImg && P.final_version) acts += dl(finalSrc(), `${P.id}.mp4`, 'Download video with text') + dl(finalSrc('final.mp4'), `${P.id}_clean.mp4`, 'Download clean video') +
+    dl(finalSrc('subtitles.srt'), `${P.id}.srt`, 'Download subtitles (.srt)');
+  acts += `<div class="lbl" style="margin-top:6px">Whole project</div>`;
+  if (!isT2V && n > 1) acts += act('st-all', '✦', `Generate all ${n} ${word}s`);
+  if (isVid) acts += act('st-anim', '▶', 'Animate &amp; stitch the video', !P.keyframes_version);
+  if (isT2V) acts += act('st-t2v', '▶', `Generate all ${n} scenes`);
+  if (!isImg && P.clips_version) acts += act('st-stitch', '↺', 'Re-stitch with new on-screen text');
+  const [mn, mx] = isImg ? [1, 12] : isVid ? [2, 8] : [1, 8];
+  acts += `<div class="row" style="gap:8px"><button id="btn-add" style="flex:1" ${busy || n >= mx ? 'disabled' : ''}>＋ ${Word}</button>
+    <button id="btn-del" style="flex:1" ${busy || n <= mn ? 'disabled' : ''}>− Last ${word}</button></div>`;
+
+  const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('');
+  const settings = `<div class="glass">
+      ${!isT2V ? `<label>Picture resolution</label><select id="f-quality" ${dis}>${opt([['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['2k', '2K (1440p)'], ['ultra', '4K · slowest']], P.quality || 'standard')}</select>
         <label>Image engine</label><select id="f-img-eng" ${dis}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select>
         ${lorasFor(P.image_engine).length ? `<label>Trained character</label><select id="f-lora" ${dis}>${loraOptions(P.image_engine, P.lora || '')}</select>` : ''}
         <label>Character pictures <span style="font-weight:400">· 1 = main, 2–3 extra</span></label>
         ${[0, 1, 2].map(r => `<select class="f-ref" style="${r ? 'margin-top:6px' : ''}${r && !pRefs[r - 1] ? ';display:none' : ''}" ${busy || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts(r)}</select>`).join('')}
-        ${!refEngines().includes(P.image_engine) && !P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Qwen-Image 2.1</div>` : ''}
-        <label>Video engine (for ▶ Make video)</label><select id="f-vid-eng" ${dis}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select>
-        <label>Make</label><select id="f-mode" ${dis}>${[['images', 'Images only'], ['video', 'Images + video'], ['t2v', 'Video only']].map(([v, l]) => `<option value="${v}" ${P.mode === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      </div>
+        ${!refEngines().includes(P.image_engine) && !P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Qwen-Image 2.1</div>` : ''}` : ''}
+      ${!isImg ? `<label>Video resolution</label><select id="f-vres" ${dis}>${opt([['480p', '480p'], ['720p', '720p · ~2-3× slower']], P.video_res || '480p')}</select>` : ''}
+      ${isT2V ? `<label>Text-to-video engine</label><select id="f-t2v-eng" ${dis}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select>`
+        : `<label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${dis}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select>`}
+      <label>Make</label><select id="f-mode" ${dis}>${opt([['images', 'Images only'], ['video', 'Images + video'], ['t2v', 'Video only']], P.mode || 'video')}</select>
+    </div>`;
+
+  $('#v-project').innerHTML = `<div class="studio" style="--ar:${ar}">
+    <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2 id="st-title" title="Tap to rename" style="cursor:pointer">${esc(pl.title)} <span style="font-size:13px;color:var(--muted)">✎</span></h2>
+      <div class="st-zoom" style="${onPic && (made || STV) ? '' : 'visibility:hidden'}"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div></div>
+    <div class="st-strip">${strip}</div>
+    <div class="st-canvas">${canvas}${overlay}
+      ${STV ? `<div class="st-ver">${made ? 'Older version' : 'Current picture was deleted'}<button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
+    </div>
+    ${promptBar}
+    <div class="st-panel">
+      ${busy ? `<div class="progress"><i class="spin"></i><span style="flex:1">${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">■ Stop</button></div>`
+        : /^error/.test(P.status) ? `<div class="progress" style="border-color:var(--err)">⚠ ${esc(P.message)}</div>` : ''}
+      ${acts}
+      ${clipV ? `<div class="glass"><label>Video of picture ${i + 1}</label><video src="${file(`clips/img_${pad(i)}.mp4`, clipV)}#t=0.1" controls loop playsinline style="width:100%;border-radius:10px"></video>
+        <a href="${file(`clips/img_${pad(i)}.mp4`, clipV)}" download><button style="margin-top:8px;width:100%">⤓ Save video</button></a></div>` : ''}
+      ${settings}
       <details class="glass"><summary>Title, on-screen text, character and setting</summary>
         <label>Title</label><input id="f-title" value="${esc(pl.title)}">
-        <label>On-screen text${n > 1 ? ` (picture ${i + 1})` : ''}</label><input id="ks${i}" value="${esc(k.subtitle)}">
+        <label>On-screen text (${word} ${i + 1})</label><input id="ks${i}" value="${esc(k.subtitle)}">
         <label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea>
         <label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea>
         <button id="btn-save" style="margin-top:10px;width:100%">Save</button>
@@ -922,76 +817,86 @@ function renderStudio() {
     </div></div>`;
 
   $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
-  $('#st-edit').oninput = e => { STEXT = e.target.value; };  // not part of the plan: kept here, not saved
+  if ($('#st-edit')) $('#st-edit').oninput = e => { STEXT = e.target.value; };  // not part of the plan: kept here, not saved
+  const bar = [$('#kp' + i), $('#mo' + i), $('#st-edit')].filter(Boolean);
   const fit = ta => { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; };
-  [$('#kp' + i), $('#st-edit')].forEach(ta => { fit(ta); ta.addEventListener('input', () => fit(ta)); });
+  bar.forEach(ta => { fit(ta); ta.addEventListener('input', () => fit(ta)); });
   const again = async fn => { await savePlan(); fn && fn(); render(); };  // keep typed text when switching what's shown
   $('#btn-back').onclick = () => show('projects');
   $('#st-title').onclick = async () => { await savePlan(); if (await renameProject(P.id, pl.title)) { P = await api('/api/projects/' + P.id); render(); } };
   const run = (task, body) => async () => { await savePlan(); await api(`/api/projects/${P.id}/${task}`, body || {}); poll(); };
   const send = async () => {
     if (busy) return;
+    if (sel === 'clip') return run('animate', {only: i})();
+    if (isT2V) return run('t2v', {only: i})();
     if (STE) {
       const t = $('#st-edit').value.trim();
       if (!t) return $('#st-edit').focus();
-      STV = null; STEXT = ''; await run('keyframes', {indices: [i], reseed: true, edit: t})();
-    } else { STV = null; await run('keyframes', {indices: [i], reseed: made})(); }
+      STV = null; STEXT = ''; return run('keyframes', {indices: [i], reseed: true, edit: t})();
+    }
+    STV = null; return run('keyframes', {indices: [i], reseed: made})();
   };
-  $('#st-send').onclick = send;
-  [$('#kp' + i), $('#st-edit')].forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
+  if ($('#st-send')) $('#st-send').onclick = send;
+  bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
     if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); send(); } });
-  $('#st-regen').onclick = () => { STE = false; send(); };
-  if ($('#m-new')) $('#m-new').onclick = () => { STE = false; render(); };
-  if ($('#m-edit')) $('#m-edit').onclick = () => { STE = true; render(); $('#st-edit').focus(); };
-  if ($('#st-editmode')) $('#st-editmode').onclick = () => { STE = true; render(); $('#st-edit').focus(); };
-  if ($('#st-all')) $('#st-all').onclick = run('keyframes');
-  if ($('#st-gpt')) $('#st-gpt').onclick = async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
-    await run('keyframes', {indices: [i], engine: 'gpt-image'})(); };
-  $('#st-vid').onclick = async () => {
+  const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
+  on('#st-regen', () => { STE = false; send(); });
+  on('#st-reanim', send);
+  on('#st-rescene', send);
+  on('#m-new', () => { STE = false; render(); });
+  on('#m-edit', () => { STE = true; render(); $('#st-edit').focus(); });
+  on('#st-editmode', () => { STE = true; render(); $('#st-edit').focus(); });
+  on('#st-all', run('keyframes'));
+  on('#st-anim', run('animate'));
+  on('#st-t2v', run('t2v'));
+  on('#st-stitch', async () => { dirty = true; await run('stitch')(); });
+  on('#st-gpt', async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
+    await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
+  on('#st-vid', async () => {
     const motion = prompt('How should it move? (leave empty for gentle natural motion)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
-    if (motion !== null) await run('animate_image', {index: i, motion})(); };
-  $$('[data-pic]').forEach(b => b.onclick = () => again(() => { STI = +b.dataset.pic; STV = null; }));
+    if (motion !== null) await run('animate_image', {index: i, motion})(); });
+  $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));
   $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; }));
-  if ($('#st-cur')) $('#st-cur').onclick = () => again(() => { STV = null; });
-  if ($('#st-use')) $('#st-use').onclick = async () => { await savePlan(); P = await api(`/api/projects/${P.id}/use_version`, {index: i, name: STV}); STV = null; render(); };
+  on('#st-cur', () => again(() => { STV = null; }));
+  on('#st-use', async () => { await savePlan(); P = await api(`/api/projects/${P.id}/use_version`, {index: i, name: STV}); STV = null; render(); });
   const resize = async delta => {
     const pl2 = collectPlan();
-    if (delta > 0) pl2.keyframes.push({image_prompt: pl2.keyframes[i].image_prompt, subtitle: ''});
+    if (delta > 0) pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});
     else pl2.keyframes.pop();
     P = await api(`/api/projects/${P.id}/plan`, {plan: pl2}); dirty = false;
-    STI = delta > 0 ? P.plan.keyframes.length - 1 : Math.min(STI, P.plan.keyframes.length - 1); STV = null; render();
+    STK = 'kf'; STI = delta > 0 ? P.plan.keyframes.length - 1 : Math.min(STI, P.plan.keyframes.length - 1); STV = null; render();
   };
-  $('#btn-add').onclick = () => resize(1);
-  $('#btn-del').onclick = () => { if (confirm(`Remove picture ${n}${made && i === n - 1 ? ' (the one shown)' : ''} from this project?`)) resize(-1); };
-  $('#btn-save').onclick = () => { dirty = true; savePlan().then(render).catch(e => alert(e.message)); };
-  $('#btn-copy').onclick = () => navigator.clipboard?.writeText($('#f-caption').value + '\n\n' + $('#f-tags').value).then(() => $('#btn-copy').textContent = '✓ Copied');
-  if ($('#st-delpic')) $('#st-delpic').onclick = async () => {  // the picture shown: an older version, or the current one
+  on('#btn-add', () => resize(1));
+  on('#btn-del', () => { if (confirm(`Remove ${word} ${n} from this project?`)) resize(-1); });
+  on('#btn-save', () => { dirty = true; savePlan().then(render).catch(e => alert(e.message)); });
+  on('#btn-copy', () => navigator.clipboard?.writeText($('#f-caption').value + '\n\n' + $('#f-tags').value).then(() => $('#btn-copy').textContent = '✓ Copied'));
+  on('#st-delpic', async () => {  // the picture shown: an older version, or the current one
     const older = !!STV && made, path = STV ? 'keyframes/history/' + STV : `keyframes/kf_${pad(i)}.png`;
-    const what = older ? 'this older version' : !made ? 'this version' : `picture ${i + 1}` + (vers.length ? ' (its newest older version takes its place)' : '');
+    const what = older ? 'this older version' : !made ? 'this version' : `${word} ${i + 1}` + (vers.length ? ' (its newest older version takes its place)' : '');
     if (!confirm(`Delete ${what}? It's moved to the Trash folder on the PC.`)) return;
     await savePlan();
     try { await api('/api/delete', {files: [{project: P.id, path}]}); } catch (e) { return alert(e.message); }
     STV = null; P = await api('/api/projects/' + P.id); render();
-  };
-  $('#st-delproj').onclick = async () => { await savePlan(); deleteProject(P.id, pl.title); };
-  if ($('#btn-stop')) $('#btn-stop').onclick = async () => { if (!confirm('Stop generating? Finished pictures are kept.')) return;
-    await api(`/api/projects/${P.id}/stop`, {}); setTimeout(poll, 800); };
+  });
+  on('#st-delproj', async () => { await savePlan(); deleteProject(P.id, pl.title); });
+  on('#btn-stop', async () => { if (!confirm('Stop generating? Finished pictures and clips are kept.')) return;
+    await api(`/api/projects/${P.id}/stop`, {}); setTimeout(poll, 800); });
   const val = s => $(s) ? $(s).value : undefined;
   const setEng = async () => {
     await savePlan();
-    try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: val('#f-img-eng'), video_engine: val('#f-vid-eng'),
-      mode: val('#f-mode'), quality: val('#f-quality'), lora: val('#f-lora')}); } catch (e) { alert(e.message); }
+    try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: val('#f-img-eng'), video_engine: val('#f-vid-eng'), mode: val('#f-mode'),
+      t2v_engine: val('#f-t2v-eng'), quality: val('#f-quality'), video_res: val('#f-vres'), lora: val('#f-lora')}); } catch (e) { alert(e.message); }
     render();
   };
-  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-quality', '#f-lora'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
-  $$('.f-ref').forEach(sel => sel.onchange = async () => {
+  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres', '#f-lora'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
+  $$('.f-ref').forEach(s => s.onchange = async () => {
     await savePlan();
     P = await api(`/api/projects/${P.id}/reference`, {references: $$('.f-ref').map(x => x.value).filter(Boolean)});
     render();
   });
   const z = makeZoom($('#st-img'));
   if (z) {
-    $('#st-img').onerror = () => { z.outerHTML = empty; };  // not generated yet (or still being written)
+    $('#st-img').onerror = () => { z.outerHTML = empty('Not generated yet. Write the prompt below and press ↑'); };
     z.addEventListener('zoom', e => $('#z-pct').textContent = Math.round(e.detail * 100) + '%');
     $('#z-in').onclick = () => z.zoomTo(z.scale() * 1.25);
     $('#z-out').onclick = () => z.zoomTo(z.scale() / 1.25);
