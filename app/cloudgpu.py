@@ -140,7 +140,10 @@ def _start():
         with open(SETUP, "rb") as f:
             script = f.read().replace(b"\r\n", b"\n")
         for _ in range(12):  # ssh can answer before the pod has installed the key: retry for ~2 minutes
-            code, out, err = _ssh("cat > /root/setup.sh && setsid nohup bash /root/setup.sh > /root/setup.log 2>&1 < /dev/null & echo started",
+            # ";" not "&&": with "&&" the whole chain went to the background and the session ended before cat had
+            # read the script (it arrived empty)
+            code, out, err = _ssh("cat > /root/setup.sh; mkdir -p /root/loras; "
+                                  "setsid nohup bash /root/setup.sh > /root/setup.log 2>&1 < /dev/null & echo started",
                                   timeout=60, data=script)
             if "started" in out or state["status"] != "starting":
                 break
@@ -177,9 +180,13 @@ def _send_loras():
         src = os.path.join(models, l["file"])
         if l.get("engine") != "qwen-image-21" or not os.path.exists(src) or not state["pod"]:
             continue
-        code, out, err = _run([SCP, "-q", "-i", KEY, "-P", str(state["port"]), "-o", "StrictHostKeyChecking=no",
-                               "-o", f"UserKnownHostsFile={KNOWN_HOSTS}", "-o", "BatchMode=yes", msys(src),
-                               f"root@{state['ip']}:/root/loras/{l['file']}"], timeout=3600)
+        for _ in range(3):
+            code, out, err = _run([SCP, "-q", "-i", KEY, "-P", str(state["port"]), "-o", "StrictHostKeyChecking=no",
+                                   "-o", f"UserKnownHostsFile={KNOWN_HOSTS}", "-o", "BatchMode=yes", msys(src),
+                                   f"root@{state['ip']}:/root/loras/{l['file']}"], timeout=3600)
+            if code == 0 or not state["pod"]:
+                break
+            time.sleep(15)
         if code == 0:
             with lock:
                 state["loras"] = state["loras"] + [l["file"]]
