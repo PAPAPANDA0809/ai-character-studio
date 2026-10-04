@@ -130,8 +130,13 @@ def _start(faulty=0):
     try:
         pod, label, why = None, "", ""
         for gpu, label, cloud in c["tries"]:  # cheapest first; the next one when none is free
+            if state["status"] != "starting":
+                return  # stopped meanwhile
             _set(gpu=label, message=f"Renting an {label} ({'community' if cloud == 'COMMUNITY' else 'secure'} cloud)…")
             pod, why = _create(c, gpu, cloud)
+            if pod and state["status"] != "starting":  # Stop was pressed while this one was being rented
+                _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
+                return
             if pod:
                 break
         if not pod:
