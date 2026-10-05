@@ -883,10 +883,11 @@ function renderStudio() {
   const dl = (href, name, label) => `<a href="${href}" download="${esc(name)}"><button class="st-act"><span>⤓</span>${label}</button></a>`;
   const of_ = n > 1 ? ` ${i + 1}` : '';
   let acts = '';
+  if (isImg && onPic && made) acts += `<div class="lbl">Make video</div>` + act('st-vid-custom', '✎', 'Custom: describe the motion') +
+    act('st-vid-spicy', '🔥', 'Spicy') + act('st-vid-normal', '🎞', 'Normal') + `<div class="lbl" style="margin-top:6px">Picture</div>`;
   if (onPic) acts += act('st-regen', '↻', `${made ? 'New version' : 'Generate'} of ${word}${of_}`) +
     (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
     (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT-image (~$0.17)') : '') +
-    (isImg ? act('st-vid', '▶', 'Make video', !made) : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
       act('st-delpic', '🗑', STV && made ? 'Delete this version' : `Delete ${word}`) : '');
   if (sel === 'clip') acts += act('st-reanim', '▶', `${clipMade(i) ? 'Re-animate' : 'Animate'} clip ${i + 1}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_clip${i + 1}.mp4`, 'Download clip') : '');
@@ -984,7 +985,7 @@ function renderStudio() {
   on('#ma-more', () => $('.studio').classList.add('panel-open'));
   on('#st-pclose', () => $('.studio').classList.remove('panel-open'));
   on('#st-back', () => $('.studio').classList.remove('panel-open'));
-  on('#ma-vid', () => $('#st-vid').click());
+  on('#ma-vid', () => { $('.studio').classList.add('panel-open'); $('.st-panel').scrollTop = 0; });  // Make video sits at the top
   on('#ma-anim', () => $('#st-anim').click());
   on('#ma-pin', async () => { await api(`/api/projects/${P.id}/pin`, {pinned: !P.pinned}); P.pinned = !P.pinned; render(); });
   on('#ma-share', async () => {  // the phone's share sheet (save to gallery, send...); a download where that isn't offered
@@ -1005,9 +1006,14 @@ function renderStudio() {
   on('#st-stitch', async () => { dirty = true; await run('stitch')(); });
   on('#st-gpt', async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
     await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
-  on('#st-vid', async () => {
-    const motion = prompt('How should it move? (leave empty for gentle natural motion)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
-    if (motion !== null) await run('animate_image', {index: i, motion})(); });
+  // Make video, like Grok's sheet: Normal and Spicy are ready-made motions, Custom asks for one
+  const vidOf = motion => async () => { $('.studio').classList.remove('panel-open'); await run('animate_image', {index: i, motion})(); };
+  on('#st-vid-normal', vidOf(''));  // the default: gentle natural movement, slow push-in
+  on('#st-vid-spicy', vidOf('slow, flirty and confident: she shifts her weight and sways her hips gently, runs a hand through her hair, ' +
+    'bites her lip slightly and gives the camera a playful, seductive glance; soft breathing, hair moving, slow cinematic push-in'));
+  on('#st-vid-custom', async () => {
+    const motion = prompt('How should it move?\ne.g. she turns her head and smiles, hair moving in the breeze', '');
+    if (motion !== null && motion.trim()) await vidOf(motion.trim())(); });
   $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));
   $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; }));
   on('#st-cur', () => again(() => { STV = null; }));
