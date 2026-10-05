@@ -27,10 +27,9 @@ KNOWN_HOSTS = msys(os.path.join(APP_DIR, "cloud_known_hosts"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the VPN's system proxy breaks localhost
 
-# The cards offered, weakest first. speed = rough speed for Qwen-Image / Wan against an RTX 4090 (estimates from the
+# The cards offered (the RTX 4090 and stronger; the list is shown cheapest first). speed = rough speed for Qwen-Image / Wan against an RTX 4090 (estimates from the
 # cards' compute and memory speed, not measured here).
 CATALOG = [
-    {"id": "NVIDIA GeForce RTX 3090", "label": "RTX 3090", "mem": 24, "speed": 0.5},
     {"id": "NVIDIA GeForce RTX 4090", "label": "RTX 4090", "mem": 24, "speed": 1.0},
     {"id": "NVIDIA GeForce RTX 5090", "label": "RTX 5090", "mem": 32, "speed": 1.3},
     {"id": "NVIDIA L40S", "label": "L40S", "mem": 48, "speed": 1.0},
@@ -94,6 +93,7 @@ def options():
         res.append({**c, "stock": stock, "available": bool(g.get("available")) and stock.lower() != "none",
                     "community": g.get("communityPricePerHr") if g.get("communityCloud") else None,
                     "secure": g.get("securePricePerHr") if g.get("secureCloud") else None})
+    res.sort(key=lambda o: min([p for p in (o["community"], o["secure"]) if p is not None] or [1e9]))  # cheapest first
     _opts[:] = [time.time(), res]
     return res
 
