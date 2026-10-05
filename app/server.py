@@ -1,4 +1,5 @@
 """Reelmint - local web app. Run: python server.py  (then open http://127.0.0.1:7860)"""
+import gzip
 import http.cookies
 import json
 import mimetypes
@@ -68,6 +69,14 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_body(body)
+
+    def send_body(self, body):
+        """Length, gzip for text the browser accepts it for (phones on mobile data), end of headers, body."""
+        if len(body) > 1024 and "gzip" in self.headers.get("Accept-Encoding", ""):
+            body = gzip.compress(body, 6)
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -86,6 +95,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "private, no-cache")
             self.end_headers()
             return
+        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json", "image/svg+xml"):
+            self.send_response(200)  # pages and scripts: small enough to read whole and compress
+            self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""))
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "private, no-cache")
+            with open(path, "rb") as f:
+                return self.send_body(f.read())
         rng = self.headers.get("Range")
         start, end = 0, size - 1
         if rng and (m := re.match(r"bytes=(\d*)-(\d*)", rng)):
