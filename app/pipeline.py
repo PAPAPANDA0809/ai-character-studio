@@ -844,12 +844,12 @@ def save_clip_frames(p, c, ff, i, frames, fps, out=None):
     p["clips_version"] = time.time()
 
 
-def do_animate_image(p, index, motion="", seconds=None):
-    return on_rented(p, lambda remote: _animate_image(p, index, motion, remote, seconds))
+def do_animate_image(p, index, motion=""):
+    return on_rented(p, lambda remote: _animate_image(p, index, motion, remote))
 
 
-def _animate_image(p, index, motion="", remote=None, seconds=None):
-    """Images-only projects: turn one finished picture into a clip of `seconds` (2-8, default 5)."""
+def _animate_image(p, index, motion="", remote=None):
+    """Images-only projects: turn one finished picture into a 5-second clip."""
     cfg = load_config()
     ff = find_ffmpeg(cfg["ffmpeg"])
     c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
@@ -870,10 +870,7 @@ def _animate_image(p, index, motion="", remote=None, seconds=None):
                                    k["image_prompt"]] if x)
     log(p, f"picture {i + 1}: animating with {engine}")
     t = time.time()
-    frames = fps * max(2, min(8, int(seconds))) + 1 if seconds else None  # Wan wants 4n+1 frames: 16 a second + 1
-    log(p, f"picture {i + 1}: {(frames or cfg['video']['frames']) // fps} seconds")
-    out = c.run(comfy.video_workflow(cfg, engine, prompt, a, None, w, h, p["seed"] + 100 + i, f"aics/{p['id']}/img{i:02d}",
-                                     frames))
+    out = c.run(comfy.video_workflow(cfg, engine, prompt, a, None, w, h, p["seed"] + 100 + i, f"aics/{p['id']}/img{i:02d}"))
     frames = next(o["images"] for o in out.values() if o.get("images"))
     fdir = pdir(p["id"], "clips", f"imgframes_{i:02d}")
     shutil.rmtree(fdir, ignore_errors=True)

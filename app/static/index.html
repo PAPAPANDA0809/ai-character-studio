@@ -47,12 +47,6 @@
   input, textarea, select { width:100%; background:rgba(0,0,0,.35); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:11px 13px; font:inherit; outline:none; transition:border .15s, box-shadow .15s; }
   input:focus, textarea:focus, select:focus { border-color:rgba(46,242,181,.6); box-shadow:0 0 0 3px rgba(46,242,181,.12); }
   textarea { resize:vertical; }
-  .vdlg { width:100%; max-width:440px; display:flex; flex-direction:column; gap:12px; }
-  .vdlg textarea { width:100%; box-sizing:border-box; font-size:15px; resize:none; overflow:auto; }
-  .vd-len { display:flex; align-items:center; gap:10px; font-size:14px; }
-  .vd-len b { min-width:34px; }
-  .vd-len input { flex:1; accent-color:var(--mint); }
-  .vd-note { margin:-6px 0 0; min-height:15px; color:var(--muted); font-size:12px; }
   select { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%; background-size:5px 5px; background-repeat:no-repeat; padding-right:34px; }
   .idea { font-size:17px; min-height:110px; }
   .enh textarea { border-color:rgba(138,92,255,.35); background:linear-gradient(180deg,rgba(138,92,255,.08),rgba(0,0,0,.35)); }
@@ -1116,28 +1110,11 @@ function renderStudio() {
   on('#st-stitch', async () => { dirty = true; await run('stitch')(); });
   on('#st-gpt', async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
     await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
-  on('#st-vid', () => {  // the motion is typed by hand (empty = gentle natural movement) and the length picked
-    let secs = 5;
-    try { secs = +localStorage.getItem('vidSecs') || 5; } catch (e) {}
-    $('#lb').innerHTML = `<div class="glass pad vdlg">
-      <div class="row" style="justify-content:space-between"><h2 style="margin:0">Make video</h2><button id="vd-x">✕</button></div>
-      <textarea id="vd-motion" rows="4" placeholder="How should it move? e.g. she turns her head and smiles, hair moving in the breeze. Empty = gentle natural movement"></textarea>
-      <label class="vd-len">Length <b id="vd-s">${secs} s</b><input type="range" id="vd-r" min="2" max="8" step="1" value="${secs}"></label>
-      <p id="vd-note" class="vd-note"></p>
-      <button class="primary" id="vd-go">▶ Make video</button></div>`;
-    const note = () => { const s = +$('#vd-r').value; $('#vd-s').textContent = s + ' s';
-      $('#vd-note').textContent = s > 5 ? 'Wan is made for 5 s: longer clips can repeat or drift, and take longer.' : ''; };
-    note();
-    $('#vd-r').oninput = note;
-    const close = () => $('#lb').classList.remove('on');
-    $('#vd-x').onclick = close;
-    $('#vd-go').onclick = async () => {
-      const motion = $('#vd-motion').value.trim(), seconds = +$('#vd-r').value;
-      try { localStorage.setItem('vidSecs', seconds); } catch (e) {}
-      close(); setPanel(false);
-      await run('animate_image', {index: i, motion, seconds})(); };
-    $('#lb').classList.add('on');
-    $('#vd-motion').focus(); });
+  on('#st-vid', async () => {  // the motion is typed by hand; empty = gentle natural movement
+    const motion = prompt('How should it move? (leave empty for gentle natural movement)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
+    if (motion === null) return;
+    setPanel(false);
+    await run('animate_image', {index: i, motion: motion.trim()})(); });
   $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));
   $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; }));
   on('#st-cur', () => again(() => { STV = null; }));
