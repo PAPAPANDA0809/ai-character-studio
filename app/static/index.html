@@ -376,11 +376,70 @@ $('#bnav').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}"><svg viewB
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}">${l}</button>`).join('');
 $$('[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
 
+/* ---------- Back button: every place and every open panel is a step; Back undoes the last one ---------- */
+// Full-screen picture, settings sheet, previews and the account / GPU panels are watched (class changes); the
+// picture page's ⋮ panel is opened through setPanel because the page is redrawn often.
+let NAVPOP = false, OVERLAY_BACK = false, PANEL = false, backDone = Promise.resolve(), backResolve = null;
+function navTo(url) {  // a new place: Back returns to the one before (the same place again: no extra step)
+  if (NAVPOP) return;
+  backDone.then(() => {
+    const u = new URL(url, location.href).href;
+    if (u === location.href && !(history.state && history.state.overlay)) history.replaceState({overlay: null}, '', u);
+    else if (u !== location.href) history.pushState({overlay: null}, '', u);
+  });
+}
+function overlayBack() {  // an open panel was closed by its own button: drop its step without leaving the page
+  OVERLAY_BACK = true;
+  backDone = new Promise(r => { backResolve = r; });
+  history.back();
+}
+function setPanel(on) {
+  if (on === PANEL) return;
+  PANEL = on;
+  const st = $('.studio');
+  if (st) st.classList.toggle('panel-open', on);
+  if (NAVPOP) return;
+  if (on) history.pushState({overlay: 'panel'}, '', location.href);
+  else if (history.state && history.state.overlay === 'panel') overlayBack();
+}
+const OVERLAYS = [[document.body, 'immersive'], ['#v-create', 'sheet'], ['#lb', 'on'], ['#acct', 'on'], ['#gpubox', 'on']];
+function watchOverlays() {
+  OVERLAYS.forEach(([el, cls], k) => {
+    el = typeof el === 'string' ? $(el) : el;
+    let was = el.classList.contains(cls);
+    new MutationObserver(() => {
+      const now = el.classList.contains(cls);
+      if (now === was) return;
+      was = now;
+      if (NAVPOP) return;
+      if (now) history.pushState({overlay: 'o' + k}, '', location.href);
+      else if (history.state && history.state.overlay === 'o' + k) overlayBack();
+    }).observe(el, {attributes: true, attributeFilter: ['class']});
+  });
+}
+window.addEventListener('popstate', async e => {
+  const st = e.state || {}, overlayOnly = OVERLAY_BACK;
+  OVERLAY_BACK = false;
+  NAVPOP = true;
+  try {
+    OVERLAYS.forEach(([el, cls], k) => {  // close what this step doesn't have open
+      el = typeof el === 'string' ? $(el) : el;
+      if (st.overlay !== 'o' + k && el.classList.contains(cls)) { el.classList.remove(cls); if (el.id === 'lb') el.innerHTML = ''; }
+    });
+    if (st.overlay !== 'panel' && PANEL) setPanel(false);
+    if (overlayOnly) return;
+    const h = decodeURIComponent(location.hash.slice(1));
+    if (h.startsWith('project/')) { if (VIEW !== 'project' || !P || P.id !== h.slice(8)) await openProject(h.slice(8)); }
+    else { const v = ['projects', 'images', 'videos'].includes(h) ? h : 'create'; if (VIEW !== v) show(v); }
+  } catch (err) { show('projects'); }
+  finally { NAVPOP = false; if (backResolve) { backResolve(); backResolve = null; } }
+});
+
 function show(v) {
   VIEW = v; SEL.on = false; SEL.keys.clear(); document.body.classList.remove('selecting');
   // the address remembers the tab (and the open project, set in openProject) so a refresh comes back here
-  if (v !== 'project') history.replaceState(null, '', v === 'create' ? location.pathname : '#' + v);
-  if (v !== 'project') document.querySelector('main').classList.remove('wide');
+  if (v !== 'project') navTo(v === 'create' ? location.pathname : '#' + v);
+  if (v !== 'project') { document.querySelector('main').classList.remove('wide'); PANEL = false; }
   $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
   $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
   document.body.classList.toggle('inproject', v === 'project');
@@ -669,7 +728,7 @@ async function deleteProject(id, title) {  // to the PC's trash folder, then bac
   show('projects');
 }
 async function openProject(id) { dirty = false; STI = 0; STK = 'kf'; STV = null; STE = null; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
-  history.replaceState(null, '', '#project/' + encodeURIComponent(id)); render(); poll(); }
+  navTo('#project/' + encodeURIComponent(id)); render(); poll(); }
 
 /* ---------- select & delete ---------- */
 const SEL = {on: false, kind: '', keys: new Set()};
@@ -784,6 +843,7 @@ function makeZoom(img) {
     last = [...pts.values()][0] || last;
   };
   box.scale = () => s;  // for zoom buttons: zoom about the centre
+  box.edges = () => { const w = box.clientWidth; return {left: x >= -1, right: x <= w - w * s + 1}; };  // pushed to an edge?
   box.zoomTo = ns => { const r = box.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, ns); };
   return box;
 }
@@ -942,7 +1002,7 @@ function renderStudio() {
     <div class="st-mact">
       ${isImg && made ? '<button id="ma-vid">▶ Video</button>' : isVid && P.keyframes_version ? '<button id="ma-anim">▶ Animate</button>' : ''}
       <div class="grp">
-        ${onPic && (made || STV) ? `<a href="${src}" download="${esc(P.id)}_${i + 1}.png"><button title="Download">⤓</button></a>` : ''}
+        ${onPic && (made || STV) ? `<a href="${src}" download="${esc(P.id)}_${i + 1}.png"><button title="Download">⤓</button></a><button id="ma-share" title="Share">↗</button>` : ''}
         <button id="ma-more" title="More">⋮</button></div>
     </div>
     ${promptBar}
@@ -998,9 +1058,10 @@ function renderStudio() {
   on('#st-regen', () => { STE = false; STV = null; run('keyframes', {indices: [i], reseed: made})(); });
   on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
   on('#st-toedit', () => { STE = true; render(); $('#st-edit').focus(); });
-  on('#ma-more', () => $('.studio').classList.add('panel-open'));
-  on('#st-pclose', () => $('.studio').classList.remove('panel-open'));
-  on('#st-back', () => $('.studio').classList.remove('panel-open'));
+  if (PANEL) $('.studio').classList.add('panel-open');  // stays open while the page is redrawn
+  on('#ma-more', () => setPanel(true));
+  on('#st-pclose', () => setPanel(false));
+  on('#st-back', () => setPanel(false));
   on('#ma-vid', () => $('#st-vid').click());
   on('#ma-anim', () => $('#st-anim').click());
   on('#st-reanim', send);
@@ -1017,7 +1078,7 @@ function renderStudio() {
   on('#st-vid', async () => {  // the motion is typed by hand; empty = gentle natural movement
     const motion = prompt('How should it move? (leave empty for gentle natural movement)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
     if (motion === null) return;
-    $('.studio').classList.remove('panel-open');
+    setPanel(false);
     await run('animate_image', {index: i, motion: motion.trim()})(); });
   $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));
   $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; }));
@@ -1041,6 +1102,13 @@ function renderStudio() {
     await savePlan();
     try { await api('/api/delete', {files: [{project: P.id, path}]}); } catch (e) { return alert(e.message); }
     STV = null; P = await api('/api/projects/' + P.id); render();
+  });
+  on('#ma-share', async () => {  // the phone's share sheet (save to gallery, send...); a download where that isn't offered
+    try {
+      const f = new File([await (await fetch(src)).blob()], `${P.id}_${i + 1}.png`, {type: 'image/png'});
+      if (navigator.canShare && navigator.canShare({files: [f]})) return await navigator.share({files: [f]});
+    } catch (e) { if (e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = src; a.download = `${P.id}_${i + 1}.png`; a.click();
   });
   on('#st-delproj', async () => { await savePlan(); deleteProject(P.id, pl.title); });
   on('#btn-stop', async () => { if (!confirm('Stop generating? Finished pictures and clips are kept.')) return;
@@ -1068,13 +1136,20 @@ function renderStudio() {
     z.addEventListener('click', () => {  // phones: a tap shows only the picture (not while zoomed in and dragging)
       if (isPhone() && z.scale() <= 1.01) document.body.classList.toggle('immersive'); });
     // phones: swipe left / right for the next / previous version (or picture, when there are no versions)
-    let sx = null, sy = 0;
-    z.addEventListener('touchstart', e => { if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; } }, {passive: true});
+    // Zoomed in, a drag moves the picture; a swipe that starts with the picture already pushed to that edge changes
+    // version, like a phone's photo gallery.
+    let sx = null, sy = 0, edge = null;
+    z.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return (sx = null);  // pinching
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      edge = z.scale() > 1.01 ? z.edges() : {left: true, right: true};
+    }, {passive: true});
     z.addEventListener('touchend', e => {
-      if (sx === null || z.scale() > 1.01) return (sx = null);
+      if (sx === null) return;
       const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
       sx = null;
       if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+      if (dx < 0 ? !edge.right : !edge.left) return;  // still room to move the zoomed picture that way
       const items = $$('.st-strip [data-stv]').length ? $$('.st-strip [data-stv]') : $$('.st-strip [data-pick]');
       const at = items.findIndex(b => b.classList.contains('on'));
       const next = items[at + (dx < 0 ? 1 : -1)];
@@ -1176,6 +1251,7 @@ $('#gpubox').onclick = e => { if (e.target.id === 'gpubox') $('#gpubox').classLi
 $('#acct').onclick = e => { if (e.target.id === 'acct') $('#acct').classList.remove('on'); };
 
 loadMe().then(() => {
+  watchOverlays();
   syncCreate(); refreshStatus(); refreshGpu();
   const ready = Promise.all([refreshChars(), refreshEngines()]).catch(() => {});  // a project page lists both
   const h = decodeURIComponent(location.hash.slice(1));  // back to the tab or project open before the refresh
