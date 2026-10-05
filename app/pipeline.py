@@ -465,7 +465,11 @@ def engines():
         if e.get("rented"):  # files only on the rented card
             on = cloudgpu.state["status"] == "ready" and cloudgpu.state["extras"].get(e["rented"])
             return {"id": key, "label": e["label"], "installed": bool(on), "note": "with Fast GPU"}
-        return {"id": key, "label": e["label"], "installed": all(ready(f) for f in e["files"])}
+        label = e["label"]
+        if key == "qwen-image-21" and cloudgpu.state["status"] == "ready":  # say where it runs and how
+            label = "Qwen-Image 2.1 · " + ("full quality on Fast GPU" if cloudgpu.state["extras"].get("qwen_hq")
+                                           else "on Fast GPU (full quality in a few minutes)")
+        return {"id": key, "label": label, "installed": all(ready(f) for f in e["files"])}
     return {
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
         "reference_engines": list(comfy.REFERENCE_ENGINES),
