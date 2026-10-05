@@ -166,6 +166,9 @@ def _start(card, cloud):
             _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
             return
         if not pod:
+            if cloud == "COMMUNITY":  # the usual cause: stock counts every machine, but only ones with a public address work
+                return _set(status="error", message=f"No community {card['label']} with a public address is free right now "
+                            f"(RunPod: {why}). Pick Secure or another card.")
             return _set(status="error", message=f"Couldn't rent an {card['label']} ({why}). Pick another card or try again.")
         ssh = pod.get("ssh", {})
         _set(pod=pod["id"], ip=ssh.get("ip", ""), port=int(ssh.get("port", 0)), price=float(pod.get("costPerHr", 0)),

@@ -1289,9 +1289,9 @@ function renderGpu() {
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">⚡ Fast GPU</h2><button id="gp-close">✕</button></div>
     <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rent a card on RunPod. While it's on, <b>Qwen-Image 2.1</b> pictures and edits
       and <b>Wan 2.2</b> videos run there; Z-Image stays on this PC. Getting it ready takes about 8–12 minutes.</p>
-    ${!live && admin ? gpuList() : ''}
-    ${live || g.message ? `<div class="progress" style="margin:12px 0;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
+    ${live || g.message ? `<div class="progress" style="margin:0 0 12px;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
       <span style="flex:1">${esc(g.message || s)}</span></div>` : ''}
+    ${!live && admin ? gpuList() : ''}
     ${live && g.started ? `<div style="font-size:13px;color:var(--muted);line-height:1.8">
       Running ${g.minutes} min · about <b style="color:var(--text)">$${g.cost.toFixed(2)}</b> so far ($${g.price.toFixed(2)}/h)<br>
       ${s === 'ready' ? (g.busy ? 'Working on a picture now' : `Stops by itself after ${g.idle_minutes} idle minutes (in ~${g.idle_stop_in} min)`) + ` · always after ${g.max_hours} h` : ''}
