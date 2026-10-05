@@ -247,7 +247,12 @@
     .st-cur { font-size:14px; color:var(--muted); padding:4px 4px 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
     /* keep the phone picture page about the result: no zoom buttons (pinch works), no frame, no mode pills */
     .studio .st-zoom, .studio .st-modes { display:none; }
-    .studio .st-canvas { background:none; border:0; padding:0; }
+    .studio .st-canvas { background:none; border:0; padding:0; flex-direction:column; gap:8px; }
+    /* the older-version bar sits above the picture, not on it; the bottom bar stays short so it doesn't cover it */
+    .st-ver { position:static; transform:none; order:-1; font-size:12px; padding:4px 4px 4px 12px; gap:6px; }
+    .st-ver button { padding:6px 10px; font-size:12px; }
+    .st-prompt textarea { max-height:84px; }
+    .st-note { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .st-tog { display:block; }
   }
   /* bottom nav (mobile) */
