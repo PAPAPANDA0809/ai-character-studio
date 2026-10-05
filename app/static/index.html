@@ -1257,7 +1257,11 @@ async function refreshGpu() {
   $('#d-gpu').className = 'dot ' + (s === 'ready' ? 'on' : s === 'error' ? 'off' : '');
   $('#t-gpu').textContent = s === 'ready' ? `${GPU.label} · $${GPU.cost.toFixed(2)}` : s === 'starting' ? `${GPU.label} · starting…`
     : s === 'stopping' ? 'Stopping…' : 'Fast GPU';
-  if ($('#gpubox').classList.contains('on')) renderGpu();
+  // redraw only when something shown changed: a redraw every 4 s replaced the buttons under a phone tap (Connect did
+  // nothing) and jumped the list back to the top
+  const key = JSON.stringify([s, GPU.message, GPU.minutes, GPU.cost, GPU.busy, GPU.idle_stop_in, (GPU.loras || []).length]);
+  if ($('#gpubox').classList.contains('on') && key !== refreshGpu.key) renderGpu();
+  refreshGpu.key = key;
   gpuTimer = setTimeout(refreshGpu, s === 'starting' || s === 'stopping' || $('#gpubox').classList.contains('on') ? 4000 : 30000);
 }
 let GPUOPTS = null, GPUPICK = null, GPULOADING = false;  // the cards (live stock and prices), the one picked: {id, cloud}
@@ -1285,6 +1289,7 @@ function renderGpu() {
   const g = GPU, s = g.status, admin = ME && ME.admin, live = s === 'starting' || s === 'ready' || s === 'stopping';
   const pick = GPUPICK && (GPUOPTS || []).find(o => o.id === GPUPICK.id);
   const pickPrice = pick && (GPUPICK.cloud === 'COMMUNITY' ? pick.community : pick.secure);
+  const scroll = $('#gpubox > div') ? $('#gpubox > div').scrollTop : 0;  // keep the list where it was scrolled
   $('#gpubox').innerHTML = `<div class="glass pad" style="width:100%;max-width:460px;max-height:90vh;overflow:auto">
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">⚡ Fast GPU</h2><button id="gp-close">✕</button></div>
     <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rent a card on RunPod. While it's on, <b>Qwen-Image 2.1</b> pictures and edits
@@ -1302,10 +1307,12 @@ function renderGpu() {
             ? `⚡ Connect ${esc(pick.label)} · ${GPUPICK.cloud === 'COMMUNITY' ? 'community' : 'secure'} $${pickPrice.toFixed(2)}/h` : 'Pick a card above'}</button>`}</div>`
       : '<p style="color:var(--muted);font-size:12px">Only the admin can start or stop it.</p>'}</div>`;
   $('#gp-close').onclick = () => $('#gpubox').classList.remove('on');
+  $('#gpubox > div').scrollTop = scroll;
   $$('#gpubox .gpu-pick').forEach(b => b.onclick = () => { GPUPICK = {id: b.dataset.gpu, cloud: b.dataset.cloud}; renderGpu(); });
   if ($('#gp-start')) $('#gp-start').onclick = async () => {
-    try { GPU = await api('/api/cloud/start', {gpu: GPUPICK.id, cloud: GPUPICK.cloud}); } catch (e) { return alert(e.message); }
-    refreshGpu(); };
+    const b = $('#gp-start'); b.disabled = true; b.textContent = 'Connecting…';  // the tap is seen right away
+    try { GPU = await api('/api/cloud/start', {gpu: GPUPICK.id, cloud: GPUPICK.cloud}); } catch (e) { renderGpu(); return alert(e.message); }
+    refreshGpu.key = null; renderGpu(); refreshGpu(); };
   if ($('#gp-stop')) $('#gp-stop').onclick = async () => {
     if (!confirm('Stop the fast GPU and delete the pod? Pictures already made are kept.')) return;
     try { GPU = await api('/api/cloud/stop', {}); } catch (e) { return alert(e.message); } refreshGpu(); };
