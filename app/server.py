@@ -18,6 +18,7 @@ import cloudgpu
 import comfy
 import llm
 import pipeline
+import push
 
 STATIC = os.path.join(pipeline.APP_DIR, "static")
 PREVIEW_W = (480, 1440)  # ?w= sizes: tiles and thumbnails, and the big picture on phones
@@ -177,6 +178,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_file(os.path.join(STATIC, m.group(1)))
             if path == "/login":
                 return self.send_file(os.path.join(STATIC, "login.html"))
+            if path == "/sw.js":  # the service worker lives at the root so it covers the whole app (notifications only)
+                return self.send_file(os.path.join(STATIC, "sw.js"))
             if path == "/api/status":
                 cfg = pipeline.load_config()
                 return self.send_json({
@@ -190,6 +193,8 @@ class Handler(BaseHTTPRequestHandler):
                 u = self.user()
                 return self.send_json({"user": u, "admin": bool(u and auth.is_admin(u)), "setup": not auth.has_users()})
             u = self.user()
+            if u and path == "/api/push/key":
+                return self.send_json({"key": push.public_key(), "on": push.has(u)})
             if not u:
                 return self.redirect("/login") if path == "/" else self.send_json({"error": "sign in required"}, 401)
             # signed in
@@ -264,6 +269,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "empty upload"}, 400)
                 return self.send_json({"name": pipeline.save_character(u, q.get("name", ["character.png"])[0], data)})
             b = self.body()
+            if path == "/api/push/subscribe":
+                push.subscribe(u, b.get("subscription"))
+                return self.send_json({"ok": True})
+            if path == "/api/push/unsubscribe":
+                push.unsubscribe(u, b.get("endpoint", ""))
+                return self.send_json({"ok": True})
+            if path == "/api/push/test":
+                push.send(u, "🔔 Reelmint", "Notifications are on: you'll hear when pictures and videos are ready.")
+                return self.send_json({"ok": True})
             if path == "/api/password":
                 if not auth.check(u, b.get("old")):
                     return self.send_json({"error": "current password is wrong"}, 400)

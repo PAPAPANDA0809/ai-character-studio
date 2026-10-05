@@ -15,6 +15,7 @@ import cloud
 import cloudgpu
 import comfy
 import llm
+import push
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECTS = os.path.join(APP_DIR, "projects")
@@ -315,6 +316,7 @@ def worker():
             p = load(pid)
             p["status"] = "done:" + task
             log(p, f"{task} finished")
+            _announce(p, task, "done")
         except Exception as e:
             if not isinstance(e, (Cancelled, comfy.Stopped)):
                 traceback.print_exc()
@@ -328,9 +330,18 @@ def worker():
             else:
                 p["status"] = "error:" + task
                 log(p, f"ERROR in {task}: {e}")
+                _announce(p, task, "error", str(e))
         finally:
             cancelled.discard(pid)
             current.update(pid=None, task=None)
+
+
+def _announce(p, task, status, detail=""):
+    """A phone notification for the project's owner, if they turned notifications on."""
+    try:
+        push.job_done(user_of(p["id"]), p["id"], p["plan"].get("title") or "Reelmint", task, status, detail)
+    except Exception:
+        traceback.print_exc()
 
 
 def _reset_stale():

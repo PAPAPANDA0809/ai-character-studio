@@ -1226,11 +1226,51 @@ async function loadMe() {
   if (!ME.user) return location.href = '/login';
   $('#me-name').textContent = ME.user;
 }
+/* ---------- phone notifications when a job finishes (push.py, sw.js); browsers only allow them on https ---------- */
+const PUSH_URL = 'https://desktop-h7p36q5.tail46ae30.ts.net:8443';
+const b64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)), c => c.charCodeAt(0));
+async function pushSub() {
+  const reg = await navigator.serviceWorker.getRegistration('/');
+  return reg && reg.pushManager.getSubscription();
+}
+async function pushState() {
+  if (!window.isSecureContext) return 'insecure';
+  if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  return Notification.permission === 'granted' && await pushSub() ? 'on' : 'off';
+}
+async function pushOn() {
+  if (await Notification.requestPermission() !== 'granted') throw new Error("Notifications weren't allowed");
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  const {key} = await api('/api/push/key');
+  const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64u(key)});
+  await api('/api/push/subscribe', {subscription: sub.toJSON()});
+}
+async function pushOff() {
+  const sub = await pushSub();
+  if (sub) { await api('/api/push/unsubscribe', {endpoint: sub.endpoint}); await sub.unsubscribe(); }
+}
+async function renderPush() {
+  const box = $('#ac-push'); if (!box) return;
+  const st = await pushState(), p = t => `<p style="color:var(--muted);font-size:13px;margin:4px 0 8px">${t}</p>`;
+  box.innerHTML = {
+    insecure: p(`Notifications need the secure address. Open <a href="${PUSH_URL}" style="color:var(--cyan)">${PUSH_URL.replace('https://', '')}</a>, sign in once, then turn them on here.`),
+    unsupported: p("This browser can't show notifications (on an iPhone: add Reelmint to the Home Screen first)."),
+    denied: p("Notifications are blocked for this site: allow them in the browser's site settings, then come back."),
+    off: p('Get a notification on this device when pictures and videos are ready.') + '<button class="primary" id="pu-on" style="width:100%">Turn on</button>',
+    on: p('On for this device ✓') + '<div class="row"><button id="pu-test" style="flex:1">Send a test</button><button id="pu-off" style="flex:1">Turn off</button></div>',
+  }[st];
+  const act = (id, fn) => { const b = $(id); if (b) b.onclick = async () => { b.disabled = true;
+    try { await fn(); } catch (e) { alert(e.message); } renderPush(); }; };
+  act('#pu-on', pushOn); act('#pu-off', pushOff); act('#pu-test', () => api('/api/push/test', {}));
+}
 async function openAccount() {
   const users = ME.admin ? await api('/api/users') : [];
   $('#acct').innerHTML = `<div class="glass pad" style="width:100%;max-width:420px;max-height:88vh;overflow:auto">
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">👤 ${esc(ME.user)}</h2><button id="ac-close">✕</button></div>
     <p style="color:var(--muted);font-size:13px;margin:4px 0 0">Your projects, pictures and videos are private to your account.</p>
+    <h3>🔔 Notifications</h3><div id="ac-push"></div>
     ${ME.admin ? `<h3>People</h3>
       ${users.map(x => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)">
         <span>${esc(x.user)}${x.admin ? ' <span class="badge done">admin</span>' : ''}</span>
@@ -1246,6 +1286,7 @@ async function openAccount() {
     <div id="ac-msg" style="color:var(--mint);font-size:13px;min-height:18px;margin-top:8px"></div>
     <button id="ac-out" style="width:100%;margin-top:6px">Sign out</button></div>`;
   $('#acct').classList.add('on');
+  renderPush();
   const msg = (t, bad) => { $('#ac-msg').style.color = bad ? 'var(--err)' : 'var(--mint)'; $('#ac-msg').textContent = t; };
   $('#ac-close').onclick = () => $('#acct').classList.remove('on');
   $('#ac-out').onclick = async () => { await api('/api/logout', {}); location.href = '/login'; };
@@ -1336,6 +1377,7 @@ $('#acct').onclick = e => { if (e.target.id === 'acct') $('#acct').classList.rem
 loadMe().then(() => {
   watchOverlays();
   syncCreate(); refreshStatus(); refreshGpu();
+  pushState().then(st => st === 'on' && pushSub().then(sub => api('/api/push/subscribe', {subscription: sub.toJSON()}))).catch(() => {});  // the PC still knows this device
   const ready = Promise.all([refreshChars(), refreshEngines()]).catch(() => {});  // a project page lists both
   const h = decodeURIComponent(location.hash.slice(1));  // back to the tab or project open before the refresh
   if (h.startsWith('project/')) ready.then(() => openProject(h.slice(8))).catch(() => show('projects'));  // deleted meanwhile
