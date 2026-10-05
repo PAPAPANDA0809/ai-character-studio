@@ -123,6 +123,16 @@
   .picked .pick { background:var(--mint); border-color:var(--mint); color:#041014; }
   .picked { outline:3px solid var(--mint); outline-offset:-3px; }
   .selbar { display:flex; gap:8px; align-items:center; margin:-4px 0 14px; }
+  .gpus { display:flex; flex-direction:column; gap:8px; }
+  .gp-actions { position:sticky; bottom:-16px; margin:14px -16px -16px; padding:12px 16px 16px; background:#11141b; border-top:1px solid var(--line); }
+  .gpu-row { border:1px solid var(--line); border-radius:14px; padding:10px 12px; background:rgba(0,0,0,.25); }
+  .gpu-row.na { opacity:.5; }
+  .gpu-top { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .gpu-sub { font-size:12px; color:var(--muted); }
+  .gpu-x { color:var(--mint); }
+  .gpu-prices { display:flex; gap:6px; margin-top:8px; }
+  .gpu-pick { flex:1; padding:8px 10px; font-size:13px; font-weight:500; border-radius:10px; }
+  .gpu-pick.on { border-color:var(--mint); color:var(--mint); background:rgba(46,242,181,.1); }
   .selbar .del, #st-delproj { background:rgba(255,107,138,.15); border-color:rgba(255,107,138,.6); color:#ffb3c3; }
   .pcard { position:relative; }
   .gal .cap { position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px; font-size:12px; background:linear-gradient(transparent,rgba(0,0,0,.8)); }
@@ -1228,30 +1238,60 @@ async function refreshGpu() {
   if ($('#gpubox').classList.contains('on')) renderGpu();
   gpuTimer = setTimeout(refreshGpu, s === 'starting' || s === 'stopping' || $('#gpubox').classList.contains('on') ? 4000 : 30000);
 }
+let GPUOPTS = null, GPUPICK = null, GPULOADING = false;  // the cards (live stock and prices), the one picked: {id, cloud}
+async function loadGpuOptions() {
+  if (GPULOADING) return;
+  GPULOADING = true; GPUOPTS = null;
+  if ($('#gpubox').classList.contains('on')) renderGpu();
+  try { GPUOPTS = await api('/api/cloud/options'); } catch (e) { GPUOPTS = []; }
+  GPULOADING = false;
+  if ($('#gpubox').classList.contains('on')) renderGpu();
+}
+function gpuList() {  // pick a card: ✅ in stock / ❌ none now, its speed against a 4090 and both prices
+  if (!GPUOPTS) { setTimeout(loadGpuOptions); return '<div class="progress" style="margin:0"><i class="spin"></i><span>Checking RunPod for free cards…</span></div>'; }
+  if (!GPUOPTS.length) return '<div class="progress" style="margin:0;border-color:var(--err)">⚠ Couldn\'t reach RunPod. Try again in a moment.</div>';
+  return `<div class="gpus">${GPUOPTS.map(o => `<div class="gpu-row ${o.available ? '' : 'na'}">
+      <div class="gpu-top"><span>${o.available ? '✅' : '❌'}</span><b>${esc(o.label)}</b>
+        <span class="gpu-sub">${o.mem} GB · <b class="gpu-x">${o.speed}×</b>${o.label === 'RTX 4090' ? ' (baseline)' : ''} · ${o.available ? esc(o.stock.toLowerCase()) + ' stock' : 'none free now'}</span></div>
+      <div class="gpu-prices">${[['COMMUNITY', 'Community', o.community], ['SECURE', 'Secure', o.secure]].map(([c, name, pr]) => pr == null ? ''
+        : `<button class="gpu-pick ${GPUPICK && GPUPICK.id === o.id && GPUPICK.cloud === c ? 'on' : ''}" data-gpu="${esc(o.id)}" data-cloud="${c}" ${o.available ? '' : 'disabled'}>${name} $${pr.toFixed(2)}/h</button>`).join('')}</div>
+    </div>`).join('')}</div>
+    <p style="color:var(--muted);font-size:11px;margin:8px 0 0">Speed: about how much faster than an RTX 4090 (estimates). Community = cheaper, other people's
+      machines (now and then a faulty one); Secure = RunPod's own data centres.</p>`;
+}
 function renderGpu() {
   const g = GPU, s = g.status, admin = ME && ME.admin, live = s === 'starting' || s === 'ready' || s === 'stopping';
-  $('#gpubox').innerHTML = `<div class="glass pad" style="width:100%;max-width:440px">
+  const pick = GPUPICK && (GPUOPTS || []).find(o => o.id === GPUPICK.id);
+  const pickPrice = pick && (GPUPICK.cloud === 'COMMUNITY' ? pick.community : pick.secure);
+  $('#gpubox').innerHTML = `<div class="glass pad" style="width:100%;max-width:460px;max-height:90vh;overflow:auto">
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">⚡ Fast GPU</h2><button id="gp-close">✕</button></div>
-    <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rents the cheapest free card on RunPod: RTX 4090 ($0.34/h), else RTX 5090 ($0.69/h), else the more reliable secure-cloud 4090 ($0.74/h) or 5090 ($0.99/h).
-      While it's on, <b>Qwen-Image 2.1</b> pictures and edits (~10–15 s each instead of ~1.5 min) and <b>Wan 2.2</b> videos
-      (~1–2 min a clip instead of ~20) run there; Z-Image stays on this PC. Getting it ready takes about 8–12 minutes.</p>
-    <div class="progress" style="margin:0 0 12px;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
-      <span style="flex:1">${esc(g.message || (s === 'off' ? 'Off' : s))}</span></div>
+    <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rent a card on RunPod. While it's on, <b>Qwen-Image 2.1</b> pictures and edits
+      and <b>Wan 2.2</b> videos run there; Z-Image stays on this PC. Getting it ready takes about 8–12 minutes.</p>
+    ${!live && admin ? gpuList() : ''}
+    ${live || g.message ? `<div class="progress" style="margin:12px 0;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
+      <span style="flex:1">${esc(g.message || s)}</span></div>` : ''}
     ${live && g.started ? `<div style="font-size:13px;color:var(--muted);line-height:1.8">
       Running ${g.minutes} min · about <b style="color:var(--text)">$${g.cost.toFixed(2)}</b> so far ($${g.price.toFixed(2)}/h)<br>
       ${s === 'ready' ? (g.busy ? 'Working on a picture now' : `Stops by itself after ${g.idle_minutes} idle minutes (in ~${g.idle_stop_in} min)`) + ` · always after ${g.max_hours} h` : ''}
       ${g.loras.length ? `<br>Trained characters on it: ${g.loras.map(esc).join(', ')}` : s !== 'stopping' ? '<br>Trained characters are still uploading' : ''}</div>` : ''}
-    ${admin ? `<div class="row" style="margin-top:14px">${live
+    ${admin ? `<div class="row gp-actions">${live
         ? `<button class="stop" id="gp-stop" style="flex:1" ${s === 'stopping' ? 'disabled' : ''}>■ Stop and delete the GPU</button>`
-        : `<button class="primary" id="gp-start" style="flex:1">⚡ Start fast GPU</button>`}</div>`
+        : `<button class="primary" id="gp-start" style="flex:1" ${pickPrice != null ? '' : 'disabled'}>${pickPrice != null
+            ? `⚡ Connect ${esc(pick.label)} · ${GPUPICK.cloud === 'COMMUNITY' ? 'community' : 'secure'} $${pickPrice.toFixed(2)}/h` : 'Pick a card above'}</button>`}</div>`
       : '<p style="color:var(--muted);font-size:12px">Only the admin can start or stop it.</p>'}</div>`;
   $('#gp-close').onclick = () => $('#gpubox').classList.remove('on');
-  if ($('#gp-start')) $('#gp-start').onclick = async () => { try { GPU = await api('/api/cloud/start', {}); } catch (e) { return alert(e.message); } refreshGpu(); };
+  $$('#gpubox .gpu-pick').forEach(b => b.onclick = () => { GPUPICK = {id: b.dataset.gpu, cloud: b.dataset.cloud}; renderGpu(); });
+  if ($('#gp-start')) $('#gp-start').onclick = async () => {
+    try { GPU = await api('/api/cloud/start', {gpu: GPUPICK.id, cloud: GPUPICK.cloud}); } catch (e) { return alert(e.message); }
+    refreshGpu(); };
   if ($('#gp-stop')) $('#gp-stop').onclick = async () => {
     if (!confirm('Stop the fast GPU and delete the pod? Pictures already made are kept.')) return;
     try { GPU = await api('/api/cloud/stop', {}); } catch (e) { return alert(e.message); } refreshGpu(); };
 }
-$('#gpu-chip').onclick = async () => { $('#gpubox').classList.add('on'); if (!GPU) await refreshGpu(); renderGpu(); refreshGpu(); };
+$('#gpu-chip').onclick = async () => {
+  $('#gpubox').classList.add('on'); if (!GPU) await refreshGpu(); renderGpu(); refreshGpu();
+  if (!['starting', 'ready', 'stopping'].includes(GPU.status)) loadGpuOptions();  // fresh stock each time it's opened
+};
 $('#gpubox').onclick = e => { if (e.target.id === 'gpubox') $('#gpubox').classList.remove('on'); };
 $('#acct').onclick = e => { if (e.target.id === 'acct') $('#acct').classList.remove('on'); };
 

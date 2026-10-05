@@ -1,7 +1,8 @@
-"""Fast GPU session: a rented RunPod card (an RTX 4090 by default) running ComfyUI with Qwen-Image 2.1, reached
-through an SSH tunnel. While it is ready, Qwen-Image pictures and edits run there instead of on this PC's 8 GB card.
+"""Fast GPU session: a rented RunPod card running ComfyUI with Qwen-Image 2.1 and Wan 2.2, reached through an SSH
+tunnel. While it is ready, Qwen-Image pictures and edits and Wan 2.2 videos run there instead of on this PC's 8 GB card.
 
-The pod is set up from scratch each time (no paid storage between sessions) by cloud_setup.sh, and it is deleted
+The person picks the card from options() (live RunPod stock and prices); nothing is chosen automatically. Jobs run
+one at a time, as on the PC. The pod is set up from scratch each time (no paid storage between sessions) by cloud_setup.sh, and it is deleted
 when idle for idle_minutes, after max_hours, or from the Stop button. A pod left from before an app restart is
 picked up again, or deleted if it can't be reached, so a forgotten pod never keeps billing."""
 import json, os, re, subprocess, threading, time, urllib.request
@@ -26,23 +27,33 @@ KNOWN_HOSTS = msys(os.path.join(APP_DIR, "cloud_known_hosts"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the VPN's system proxy breaks localhost
 
+# The cards offered, weakest first. speed = rough speed for Qwen-Image / Wan against an RTX 4090 (estimates from the
+# cards' compute and memory speed, not measured here).
+CATALOG = [
+    {"id": "NVIDIA GeForce RTX 3090", "label": "RTX 3090", "mem": 24, "speed": 0.5},
+    {"id": "NVIDIA GeForce RTX 4090", "label": "RTX 4090", "mem": 24, "speed": 1.0},
+    {"id": "NVIDIA GeForce RTX 5090", "label": "RTX 5090", "mem": 32, "speed": 1.3},
+    {"id": "NVIDIA L40S", "label": "L40S", "mem": 48, "speed": 1.0},
+    {"id": "NVIDIA RTX 6000 Ada Generation", "label": "RTX 6000 Ada", "mem": 48, "speed": 1.0},
+    {"id": "NVIDIA A100 80GB PCIe", "label": "A100 80 GB", "mem": 80, "speed": 1.0},
+    {"id": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "label": "RTX PRO 6000", "mem": 96, "speed": 1.4},
+    {"id": "NVIDIA H100 80GB HBM3", "label": "H100", "mem": 80, "speed": 2.0},
+    {"id": "NVIDIA H200", "label": "H200", "mem": 141, "speed": 2.2},
+    {"id": "NVIDIA B200", "label": "B200", "mem": 180, "speed": 3.0},
+]
+
 lock = threading.Lock()
 state = {"status": "off", "message": "", "pod": None, "ip": "", "port": 0, "price": 0.0, "gpu": "",
          "started": 0.0, "last_used": 0.0, "loras": []}
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 tunnel = [None]    # the ssh -L process
+_opts = [0.0, []]  # options() cache: when, list
 
 
 def cfg():
     with open(os.path.join(APP_DIR, "config.json"), encoding="utf-8") as f:
         c = json.load(f).get("cloud_gpu", {})
-    # tries: [RunPod GPU id, label, cloud type] in order, cheapest first (prices per hour, Oct 2026)
-    return {"tries": [["NVIDIA GeForce RTX 4090", "RTX 4090", "COMMUNITY"],   # $0.34
-                      ["NVIDIA GeForce RTX 5090", "RTX 5090", "COMMUNITY"],   # $0.69
-                      ["NVIDIA GeForce RTX 4090", "RTX 4090", "SECURE"],      # $0.74
-                      ["NVIDIA GeForce RTX 5090", "RTX 5090", "SECURE"]],     # $0.99
-            # CUDA 13 build: ComfyUI's fast int8 kernels need it ("You need pytorch with cu130")
-            "image": "runpod/pytorch:1.4.0-cu1300-torch291-ubuntu2404", "disk_gb": 90, "local_port": 8190,
+    return {"image": "runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2404", "disk_gb": 90, "local_port": 8190,
             "idle_minutes": 15, "max_hours": 4, **c}
 
 
@@ -64,9 +75,27 @@ def info():
         s = dict(state)
     up = time.time() - s["started"] if s["started"] else 0
     idle_left = c["idle_minutes"] * 60 - (time.time() - s["last_used"]) if s["status"] == "ready" and not active[0] else None
-    return {**s, "label": s["gpu"] or c["tries"][0][1], "minutes": round(up / 60), "cost": round(up / 3600 * s["price"], 2),
+    return {**s, "label": s["gpu"] or "GPU", "minutes": round(up / 60), "cost": round(up / 3600 * s["price"], 2),
             "idle_stop_in": max(0, round(idle_left / 60)) if idle_left is not None else None,
-            "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": bool(active[0])}
+            "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": active[0]}
+
+
+def options():
+    """The cards in CATALOG with RunPod's live stock and both prices (community = cheaper hosts, secure = RunPod's
+    own data centres). Asked at most once a minute."""
+    if time.time() - _opts[0] < 60 and _opts[1]:
+        return _opts[1]
+    code, out, err = _run([RUNPODCTL, "gpu", "list"], timeout=60)
+    live = {g["gpuId"]: g for g in json.loads(out[out.index("["):])} if code == 0 and "[" in out else {}
+    res = []
+    for c in CATALOG:
+        g = live.get(c["id"], {})
+        stock = g.get("stockStatus") or "none"
+        res.append({**c, "stock": stock, "available": bool(g.get("available")) and stock.lower() != "none",
+                    "community": g.get("communityPricePerHr") if g.get("communityCloud") else None,
+                    "secure": g.get("securePricePerHr") if g.get("secureCloud") else None})
+    _opts[:] = [time.time(), res]
+    return res
 
 
 def url():
@@ -115,45 +144,38 @@ def _create(c, gpu, cloud):
     return pod, ""
 
 
-def start():
+def start(gpu_id, cloud):
+    """Rent the card the person picked (gpu_id from CATALOG, cloud "COMMUNITY" or "SECURE")."""
+    card = next((c for c in CATALOG if c["id"] == gpu_id), None)
+    if not card or cloud not in ("COMMUNITY", "SECURE"):
+        raise ValueError("pick a card and community or secure first")
     with lock:
         if state["status"] not in ("off", "error"):
             return False
-        state.update(status="starting", message="Renting the GPU…")
-    threading.Thread(target=_start, daemon=True).start()
+        state.update(status="starting", gpu=card["label"],
+                     message=f"Renting an {card['label']} ({cloud.lower()} cloud)…")
+    threading.Thread(target=_start, args=(card, cloud), daemon=True).start()
     return True
 
 
-def _start(faulty=0, first=0):
-    """faulty = pods given up on because their card didn't work (community hosts): up to 2 more are tried, starting
-    at the next entry of tries (RunPod handed the same broken host out again for the same card type).
-    first = where in tries to start."""
+def _start(card, cloud):
     c = cfg()
-    tried = first
     try:
-        pod, label, why = None, "", ""
-        for tried in range(first, len(c["tries"])):  # cheapest first; the next one when none is free
-            gpu, label, cloud = c["tries"][tried]
-            if state["status"] != "starting":
-                return  # stopped meanwhile
-            _set(gpu=label, message=f"Renting an {label} ({'community' if cloud == 'COMMUNITY' else 'secure'} cloud)…")
-            pod, why = _create(c, gpu, cloud)
-            if pod and state["status"] != "starting":  # Stop was pressed while this one was being rented
-                _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
-                return
-            if pod:
-                break
+        pod, why = _create(c, card["id"], cloud)
+        if pod and state["status"] != "starting":  # Stop was pressed while it was being rented
+            _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
+            return
         if not pod:
-            return _set(status="error", gpu="", message=f"No GPU free right now ({why}). Try again in a few minutes.")
+            return _set(status="error", message=f"Couldn't rent an {card['label']} ({why}). Pick another card or try again.")
         ssh = pod.get("ssh", {})
         _set(pod=pod["id"], ip=ssh.get("ip", ""), port=int(ssh.get("port", 0)), price=float(pod.get("costPerHr", 0)),
-             gpu=label, started=time.time(), last_used=time.time(), loras=[], message="Installing ComfyUI and Qwen-Image 2.1…")
+             started=time.time(), last_used=time.time(), loras=[], message="Installing ComfyUI, Qwen-Image 2.1 and Wan 2.2…")
         with open(SETUP, "rb") as f:
             script = f.read().replace(b"\r\n", b"\n")
         for _ in range(12):  # ssh can answer before the pod has installed the key: retry for ~2 minutes
             # ";" not "&&": with "&&" the whole chain went to the background and the session ended before cat had
             # read the script (it arrived empty)
-            code, out, err = _ssh("cat > /root/setup.sh; mkdir -p /root/loras; "
+            code, out, err = _ssh(f"cat > /root/setup.sh; mkdir -p /root/loras; "
                                   "setsid nohup bash /root/setup.sh > /root/setup.log 2>&1 < /dev/null & echo started",
                                   timeout=60, data=script)
             if "started" in out or state["status"] != "starting":
@@ -181,11 +203,8 @@ def _start(faulty=0, first=0):
         _set(status="ready", message=f"{state['gpu']} ready", last_used=time.time())
         _free_local()
     except Exception as e:
-        if "FAULTY_GPU" in str(e) and faulty < 2 and tried + 1 < len(c["tries"]):
-            _delete("The rented card didn't work", error=True)
-            _set(status="starting", message="That card was faulty; renting a different one…")
-            return _start(faulty + 1, tried + 1)
-        _delete(f"Stopped: {e}".replace("FAULTY_GPU", "the rented cards didn't work; try again later"), error=True)
+        _delete(f"Stopped: {e}".replace("FAULTY_GPU", f"this {card['label']} was faulty (its GPU didn't work); "
+                                                    "pick it again for another machine, or another card"), error=True)
 
 
 def _free_local():

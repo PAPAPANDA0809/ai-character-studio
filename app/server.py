@@ -149,6 +149,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(pipeline.gallery(m.group(1), u))
             if path == "/api/cloud":
                 return self.send_json(cloudgpu.info())
+            if path == "/api/cloud/options":  # the cards to pick from, with RunPod's live stock and prices
+                return self.send_json(cloudgpu.options())
             if path == "/api/engines":
                 return self.send_json(pipeline.engines())
             if path == "/api/users":
@@ -231,7 +233,10 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/api/cloud/start", "/api/cloud/stop"):  # rented GPU: costs money, so admins only
                 if not auth.is_admin(u):
                     return self.send_json({"error": "admins only"}, 403)
-                (cloudgpu.start if path.endswith("start") else cloudgpu.stop)()
+                if path.endswith("start"):  # the card the person picked, community or secure cloud
+                    cloudgpu.start(b.get("gpu", ""), b.get("cloud", ""))
+                else:
+                    cloudgpu.stop()
                 return self.send_json(cloudgpu.info())
             if path == "/api/delete":
                 return self.send_json({"deleted": pipeline.delete_items(u, b.get("projects", []), b.get("files", []))})
