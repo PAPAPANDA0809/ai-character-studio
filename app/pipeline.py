@@ -149,8 +149,13 @@ def list_projects(user):
     for d in sorted(project_ids(user), reverse=True):
         try:
             p = load(d)
+            kfs = p["plan"]["keyframes"]
             out.append({"id": p["id"], "title": p["plan"]["title"], "status": p["status"], "created": p["created"],
-                        "pinned": bool(p.get("pinned"))})
+                        "pinned": bool(p.get("pinned")), "mode": p.get("mode", "video"),
+                        # for the phone feed: what was asked for, and which pictures exist
+                        "prompt": p.get("idea") or (kfs[0]["image_prompt"] if kfs else ""),
+                        "message": p.get("message", ""), "keyframes_version": p.get("keyframes_version", 0),
+                        "present": [os.path.exists(pdir(p["id"], "keyframes", f"kf_{i:02d}.png")) for i in range(len(kfs))]})
         except Exception:
             pass
     return out

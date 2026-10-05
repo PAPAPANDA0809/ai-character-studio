@@ -194,6 +194,50 @@
     .st-empty { height:50vh; }
     .st-panel { max-height:none; overflow:visible; }
   }
+  /* phones, Grok-style: Create is a feed + "Type to imagine" bar (settings in a bottom sheet); a picture page has an
+     action row under the picture, its panel in a sheet behind ⋮, and the prompt / edit bar fixed at the bottom */
+  .mfeed, .mcomp, .msheet-bar, .msheet-back, .st-mact, .st-pclose { display:none; }
+  @media (max-width:820px) {
+    #v-create .create-grid, #btn-plan, #v-create > #plan-msg { display:none; }
+    #v-create.sheet .create-grid { display:block; position:fixed; left:0; right:0; bottom:0; max-height:82vh; overflow:auto; z-index:61;
+      background:#0d1016; border-radius:22px 22px 0 0; border-top:1px solid var(--line); padding:0 12px 24px; }
+    #v-create.sheet .msheet-back, .studio.panel-open ~ .msheet-back { display:block; position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.55); }
+    #v-create.sheet .create-grid > .glass { background:none; border:0; padding:4px 4px 10px; backdrop-filter:none; }
+    #v-create.sheet h2, #v-create.sheet #idea, #v-create.sheet .enh { display:none; }
+    .msheet-bar { display:flex; position:sticky; top:0; z-index:2; justify-content:space-between; align-items:center; padding:14px 4px 10px; background:#0d1016; }
+    .mfeed { display:flex; flex-direction:column; gap:22px; padding-bottom:150px; }
+    .fgrp .fchip { max-width:100%; width:fit-content; padding:10px 16px; border-radius:22px; background:var(--glass2); border:1px solid var(--line);
+      font-size:14px; line-height:1.45; margin-bottom:10px; }
+    .fgrp .fchip span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+    .fgrid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    .fgrid > * { aspect-ratio:3/4; border-radius:14px; overflow:hidden; background:rgba(255,255,255,.04) center/cover; }
+    .fgrid img { width:100%; height:100%; object-fit:cover; display:block; }
+    .fph { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; }
+    .fmore { display:block; margin:12px auto 0; border-radius:99px; padding:10px 18px; }
+    .mcomp { display:flex; align-items:flex-end; gap:8px; position:fixed; left:10px; right:10px; z-index:31;
+      bottom:calc(84px + env(safe-area-inset-bottom)); padding:7px; border-radius:26px; background:rgba(20,23,31,.94);
+      border:1px solid var(--line); backdrop-filter:blur(16px); box-shadow:0 10px 40px rgba(0,0,0,.5); }
+    .mcomp textarea { flex:1; background:none; border:0; padding:10px 4px; resize:none; max-height:140px; font-size:16px; }
+    .mcomp textarea:focus { box-shadow:none; border:0; }
+    .mref, .mset { width:44px; height:44px; border-radius:50%; padding:0; flex:none; background:var(--glass2) center/cover; display:flex;
+      align-items:center; justify-content:center; font-size:18px; }
+    .mset svg { width:22px; height:22px; }
+    /* picture page */
+    body.inproject .bnav { display:none; }
+    body.inproject main { padding-bottom:170px; }
+    .studio .st-panel { display:none; }
+    .studio.panel-open .st-panel { display:flex; position:fixed; left:0; right:0; bottom:0; max-height:80vh; overflow:auto; z-index:61;
+      background:#0d1016; border-radius:22px 22px 0 0; border-top:1px solid var(--line); padding:14px 12px 28px; }
+    .st-pclose { display:block; align-self:flex-end; }
+    .st-mact { display:flex; gap:8px; align-items:center; grid-area:mact; }
+    .st-mact button { height:44px; border-radius:99px; padding:0 16px; font-size:15px; }
+    .st-mact .grp { display:flex; flex:1; justify-content:flex-end; gap:6px; }
+    .st-mact .grp button { width:44px; padding:0; font-size:17px; }
+    .studio { grid-template-areas:"top" "canvas" "mact" "strip" "prompt" "panel"; }
+    .st-prompt { position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:31;
+      background:rgba(20,23,31,.95); backdrop-filter:blur(16px); box-shadow:0 10px 40px rgba(0,0,0,.5); }
+    .st-cur { font-size:14px; color:var(--muted); padding:4px 4px 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+  }
   /* bottom nav (mobile) */
   .bnav { display:none; }
   @media (max-width:820px) {
@@ -228,7 +272,9 @@
 <main>
   <!-- CREATE -->
   <section class="view" id="v-create">
+    <div class="msheet-back" id="m-back"></div>
     <div class="create-grid">
+      <div class="msheet-bar"><b>Settings</b><button id="m-done">Done</button></div>
       <div class="glass pad">
         <h2>What's the post?</h2>
         <textarea id="idea" class="idea" placeholder="e.g. Our fox mascot opens a tiny coffee shop and serves its first customer"></textarea>
@@ -277,6 +323,14 @@
     </div>
     <button class="primary big" id="btn-plan" style="margin-top:16px">✦ Plan scenes</button>
     <div id="plan-msg" class="progress" style="display:none"><i class="spin"></i><span>Planning scenes with the local AI…</span></div>
+    <!-- phones: a feed of recent creations and a "Type to imagine" bar, like Grok Imagine -->
+    <div class="mfeed" id="m-feed"></div>
+    <div class="mcomp" id="m-comp">
+      <button class="mref" id="m-ref" title="Character pictures"></button>
+      <textarea id="m-idea" rows="1" placeholder="Type to imagine"></textarea>
+      <button class="st-send" id="m-send" title="Make it">↑</button>
+      <button class="mset" id="m-set" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+    </div>
   </section>
 
   <!-- PROJECTS -->
@@ -317,6 +371,8 @@ function show(v) {
   if (v !== 'project') document.querySelector('main').classList.remove('wide');
   $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
   $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
+  document.body.classList.toggle('inproject', v === 'project');
+  if (v === 'create') { delete $('#m-feed').dataset.scrolled; refreshFeed(); }
   if (v === 'projects') refreshProjects();
   if (v === 'images' || v === 'videos') refreshGallery(v);
   window.scrollTo({top: 0});
@@ -438,6 +494,7 @@ function renderChars() {
     refreshChars();
   });
   $('#char-up').onclick = () => $('#ref-file').click();
+  renderMref();
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
 $('#img-eng').onchange = () => { renderChars(); renderLora(); };
@@ -489,6 +546,67 @@ $('#btn-plan').onclick = async () => {
   $('#btn-plan').disabled = false; $('#plan-msg').style.display = 'none';
 };
 
+/* ---------- phones: the Imagine feed and the "Type to imagine" bar ---------- */
+const isPhone = () => matchMedia('(max-width:820px)').matches;
+let feedTimer = null;
+async function refreshFeed() {
+  clearTimeout(feedTimer);
+  if (!isPhone() || VIEW !== 'create') return;
+  let list;
+  try { list = await api('/api/projects'); } catch (e) { feedTimer = setTimeout(refreshFeed, 8000); return; }
+  const recent = list.slice(0, 12).reverse();  // newest at the bottom, next to the bar (like a chat)
+  const busy = p => /^(queued|running)/.test(p.status || '');
+  $('#m-feed').innerHTML = recent.length ? recent.map(p => {
+    const pics = p.present.map((ok, j) => ok
+      ? `<img loading="lazy" src="${fileOf(p.id, `keyframes/kf_${pad(j)}.png`, Math.floor(p.keyframes_version || 0))}" data-open="${p.id}:${j}" alt="">`
+      : `<div class="fph" data-open="${p.id}:${j}">${busy(p) ? '<i class="spin"></i>' : 'not made yet'}</div>`).join('');
+    return `<div class="fgrp"><div class="fchip" data-open="${p.id}:0"><span>${esc(p.prompt || p.title)}</span></div>
+      <div class="fgrid">${pics}</div>
+      ${p.mode === 'images' && !busy(p) && p.present.some(Boolean) ? `<button class="fmore" data-more="${p.id}">✦ Generate more</button>` : ''}
+      ${busy(p) ? `<div style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px">${esc(p.message || 'Queued…')}</div>` : ''}</div>`;
+  }).join('') : '<div class="empty">Type what you want to see below.</div>';
+  $$('#m-feed [data-open]').forEach(el => el.onclick = async () => {
+    const [id, j] = el.dataset.open.split(':');
+    await openProject(id); STI = +j; render();
+  });
+  $$('#m-feed [data-more]').forEach(b => b.onclick = async () => {  // one more picture from the same prompt
+    b.disabled = true;
+    try {
+      const q = await api('/api/projects/' + b.dataset.more), pl2 = structuredClone(q.plan);
+      pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});
+      await api(`/api/projects/${q.id}/plan`, {plan: pl2});
+      await api(`/api/projects/${q.id}/keyframes`, {indices: [pl2.keyframes.length - 1], reseed: true});
+    } catch (e) { alert(e.message); }
+    refreshFeed();
+  });
+  if (!$('#m-feed').dataset.scrolled) { $('#m-feed').dataset.scrolled = 1; window.scrollTo(0, document.body.scrollHeight); }
+  if (recent.some(busy)) feedTimer = setTimeout(refreshFeed, 4000);
+}
+function renderMref() {  // the bar's left button shows character picture 1, if one is picked
+  $('#m-ref').style.backgroundImage = NEW.refs.length ? `url('/characters/${encodeURIComponent(NEW.refs[0])}')` : '';
+  $('#m-ref').textContent = NEW.refs.length ? '' : '🖼';
+}
+const openSheet = on => $('#v-create').classList.toggle('sheet', on);
+$('#m-set').onclick = () => openSheet(true);
+$('#m-ref').onclick = () => { openSheet(true); setTimeout(() => $('#chars').scrollIntoView({block: 'center'}), 50); };
+$('#m-done').onclick = $('#m-back').onclick = () => { openSheet(false); renderMref(); };
+$('#m-idea').oninput = e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(140, e.target.scrollHeight) + 'px'; };
+$('#m-send').onclick = async () => {  // one tap: plan the post with the sheet's settings, then start making it
+  const idea = $('#m-idea').value.trim();
+  if (!idea) return $('#m-idea').focus();
+  $('#m-send').disabled = true;
+  try {
+    const p = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, references: NEW.refs,
+      mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value, lora: $('#lora-sel').value,
+      keyframes: +$('#nkf').value, aspect: NEW.aspect, quality: NEW.quality || (NEW.mode === 'images' ? 'sharp' : 'standard'), video_res: NEW.vres});
+    await api(`/api/projects/${p.id}/${p.mode === 't2v' ? 't2v' : 'keyframes'}`, {});
+    $('#m-idea').value = ''; $('#m-idea').style.height = '';
+    delete $('#m-feed').dataset.scrolled;
+  } catch (e) { alert(e.message); }
+  $('#m-send').disabled = false;
+  refreshFeed();
+};
+
 /* ---------- projects ---------- */
 async function refreshProjects() {
   const list = await api('/api/projects');
@@ -534,7 +652,7 @@ async function deleteProject(id, title) {  // to the PC's trash folder, then bac
   try { await api('/api/delete', {projects: [id]}); } catch (e) { return alert(e.message); }
   show('projects');
 }
-async function openProject(id) { dirty = false; STI = 0; STK = 'kf'; STV = null; STE = false; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
+async function openProject(id) { dirty = false; STI = 0; STK = 'kf'; STV = null; STE = null; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
   history.replaceState(null, '', '#project/' + encodeURIComponent(id)); render(); poll(); }
 
 /* ---------- select & delete ---------- */
@@ -686,9 +804,10 @@ function render() {  // every project type opens in the studio layout
 
 /* ---------- studio: every project, laid out like an image editor ---------- */
 // What's shown: STK = 'kf' (a picture / keyframe / scene), 'clip' (the motion from keyframe STI to STI+1) or 'final';
-// STI = its index, STV = an older version being looked at (null = current), STE = the prompt bar edits the picture,
+// STI = its index, STV = an older version being looked at (null = current), STE = the prompt bar edits the picture
+// (null = the default: edit on phones, like Grok's "Edit image" bar; new version on computers),
 // STEXT = the edit instruction being typed (survives refreshes)
-let STI = 0, STK = 'kf', STV = null, STE = false, STEXT = '';
+let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '';
 function renderStudio() {
   const pl = P.plan, n = pl.keyframes.length, busy = running();
   const isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
@@ -708,7 +827,6 @@ function renderStudio() {
   const vers = onPic ? ((P.versions || {})[i] || []).slice().reverse() : [];
   if (STV && !vers.includes(STV)) STV = null;
   if (onPic && !made && vers.length && !STV) STV = vers[0];  // current picture deleted: show the newest older version
-  if (!onPic || !made) STE = false;
   const src = STV ? file('keyframes/history/' + STV, 1) : kfSrc(i);
   const pRefs = P.references || (P.reference ? [P.reference] : []);
   const refOpts = r => `<option value="">${r ? '—' : 'No character picture'}</option>` + CHARS.map(c => `<option value="${esc(c)}" ${c === pRefs[r] ? 'selected' : ''}>${esc(c)}</option>`).join('');
@@ -739,7 +857,7 @@ function renderStudio() {
     : busy && /^queued/.test(P.status) && sel !== 'final' ? `<div class="st-over"><div class="gen dim">Queued</div></div>` : '';
 
   // bottom: the prompt of what's selected; an older version shows the prompt it was made from (when it was saved)
-  if (STV) STE = false;
+  const editing = onPic && made && !STV && (STE === null ? isPhone() : STE);
   const shown = onPic ? (STV ? (P.version_info || {})[STV] : (P.pic_info || {})[i]) : null;
   const shownPrompt = STV && shown ? shown.prompt : k.image_prompt;
   const note = !onPic ? '' : STV
@@ -752,12 +870,13 @@ function renderStudio() {
         <button class="st-send" id="st-send" title="Animate this clip (Enter)" ${dis}>↑</button></div></div>`
     : `<div class="st-prompt">
       ${note ? `<div class="st-note">${note}</div>` : ''}
-      ${onPic && made && !STV ? `<div class="st-modes"><button id="m-new" class="${STE ? '' : 'on'}" title="Draw the picture again from its prompt">New version</button>
-        <button id="m-edit" class="${STE ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this ${word}</button></div>` : ''}
+      ${onPic && made && !STV ? `<div class="st-modes"><button id="m-new" class="${editing ? '' : 'on'}" title="Draw the picture again from its prompt">New version</button>
+        <button id="m-edit" class="${editing ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this ${word}</button></div>` : ''}
+      ${editing ? `<div class="st-cur" id="st-curp" title="Tap to change the prompt instead">${esc(shownPrompt)}</div>` : ''}
       <div class="st-row">
-        <textarea id="kp${i}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${STE ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
-        ${onPic ? `<textarea id="st-edit" rows="1" placeholder="What should change? e.g. make her hair red · change the background to a beach · remove the bag" style="${STE ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
-        <button class="st-send" id="st-send" title="${STE ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}>↑</button></div></div>`;
+        <textarea id="kp${i}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
+        ${onPic ? `<textarea id="st-edit" rows="1" placeholder="Edit image, e.g. make her hair red" style="${editing ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
+        <button class="st-send" id="st-send" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}>↑</button></div></div>`;
 
   // right: actions for what's selected, the whole project, then settings
   const act = (id, icon, label, off) => `<button class="st-act" id="${id}" ${busy || off ? 'disabled' : ''}><span>${icon}</span>${label}</button>`;
@@ -804,8 +923,15 @@ function renderStudio() {
     <div class="st-canvas">${canvas}${overlay}
       ${STV ? `<div class="st-ver">${made ? 'Older version' : 'Current picture was deleted'}<button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
     </div>
+    <div class="st-mact">
+      ${isImg && made ? '<button id="ma-vid">▶ Video</button>' : isVid && P.keyframes_version ? '<button id="ma-anim">▶ Animate</button>' : ''}
+      <div class="grp"><button id="ma-pin" class="${P.pinned ? 'primary' : ''}" title="${P.pinned ? 'Unpin' : 'Pin'}">📌</button>
+        ${onPic && (made || STV) ? `<a href="${src}" download="${esc(P.id)}_${i + 1}.png"><button title="Download">⤓</button></a><button id="ma-share" title="Share">↗</button>` : ''}
+        <button id="ma-more" title="More">⋮</button></div>
+    </div>
     ${promptBar}
     <div class="st-panel">
+      <button class="st-pclose" id="st-pclose">Done</button>
       ${busy ? `<div class="progress"><i class="spin"></i><span style="flex:1">${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">■ Stop</button></div>`
         : /^error/.test(P.status) ? `<div class="progress" style="border-color:var(--err)">⚠ ${esc(P.message)}</div>` : ''}
       ${acts}
@@ -826,7 +952,7 @@ function renderStudio() {
       </details>
       <details class="glass"><summary>Log</summary><div class="log" id="log" style="padding:8px 0 0">${esc((P.log || []).join('\n'))}</div></details>
       <button id="st-delproj" class="del" style="width:100%" ${dis}>🗑 Delete project</button>
-    </div></div>`;
+    </div></div><div class="msheet-back" id="st-back"></div>`;
 
   $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
   if ($('#st-edit')) $('#st-edit').oninput = e => { STEXT = e.target.value; };  // not part of the plan: kept here, not saved
@@ -841,7 +967,7 @@ function renderStudio() {
     if (busy) return;
     if (sel === 'clip') return run('animate', {only: i})();
     if (isT2V) return run('t2v', {only: i})();
-    if (STE) {
+    if (editing) {
       const t = $('#st-edit').value.trim();
       if (!t) return $('#st-edit').focus();
       STV = null; STEXT = ''; return run('keyframes', {indices: [i], reseed: true, edit: t})();
@@ -853,7 +979,21 @@ function renderStudio() {
   bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
     if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); send(); } });
   const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
-  on('#st-regen', () => { STE = false; send(); });
+  on('#st-regen', () => { STE = false; STV = null; run('keyframes', {indices: [i], reseed: made})(); });
+  on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
+  on('#ma-more', () => $('.studio').classList.add('panel-open'));
+  on('#st-pclose', () => $('.studio').classList.remove('panel-open'));
+  on('#st-back', () => $('.studio').classList.remove('panel-open'));
+  on('#ma-vid', () => $('#st-vid').click());
+  on('#ma-anim', () => $('#st-anim').click());
+  on('#ma-pin', async () => { await api(`/api/projects/${P.id}/pin`, {pinned: !P.pinned}); P.pinned = !P.pinned; render(); });
+  on('#ma-share', async () => {  // the phone's share sheet (save to gallery, send...); a download where that isn't offered
+    try {
+      const f = new File([await (await fetch(src)).blob()], `${P.id}_${i + 1}.png`, {type: 'image/png'});
+      if (navigator.canShare && navigator.canShare({files: [f]})) return await navigator.share({files: [f]});
+    } catch (e) { if (e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = src; a.download = `${P.id}_${i + 1}.png`; a.click();
+  });
   on('#st-reanim', send);
   on('#st-rescene', send);
   on('#m-new', () => { STE = false; render(); });
