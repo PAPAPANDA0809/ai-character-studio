@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import sys
+import threading
 import urllib.parse
 import urllib.request
 
@@ -18,6 +19,33 @@ import llm
 import pipeline
 
 STATIC = os.path.join(pipeline.APP_DIR, "static")
+PREVIEW_W = (480, 1440)  # ?w= sizes: tiles and thumbnails, and the big picture on phones
+
+
+def preview(full, w):
+    """A JPEG copy of picture `full` at most w pixels wide, kept in .previews beside it (made on first request).
+    The name carries the picture's time and size, so a replaced picture gets a new copy; older copies are removed.
+    A full PNG is ~3.5 MB, the 480 copy ~40 KB and the 1440 one ~300 KB: phones on mobile data load in moments."""
+    from PIL import Image
+    st = os.stat(full)
+    d = os.path.join(os.path.dirname(full), ".previews")
+    stem = f"{os.path.basename(full)}.{w}."
+    out = os.path.join(d, f"{stem}{int(st.st_mtime)}-{st.st_size}.jpg")
+    if not os.path.exists(out):
+        os.makedirs(d, exist_ok=True)
+        with Image.open(full) as im:
+            im = im.convert("RGB")
+            im.thumbnail((w, w * 4), Image.LANCZOS)
+            tmp = f"{out}.{threading.get_ident()}.tmp"
+            im.save(tmp, "JPEG", quality=82 if w < 1000 else 90, optimize=True)
+        os.replace(tmp, out)
+        for old in os.listdir(d):
+            if old.startswith(stem) and old != os.path.basename(out) and old.endswith(".jpg"):
+                try:
+                    os.remove(os.path.join(d, old))
+                except OSError:
+                    pass
+    return out
 
 
 def ollama_alive(cfg):
@@ -48,7 +76,16 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.isfile(path):
             return self.send_json({"error": "not found"}, 404)
         ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
-        size = os.path.getsize(path)
+        st = os.stat(path)
+        size = st.st_size
+        # the browser keeps a copy and asks "changed?" each time; unchanged files cost a few bytes, not megabytes
+        etag = f'"{int(st.st_mtime)}-{size}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "private, no-cache")
+            self.end_headers()
+            return
         rng = self.headers.get("Range")
         start, end = 0, size - 1
         if rng and (m := re.match(r"bytes=(\d*)-(\d*)", rng)):
@@ -71,7 +108,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "private, no-cache")
         self.end_headers()
         with open(path, "rb") as f:
             f.seek(start)
@@ -173,6 +211,10 @@ class Handler(BaseHTTPRequestHandler):
                 full = os.path.normpath(pipeline.pdir(m.group(1), *m.group(2).split("/")))
                 if not full.startswith(root + os.sep):  # the separator stops "al/../alice/..." passing as "al"
                     return self.send_json({"error": "bad path"}, 400)
+                w = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("w", [""])[0]
+                if (w.isdigit() and int(w) in PREVIEW_W and os.path.isfile(full)
+                        and full.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))):
+                    full = preview(full, int(w))
                 return self.send_file(full)
             self.send_json({"error": "not found"}, 404)
         except Exception as e:
