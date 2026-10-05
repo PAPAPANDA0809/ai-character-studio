@@ -47,6 +47,7 @@ state = {"status": "off", "message": "", "pod": None, "ip": "", "port": 0, "pric
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 tunnel = [None]    # the ssh -L process
 _opts = [0.0, []]  # options() cache: when, list
+_broken = {}       # card id -> when a community machine for it turned out faulty (RunPod hands the same one out again)
 
 
 def cfg():
@@ -92,7 +93,8 @@ def options():
         stock = g.get("stockStatus") or "none"
         res.append({**c, "stock": stock, "available": bool(g.get("available")) and stock.lower() != "none",
                     "community": g.get("communityPricePerHr") if g.get("communityCloud") else None,
-                    "secure": g.get("securePricePerHr") if g.get("secureCloud") else None})
+                    "secure": g.get("securePricePerHr") if g.get("secureCloud") else None,
+                    "community_broken": time.time() - _broken.get(c["id"], 0) < 3600})
     res.sort(key=lambda o: min([p for p in (o["community"], o["secure"]) if p is not None] or [1e9]))  # cheapest first
     _opts[:] = [time.time(), res]
     return res
@@ -206,8 +208,14 @@ def _start(card, cloud):
         _set(status="ready", message=f"{state['gpu']} ready", last_used=time.time())
         _free_local()
     except Exception as e:
-        _delete(f"Stopped: {e}".replace("FAULTY_GPU", f"this {card['label']} was faulty (its GPU didn't work); "
-                                                    "pick it again for another machine, or another card"), error=True)
+        if "FAULTY_GPU" in str(e) and cloud == "COMMUNITY":  # twice in a row RunPod gave out the same broken 5090
+            _broken[card["id"]] = time.time()
+            _opts[0] = 0
+            fix = (f"its GPU didn't work); it was given back. RunPod keeps offering the same machine, so Community "
+                   f"{card['label']} is off for an hour: pick Secure or another card")
+        else:
+            fix = "its GPU didn't work); pick it again for another machine, or another card"
+        _delete(f"Stopped: {e}".replace("FAULTY_GPU", f"this {card['label']} was faulty ({fix}"), error=True)
 
 
 def _free_local():

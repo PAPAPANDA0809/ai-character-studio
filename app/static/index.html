@@ -1280,7 +1280,7 @@ function gpuList() {  // pick a card: ✅ in stock / ❌ none now, its speed aga
       <div class="gpu-top"><span>${o.available ? '✅' : '❌'}</span><b>${esc(o.label)}</b>
         <span class="gpu-sub">${o.mem} GB · <b class="gpu-x">${o.speed}×</b>${o.label === 'RTX 4090' ? ' (baseline)' : ''} · ${o.available ? esc(o.stock.toLowerCase()) + ' stock' : 'none free now'}</span></div>
       <div class="gpu-prices">${[['COMMUNITY', 'Community', o.community], ['SECURE', 'Secure', o.secure]].map(([c, name, pr]) => pr == null ? ''
-        : `<button class="gpu-pick ${GPUPICK && GPUPICK.id === o.id && GPUPICK.cloud === c ? 'on' : ''}" data-gpu="${esc(o.id)}" data-cloud="${c}" ${o.available ? '' : 'disabled'}>${name} $${pr.toFixed(2)}/h</button>`).join('')}</div>
+        : `<button class="gpu-pick ${GPUPICK && GPUPICK.id === o.id && GPUPICK.cloud === c ? 'on' : ''}" data-gpu="${esc(o.id)}" data-cloud="${c}" ${o.available && !(c === 'COMMUNITY' && o.community_broken) ? '' : 'disabled'}>${c === 'COMMUNITY' && o.community_broken ? '❌ ' + name + ': faulty machine' : name + ' $' + pr.toFixed(2) + '/h'}</button>`).join('')}</div>
     </div>`).join('')}</div>
     <p style="color:var(--muted);font-size:11px;margin:8px 0 0">Speed: about how much faster than an RTX 4090 (estimates). Community = cheaper, other people's
       machines (now and then a faulty one); Secure = RunPod's own data centres.</p>`;
