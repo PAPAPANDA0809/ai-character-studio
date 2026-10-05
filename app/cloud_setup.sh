@@ -1,7 +1,7 @@
 #!/bin/bash
-# Reelmint fast-GPU pod (RunPod, runpod/pytorch image with torch 2.9.1 for CUDA 13): ComfyUI v0.38.0 (the version on the PC)
-# with Qwen-Image 2.1. Progress goes to /root/status, ending in READY or ERROR: ...; trained characters are
-# copied into /root/loras by the app.
+# Reelmint fast-GPU pod (RunPod, runpod/pytorch image with torch 2.9.1 for CUDA 12.8): ComfyUI v0.38.0 (the version on
+# the PC) with Qwen-Image 2.1 and Wan 2.2. The app sends this script to the pod's agent (cloud_agent.py), which runs it.
+# Progress goes to /root/status, ending in READY or ERROR: ...; trained characters arrive in /root/loras through the agent.
 # Lessons from the first pods: pip resolving the full requirements tried to replace torch (gigabytes), and
 # pypi.org downloads stalled in some data centres, so packages are pinned and installed without resolving,
 # with short timeouts, retries and a mirror as fallback; Hugging Face downloads are fast everywhere.
@@ -10,7 +10,12 @@ cd /root
 
 # community hosts can hand out a card PyTorch can't use ("CUDA unknown error"): find out before downloading anything
 st "testing the GPU"
-python3 -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null || { st "ERROR: FAULTY_GPU"; exit 1; }
+gpu=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>&1 | tail -1)
+case "$gpu" in
+  True) ;;
+  False) st "ERROR: FAULTY_GPU"; exit 1 ;;
+  *) st "ERROR: PyTorch didn't load on the pod: $gpu"; exit 1 ;;
+esac
 
 st "installing ComfyUI"
 [ -d ComfyUI ] || git clone -q --depth 1 --branch v0.38.0 https://github.com/comfyanonymous/ComfyUI || { st "ERROR: could not download ComfyUI"; exit 1; }
@@ -65,7 +70,7 @@ python3 -c "import torchvision" 2>/dev/null || pip install -q --break-system-pac
   st "ERROR: torchvision failed to install (see /root/pip.log)"; exit 1; }
 
 while [ ! -f /root/dl_done ]; do
-  st "downloading Qwen-Image 2.1 and Wan 2.2 ($(du -sm models 2>/dev/null | cut -f1) of ~40,000 MB)"
+  st "downloading Qwen-Image 2.1 and Wan 2.2 ($(du -sm models 2>/dev/null | cut -f1) of ~44,000 MB)"
   sleep 5
 done
 [ -f /root/dl_fail ] && { st "ERROR: model download failed: $(cat /root/dl_fail)"; exit 1; }
