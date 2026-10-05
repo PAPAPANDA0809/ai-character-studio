@@ -46,7 +46,7 @@ PKGS="torchsde==0.2.6 trampoline==0.1.2 numpy==2.5.3 einops==0.8.2 transformers=
  charset-normalizer==3.5.1 urllib3==2.8.0 certifi==2026.7.22 simpleeval==1.0.8 blake3==1.0.10 kornia==0.8.3 kornia-rs==0.2.0
  spandrel==0.4.2 pydantic==2.13.5 pydantic-core==2.46.5 annotated-types==0.8.0 typing-inspection==0.4.4 pydantic-settings==2.15.0
  python-dotenv==1.2.3 fsspec==2026.9.0 httpx==0.28.1 httpcore==1.0.9 anyio==4.15.1 sniffio==1.3.1 h11==0.16.0 click==8.5.0
- comfyui-frontend-package==1.53.6 gguf==0.19.0"
+ comfyui-frontend-package==1.53.6 gguf==0.19.0 protobuf==7.36.2"
 # the GGUF loader nodes Wan uses, at the PC's version
 git clone -q https://github.com/city96/ComfyUI-GGUF custom_nodes/ComfyUI-GGUF && git -C custom_nodes/ComfyUI-GGUF checkout -q 6ea2651e7df66d7585f6ffee804b20e92fb38b8a \
   || { st "ERROR: could not download the GGUF loader"; exit 1; }
