@@ -225,6 +225,12 @@
     /* picture page */
     body.inproject .bnav { display:none; }
     body.inproject main { padding-bottom:170px; }
+    /* tap the picture: everything else steps aside (tap again to bring it back) */
+    body.immersive header, body.immersive nav.tabs, body.immersive .st-top, body.immersive .st-mact, body.immersive .st-strip,
+    body.immersive .st-prompt { display:none !important; }
+    body.immersive main { padding:0; }
+    body.immersive .st-canvas { height:100vh; height:100dvh; }
+    body.immersive .st-canvas .zoom img { max-height:100vh; max-height:100dvh; }
     .studio .st-panel { display:none; }
     .studio.panel-open .st-panel { display:flex; position:fixed; left:0; right:0; bottom:0; max-height:80vh; overflow:auto; z-index:61;
       background:#0d1016; border-radius:22px 22px 0 0; border-top:1px solid var(--line); padding:14px 12px 28px; }
@@ -376,6 +382,7 @@ function show(v) {
   $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
   $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
   document.body.classList.toggle('inproject', v === 'project');
+  document.body.classList.remove('immersive');
   if (v === 'create') { delete $('#m-feed').dataset.scrolled; refreshFeed(); }
   if (v === 'projects') refreshProjects();
   if (v === 'images' || v === 'videos') refreshGallery(v);
@@ -558,7 +565,7 @@ async function refreshFeed() {
   if (!isPhone() || VIEW !== 'create') return;
   let list;
   try { list = await api('/api/projects'); } catch (e) { feedTimer = setTimeout(refreshFeed, 8000); return; }
-  const recent = list.slice(0, 12).reverse();  // newest at the bottom, next to the bar (like a chat)
+  const recent = list.slice(0, 12);  // newest first
   const busy = p => /^(queued|running)/.test(p.status || '');
   $('#m-feed').innerHTML = recent.length ? recent.map(p => {
     const pics = p.present.map((ok, j) => ok
@@ -583,7 +590,7 @@ async function refreshFeed() {
     } catch (e) { alert(e.message); }
     refreshFeed();
   });
-  if (!$('#m-feed').dataset.scrolled) { $('#m-feed').dataset.scrolled = 1; window.scrollTo(0, document.body.scrollHeight); }
+  if (!$('#m-feed').dataset.scrolled) { $('#m-feed').dataset.scrolled = 1; window.scrollTo(0, 0); }
   if (recent.some(busy)) feedTimer = setTimeout(refreshFeed, 4000);
 }
 function renderMref() {  // the bar's left button shows character picture 1, if one is picked
@@ -1060,6 +1067,8 @@ function renderStudio() {
     $('#z-in').onclick = () => z.zoomTo(z.scale() * 1.25);
     $('#z-out').onclick = () => z.zoomTo(z.scale() / 1.25);
     $('#z-pct').onclick = () => z.zoomTo(1);
+    z.addEventListener('click', () => {  // phones: a tap shows only the picture (not while zoomed in and dragging)
+      if (isPhone() && z.scale() <= 1.01) document.body.classList.toggle('immersive'); });
   }
 }
 
