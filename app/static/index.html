@@ -942,7 +942,7 @@ function renderStudio() {
     <div class="st-mact">
       ${isImg && made ? '<button id="ma-vid">▶ Video</button>' : isVid && P.keyframes_version ? '<button id="ma-anim">▶ Animate</button>' : ''}
       <div class="grp">
-        ${onPic && (made || STV) ? `<a href="${src}" download="${esc(P.id)}_${i + 1}.png"><button title="Download">⤓</button></a><button id="ma-share" title="Share">↗</button>` : ''}
+        ${onPic && (made || STV) ? `<a href="${src}" download="${esc(P.id)}_${i + 1}.png"><button title="Download">⤓</button></a>` : ''}
         <button id="ma-more" title="More">⋮</button></div>
     </div>
     ${promptBar}
@@ -1003,13 +1003,6 @@ function renderStudio() {
   on('#st-back', () => $('.studio').classList.remove('panel-open'));
   on('#ma-vid', () => $('#st-vid').click());
   on('#ma-anim', () => $('#st-anim').click());
-  on('#ma-share', async () => {  // the phone's share sheet (save to gallery, send...); a download where that isn't offered
-    try {
-      const f = new File([await (await fetch(src)).blob()], `${P.id}_${i + 1}.png`, {type: 'image/png'});
-      if (navigator.canShare && navigator.canShare({files: [f]})) return await navigator.share({files: [f]});
-    } catch (e) { if (e.name === 'AbortError') return; }
-    const a = document.createElement('a'); a.href = src; a.download = `${P.id}_${i + 1}.png`; a.click();
-  });
   on('#st-reanim', send);
   on('#st-rescene', send);
   on('#m-new', () => { STE = false; render(); });
@@ -1074,6 +1067,19 @@ function renderStudio() {
     $('#z-pct').onclick = () => z.zoomTo(1);
     z.addEventListener('click', () => {  // phones: a tap shows only the picture (not while zoomed in and dragging)
       if (isPhone() && z.scale() <= 1.01) document.body.classList.toggle('immersive'); });
+    // phones: swipe left / right for the next / previous version (or picture, when there are no versions)
+    let sx = null, sy = 0;
+    z.addEventListener('touchstart', e => { if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; } }, {passive: true});
+    z.addEventListener('touchend', e => {
+      if (sx === null || z.scale() > 1.01) return (sx = null);
+      const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+      sx = null;
+      if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+      const items = $$('.st-strip [data-stv]').length ? $$('.st-strip [data-stv]') : $$('.st-strip [data-pick]');
+      const at = items.findIndex(b => b.classList.contains('on'));
+      const next = items[at + (dx < 0 ? 1 : -1)];
+      if (next) next.click();
+    });
   }
 }
 
