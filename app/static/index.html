@@ -190,13 +190,13 @@
     .st-strip .lbl { writing-mode:vertical-rl; transform:rotate(180deg); margin:0; }
     .st-th { width:54px; }
     .st-canvas { height:auto; min-height:0; padding:8px; }
-    .st-canvas .zoom img, .st-canvas video { max-height:50vh; }
+    .st-canvas .zoom img, .st-canvas video { max-height:62vh; }
     .st-empty { height:50vh; }
     .st-panel { max-height:none; overflow:visible; }
   }
   /* phones, Grok-style: Create is a feed + "Type to imagine" bar (settings in a bottom sheet); a picture page has an
      action row under the picture, its panel in a sheet behind ⋮, and the prompt / edit bar fixed at the bottom */
-  .mfeed, .mcomp, .msheet-bar, .msheet-back, .st-mact, .st-pclose { display:none; }
+  .mfeed, .mcomp, .msheet-bar, .msheet-back, .st-mact, .st-pclose, .st-tog { display:none; }
   @media (max-width:820px) {
     #v-create .create-grid, #btn-plan, #v-create > #plan-msg { display:none; }
     #v-create.sheet .create-grid { display:block; position:fixed; left:0; right:0; bottom:0; max-height:82vh; overflow:auto; z-index:61;
@@ -237,6 +237,10 @@
     .st-prompt { position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:31;
       background:rgba(20,23,31,.95); backdrop-filter:blur(16px); box-shadow:0 10px 40px rgba(0,0,0,.5); }
     .st-cur { font-size:14px; color:var(--muted); padding:4px 4px 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+    /* keep the phone picture page about the result: no zoom buttons (pinch works), no frame, no mode pills */
+    .studio .st-zoom, .studio .st-modes { display:none; }
+    .studio .st-canvas { background:none; border:0; padding:0; }
+    .st-tog { display:block; }
   }
   /* bottom nav (mobile) */
   .bnav { display:none; }
@@ -872,7 +876,8 @@ function renderStudio() {
       ${note ? `<div class="st-note">${note}</div>` : ''}
       ${onPic && made && !STV ? `<div class="st-modes"><button id="m-new" class="${editing ? '' : 'on'}" title="Draw the picture again from its prompt">New version</button>
         <button id="m-edit" class="${editing ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this ${word}</button></div>` : ''}
-      ${editing ? `<div class="st-cur" id="st-curp" title="Tap to change the prompt instead">${esc(shownPrompt)}</div>` : ''}
+      ${editing ? `<div class="st-cur" id="st-curp" title="Tap to change the prompt instead">${esc(shownPrompt)}</div>`
+        : onPic && made && !STV ? '<div class="st-cur st-tog" id="st-toedit">✎ Edit the picture instead</div>' : ''}
       <div class="st-row">
         <textarea id="kp${i}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
         ${onPic ? `<textarea id="st-edit" rows="1" placeholder="Edit image, e.g. make her hair red" style="${editing ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
@@ -883,9 +888,7 @@ function renderStudio() {
   const dl = (href, name, label) => `<a href="${href}" download="${esc(name)}"><button class="st-act"><span>⤓</span>${label}</button></a>`;
   const of_ = n > 1 ? ` ${i + 1}` : '';
   let acts = '';
-  if (isImg && onPic && made) acts += `<div class="lbl">Make video</div>` + act('st-vid-custom', '✎', 'Custom: describe the motion') +
-    act('st-vid-spicy', '🔥', 'Spicy') + act('st-vid-normal', '🎞', 'Normal') + `<div class="lbl" style="margin-top:6px">Picture</div>`;
-  if (onPic) acts += act('st-regen', '↻', `${made ? 'New version' : 'Generate'} of ${word}${of_}`) +
+  if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') : '') + act('st-regen', '↻', `${made ? 'New version' : 'Generate'} of ${word}${of_}`) +
     (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
     (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT-image (~$0.17)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
@@ -926,7 +929,7 @@ function renderStudio() {
     </div>
     <div class="st-mact">
       ${isImg && made ? '<button id="ma-vid">▶ Video</button>' : isVid && P.keyframes_version ? '<button id="ma-anim">▶ Animate</button>' : ''}
-      <div class="grp"><button id="ma-pin" class="${P.pinned ? 'primary' : ''}" title="${P.pinned ? 'Unpin' : 'Pin'}">📌</button>
+      <div class="grp">
         ${onPic && (made || STV) ? `<a href="${src}" download="${esc(P.id)}_${i + 1}.png"><button title="Download">⤓</button></a><button id="ma-share" title="Share">↗</button>` : ''}
         <button id="ma-more" title="More">⋮</button></div>
     </div>
@@ -982,12 +985,12 @@ function renderStudio() {
   const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
   on('#st-regen', () => { STE = false; STV = null; run('keyframes', {indices: [i], reseed: made})(); });
   on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
+  on('#st-toedit', () => { STE = true; render(); $('#st-edit').focus(); });
   on('#ma-more', () => $('.studio').classList.add('panel-open'));
   on('#st-pclose', () => $('.studio').classList.remove('panel-open'));
   on('#st-back', () => $('.studio').classList.remove('panel-open'));
-  on('#ma-vid', () => { $('.studio').classList.add('panel-open'); $('.st-panel').scrollTop = 0; });  // Make video sits at the top
+  on('#ma-vid', () => $('#st-vid').click());
   on('#ma-anim', () => $('#st-anim').click());
-  on('#ma-pin', async () => { await api(`/api/projects/${P.id}/pin`, {pinned: !P.pinned}); P.pinned = !P.pinned; render(); });
   on('#ma-share', async () => {  // the phone's share sheet (save to gallery, send...); a download where that isn't offered
     try {
       const f = new File([await (await fetch(src)).blob()], `${P.id}_${i + 1}.png`, {type: 'image/png'});
@@ -1006,14 +1009,11 @@ function renderStudio() {
   on('#st-stitch', async () => { dirty = true; await run('stitch')(); });
   on('#st-gpt', async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
     await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
-  // Make video, like Grok's sheet: Normal and Spicy are ready-made motions, Custom asks for one
-  const vidOf = motion => async () => { $('.studio').classList.remove('panel-open'); await run('animate_image', {index: i, motion})(); };
-  on('#st-vid-normal', vidOf(''));  // the default: gentle natural movement, slow push-in
-  on('#st-vid-spicy', vidOf('slow, flirty and confident: she shifts her weight and sways her hips gently, runs a hand through her hair, ' +
-    'bites her lip slightly and gives the camera a playful, seductive glance; soft breathing, hair moving, slow cinematic push-in'));
-  on('#st-vid-custom', async () => {
-    const motion = prompt('How should it move?\ne.g. she turns her head and smiles, hair moving in the breeze', '');
-    if (motion !== null && motion.trim()) await vidOf(motion.trim())(); });
+  on('#st-vid', async () => {  // the motion is typed by hand; empty = gentle natural movement
+    const motion = prompt('How should it move? (leave empty for gentle natural movement)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
+    if (motion === null) return;
+    $('.studio').classList.remove('panel-open');
+    await run('animate_image', {index: i, motion: motion.trim()})(); });
   $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));
   $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; }));
   on('#st-cur', () => again(() => { STV = null; }));
