@@ -253,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
             if action == "engines":
                 return self.send_json(pipeline.set_engines(pid, b.get("image_engine"), b.get("video_engine"),
                                                            b.get("mode"), b.get("t2v_engine"), b.get("quality"),
-                                                           b.get("video_res"), b.get("lora")))
+                                                           b.get("video_res"), b.get("lora"), b.get("style")))
             if action == "reference":
                 return self.send_json(pipeline.set_reference(pid, b.get("references") or b.get("reference", "")))
             if action == "pin":

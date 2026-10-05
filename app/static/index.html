@@ -78,8 +78,6 @@
   .char .del { position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; border:1px solid var(--line);
                background:#1a1d23; color:var(--muted); font-size:13px; line-height:20px; padding:0; display:flex; align-items:center; justify-content:center; }
   .char .del:hover { color:#fff; background:#c0392b; border-color:#c0392b; }
-  .presets { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-  .presets button { font-size:12px; padding:6px 10px; font-weight:500; border-radius:99px; }
   details { margin-top:14px; } summary { cursor:pointer; color:var(--muted); font-size:13px; list-style:none; }
   summary::before { content:"▸ "; } details[open] summary::before { content:"▾ "; }
   .create-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:16px; align-items:start; }
@@ -337,8 +335,8 @@
         <div id="vres-wrap"><label>Video resolution</label>
         <div class="seg small" id="vres-seg" style="grid-template-columns:1fr 1fr"><button data-v="480p">480p</button><button data-v="720p">720p · ~2-3× slower</button></div></div>
         <label>Visual style</label>
-        <input id="style" value="cinematic photo, soft natural light, shallow depth of field">
-        <div class="presets" id="presets"></div>
+        <select id="style-sel"></select>
+        <input id="style" value="cinematic photo, soft natural light, shallow depth of field" placeholder="Type your own style" style="margin-top:8px;display:none">
         <div id="img-eng-wrap"><label>Image engine</label><select id="img-eng"></select></div>
         <div id="lora-wrap" style="display:none"><label>Trained character</label><select id="lora-sel"></select>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">Keeps the trained character in every picture; its trigger word is added to the prompt for you.</div></div>
@@ -489,11 +487,31 @@ async function refreshStatus() {
 }
 
 /* ---------- create form ---------- */
-const STYLE_PRESETS = ['cinematic photo, soft natural light, shallow depth of field', 'anime key visual, vibrant colors',
-  'Pixar-style 3D render, soft lighting', 'neon cyberpunk night, rain reflections', 'film photography, 35mm grain, warm tones',
-  'clean studio product shot, white background'];
-$('#presets').innerHTML = STYLE_PRESETS.map(s => `<button>${esc(s.split(',')[0])}</button>`).join('');
-$$('#presets button').forEach((b, i) => b.onclick = () => $('#style').value = STYLE_PRESETS[i]);
+// Visual style: added to every prompt. Most used first; "None" adds nothing; "Custom…" shows a box to type one.
+const STYLES = [['Cinematic photo', 'cinematic photo, soft natural light, shallow depth of field'],
+  ['None: my prompt only', ''],
+  ['iPhone snapshot', 'casual iPhone photo, natural daylight, candid'],
+  ['Golden hour', 'golden hour portrait, warm sunset backlight, 85mm lens'],
+  ['Fashion editorial', 'glossy fashion magazine editorial, polished lighting'],
+  ['Film photo', 'film photography, 35mm grain, warm tones'],
+  ['Moody cinematic', 'moody cinematic photo, low key lighting, deep shadows'],
+  ['Studio product', 'clean studio product shot, white background'],
+  ['Anime', 'anime key visual, vibrant colors'],
+  ['3D cartoon', 'Pixar-style 3D render, soft lighting']];
+// options for a style dropdown, with value = the style text; a text that isn't a preset selects "Custom…"
+function styleOptions(cur) {
+  const known = STYLES.some(([, t]) => t === cur);
+  return STYLES.map(([l, t]) => `<option value="${esc(t)}" ${known && t === cur ? 'selected' : ''}>${esc(l)}</option>`).join('') +
+    `<option value="__custom" ${known ? '' : 'selected'}>Custom…</option>`;
+}
+function bindStyle(sel, box) {  // the dropdown fills the text box; Custom… shows the box to type in
+  const sync = () => { box.style.display = sel.value === '__custom' ? '' : 'none'; };
+  sel.onchange = () => { if (sel.value !== '__custom') box.value = sel.value; sync(); if (sel.value === '__custom') box.focus();
+    box.dispatchEvent(new Event('change')); };
+  sync();
+}
+$('#style-sel').innerHTML = styleOptions($('#style').value);
+bindStyle($('#style-sel'), $('#style'));
 
 function syncCreate() {
   const m = NEW.mode;
@@ -1004,6 +1022,8 @@ function renderStudio() {
       ${!isImg ? `<label>Video resolution</label><select id="f-vres" ${dis}>${opt([['480p', '480p'], ['720p', '720p · ~2-3× slower']], P.video_res || '480p')}</select>` : ''}
       ${isT2V ? `<label>Text-to-video engine</label><select id="f-t2v-eng" ${dis}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select>`
         : `<label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${dis}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select>`}
+      <label>Visual style</label><select id="f-style-sel" ${dis}>${styleOptions(P.style || '')}</select>
+      <input id="f-style" value="${esc(P.style || '')}" placeholder="Type your own style" style="margin-top:8px" ${dis}>
       <label>Make</label><select id="f-mode" ${dis}>${opt([['images', 'Images only'], ['video', 'Images + video'], ['t2v', 'Video only']], P.mode || 'video')}</select>
     </div>`;
 
@@ -1132,10 +1152,12 @@ function renderStudio() {
   const setEng = async () => {
     await savePlan();
     try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: val('#f-img-eng'), video_engine: val('#f-vid-eng'), mode: val('#f-mode'),
-      t2v_engine: val('#f-t2v-eng'), quality: val('#f-quality'), video_res: val('#f-vres'), lora: val('#f-lora')}); } catch (e) { alert(e.message); }
+      t2v_engine: val('#f-t2v-eng'), quality: val('#f-quality'), video_res: val('#f-vres'), lora: val('#f-lora'), style: val('#f-style')}); }
+    catch (e) { alert(e.message); }
     render();
   };
-  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres', '#f-lora'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
+  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres', '#f-lora', '#f-style'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
+  if ($('#f-style-sel')) bindStyle($('#f-style-sel'), $('#f-style'));  // picking a style saves it (via #f-style's change)
   $$('.f-ref').forEach(s => s.onchange = async () => {
     await savePlan();
     P = await api(`/api/projects/${P.id}/reference`, {references: $$('.f-ref').map(x => x.value).filter(Boolean)});

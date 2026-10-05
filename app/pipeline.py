@@ -466,8 +466,10 @@ def engines():
 
 
 def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None, video_res=None,
-                lora=None):
+                lora=None, style=None):
     p = load(pid)
+    if style is not None:  # the visual style added to every prompt ("" = none)
+        p["style"] = " ".join(str(style).split())[:300]
     cfg = load_config()
     if lora is not None:  # "" = no LoRA; a LoRA is only kept for the engine it was trained for (checked below)
         p["lora"] = lora
