@@ -469,6 +469,9 @@ def engines():
         if key == "qwen-image-21" and cloudgpu.state["status"] == "ready":  # say where it runs and how
             label = "Qwen-Image 2.1 · " + ("full quality on Fast GPU" if cloudgpu.state["extras"].get("qwen_hq")
                                            else "on Fast GPU (full quality in a few minutes)")
+        if (key in comfy.VIDEO_ENGINES or key in comfy.T2V_ENGINES) and cloudgpu.state["status"] == "ready" \
+                and cloudgpu.state.get("video"):  # every video job goes to the rented card's engine (on_rented)
+            label = f"{cloudgpu.VIDEO_LABEL[cloudgpu.state['video']]} with sound · on Fast GPU"
         return {"id": key, "label": label, "installed": all(ready(f) for f in e["files"])}
     return {
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
