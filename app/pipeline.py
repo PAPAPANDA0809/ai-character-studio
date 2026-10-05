@@ -734,12 +734,27 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
     write_caption(p)
 
 
+def on_rented(p, run):
+    """Wan 2.2 14B video jobs run on the rented GPU while a fast-GPU session is ready (~1-2 min a clip instead of ~20);
+    run(remote) gets that ComfyUI's address, or None for this PC."""
+    remote = cloudgpu.url() if (p.get("video_engine") or "wan22-14b") == "wan22-14b" else None
+    if not remote:
+        return run(None)
+    log(p, f"using the rented {cloudgpu.info()['label']}")
+    with cloudgpu.using():
+        return run(remote)
+
+
 def do_animate(p, only=None):
+    return on_rented(p, lambda remote: _animate(p, only, remote))
+
+
+def _animate(p, only=None, remote=None):
     cfg = load_config()
     ff = find_ffmpeg(cfg["ffmpeg"])
-    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
+    c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
     if not c.alive():
-        raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
+        raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
     w, h = video_size(cfg, p)
     engine = p.get("video_engine") if p.get("video_engine") in comfy.VIDEO_ENGINES else "wan22-14b"
     fps = engine_fps(cfg, engine)
@@ -828,12 +843,16 @@ def save_clip_frames(p, c, ff, i, frames, fps, out=None):
 
 
 def do_animate_image(p, index, motion=""):
+    return on_rented(p, lambda remote: _animate_image(p, index, motion, remote))
+
+
+def _animate_image(p, index, motion="", remote=None):
     """Images-only projects: turn one finished picture into a 5-second clip."""
     cfg = load_config()
     ff = find_ffmpeg(cfg["ffmpeg"])
-    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
+    c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
     if not c.alive():
-        raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
+        raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
     i = int(index)
     src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
     if not os.path.exists(src):

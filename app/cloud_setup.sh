@@ -25,6 +25,14 @@ get() { curl -sS -L --retry 20 --retry-all-errors -C - -o "$2" "$1" || echo "$2"
   get $H/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors models/text_encoders/qwen3vl_8b_int8_convrot.safetensors &
   get $H/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors models/vae/qwen_image_2.1_vae_bf16.safetensors &
   get $H/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors models/upscale_models/4x-UltraSharp.safetensors &
+  # Wan 2.2 14B for Make video / Animate (the PC's files: GGUF Q4_K_S + lightx2v 4-step LoRAs)
+  W=$H/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files
+  get $H/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf models/unet/Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf &
+  get $H/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf models/unet/Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf &
+  get $H/city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q5_K_M.gguf models/text_encoders/umt5-xxl-encoder-Q5_K_M.gguf &
+  get $W/vae/wan_2.1_vae.safetensors models/vae/wan_2.1_vae.safetensors &
+  get $W/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors &
+  get $W/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors &
   wait
   touch /root/dl_done
 ) &
@@ -38,7 +46,10 @@ PKGS="torchsde==0.2.6 trampoline==0.1.2 numpy==2.5.3 einops==0.8.2 transformers=
  charset-normalizer==3.5.1 urllib3==2.8.0 certifi==2026.7.22 simpleeval==1.0.8 blake3==1.0.10 kornia==0.8.3 kornia-rs==0.2.0
  spandrel==0.4.2 pydantic==2.13.5 pydantic-core==2.46.5 annotated-types==0.8.0 typing-inspection==0.4.4 pydantic-settings==2.15.0
  python-dotenv==1.2.3 fsspec==2026.9.0 httpx==0.28.1 httpcore==1.0.9 anyio==4.15.1 sniffio==1.3.1 h11==0.16.0 click==8.5.0
- comfyui-frontend-package==1.53.6"
+ comfyui-frontend-package==1.53.6 gguf==0.19.0"
+# the GGUF loader nodes Wan uses, at the PC's version
+git clone -q https://github.com/city96/ComfyUI-GGUF custom_nodes/ComfyUI-GGUF && git -C custom_nodes/ComfyUI-GGUF checkout -q 6ea2651e7df66d7585f6ffee804b20e92fb38b8a \
+  || { st "ERROR: could not download the GGUF loader"; exit 1; }
 ok=""
 for idx in https://pypi.org/simple https://mirrors.aliyun.com/pypi/simple https://pypi.org/simple; do
   if pip install -q --break-system-packages --no-deps --timeout 15 --retries 8 --resume-retries 20 --index-url $idx $PKGS > /root/pip.log 2>&1; then
@@ -54,7 +65,7 @@ python3 -c "import torchvision" 2>/dev/null || pip install -q --break-system-pac
   st "ERROR: torchvision failed to install (see /root/pip.log)"; exit 1; }
 
 while [ ! -f /root/dl_done ]; do
-  st "downloading Qwen-Image 2.1 ($(du -sm models 2>/dev/null | cut -f1) of ~17,500 MB)"
+  st "downloading Qwen-Image 2.1 and Wan 2.2 ($(du -sm models 2>/dev/null | cut -f1) of ~40,000 MB)"
   sleep 5
 done
 [ -f /root/dl_fail ] && { st "ERROR: model download failed: $(cat /root/dl_fail)"; exit 1; }

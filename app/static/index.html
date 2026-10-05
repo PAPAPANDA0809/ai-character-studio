@@ -1228,8 +1228,8 @@ function renderGpu() {
   $('#gpubox').innerHTML = `<div class="glass pad" style="width:100%;max-width:440px">
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">⚡ Fast GPU</h2><button id="gp-close">✕</button></div>
     <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rents the cheapest free card on RunPod: RTX 4090 ($0.34/h), else RTX 5090 ($0.69/h), else the more reliable secure-cloud 4090 ($0.74/h) or 5090 ($0.99/h).
-      While it's on, <b>Qwen-Image 2.1</b> pictures and edits run there (~10–15 s each instead of ~1.5 min); videos and Z-Image stay on this PC.
-      Getting it ready takes about 8–10 minutes.</p>
+      While it's on, <b>Qwen-Image 2.1</b> pictures and edits (~10–15 s each instead of ~1.5 min) and <b>Wan 2.2</b> videos
+      (~1–2 min a clip instead of ~20) run there; Z-Image stays on this PC. Getting it ready takes about 8–12 minutes.</p>
     <div class="progress" style="margin:0 0 12px;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
       <span style="flex:1">${esc(g.message || (s === 'off' ? 'Off' : s))}</span></div>
     ${live && g.started ? `<div style="font-size:13px;color:var(--muted);line-height:1.8">

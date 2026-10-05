@@ -42,7 +42,7 @@ def cfg():
                       ["NVIDIA GeForce RTX 4090", "RTX 4090", "SECURE"],      # $0.74
                       ["NVIDIA GeForce RTX 5090", "RTX 5090", "SECURE"]],     # $0.99
             # CUDA 13 build: ComfyUI's fast int8 kernels need it ("You need pytorch with cu130")
-            "image": "runpod/pytorch:1.4.0-cu1300-torch291-ubuntu2404", "disk_gb": 60, "local_port": 8190,
+            "image": "runpod/pytorch:1.4.0-cu1300-torch291-ubuntu2404", "disk_gb": 90, "local_port": 8190,
             "idle_minutes": 15, "max_hours": 4, **c}
 
 
