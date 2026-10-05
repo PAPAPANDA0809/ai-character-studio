@@ -12,7 +12,7 @@ one at a time, as on the PC. The pod is set up from scratch each time (no paid s
 cloud_setup.sh, and it is deleted when idle for idle_minutes, after max_hours, or from the Stop button. A pod left
 from before an app restart is picked up again, or deleted if it can't be reached, so a forgotten pod never keeps
 billing."""
-import base64, json, os, secrets, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
+import base64, json, os, re, secrets, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -165,10 +165,29 @@ def start(gpu_id, cloud):
     return True
 
 
+def _pod_phase():
+    """What RunPod says the pod is doing, in a few words ("" if it can't say)."""
+    try:
+        code, out, err = _run([RUNPODCTL, "pod", "get", state["pod"]], timeout=30)
+        p = json.loads(out[out.index("{"):])
+    except Exception:
+        return ""
+    if p.get("runtimeStatus") == "running":
+        return "booting"
+    # while the image is pulled RunPod says runtimeStatus "initializing", runtimeStatusReason "awaiting_container"
+    if p.get("runtimeStatusReason") == "awaiting_container" or re.search(r"pull|download|image",
+                                                                         str(p.get("lastStatusChange", "")), re.I):
+        return "RunPod is still preparing it"
+    return ""
+
+
 def _wait_agent(minutes):
-    """Until the pod has booted and its agent answers through the gateway (False if Stop was pressed)."""
-    deadline = time.time() + minutes * 60
-    while time.time() < deadline:
+    """Until the pod has booted and its agent answers through the gateway (False if Stop was pressed). Meanwhile
+    the panel shows what RunPod says the machine is doing: on some machines the ~10 GB image isn't there yet and
+    downloading it took 12+ minutes (billed), so the person can see it and stop."""
+    start = time.time()
+    phase = ""
+    while time.time() - start < minutes * 60:
         if state["status"] != "starting":
             return False
         try:
@@ -179,8 +198,15 @@ def _wait_agent(minutes):
                 raise RuntimeError("the pod didn't accept this session's key")
         except (urllib.error.URLError, OSError):
             pass
+        if int(time.time() - start) % 20 < 6:  # ask RunPod about every 20 s
+            phase = _pod_phase() or phase
+        mins = int((time.time() - start) // 60)
+        _set(message=f"Starting the machine{f' ({phase})' if phase else ''}… {mins} min" if mins else
+             f"Starting the machine{f' ({phase})' if phase else ''}…")
         time.sleep(5)
-    raise RuntimeError(f"the pod didn't start within {minutes} minutes")
+    raise RuntimeError(f"the machine didn't start within {minutes} minutes"
+                       f"{f' (RunPod: {phase})' if phase else ''}; another machine is usually ready in under a minute,"
+                       " so try again")
 
 
 def _start(card, cloud):
@@ -197,7 +223,7 @@ def _start(card, cloud):
         price = pod.get("costPerHr") or next((o[cloud.lower()] for o in _opts[1] if o["id"] == card["id"]), 0)
         _set(pod=pod["id"], key=key, price=float(price or 0), started=time.time(), last_used=time.time(), loras=[],
              message="Starting the machine…")
-        if not _wait_agent(12):
+        if not _wait_agent(8):  # good machines answer in under a minute
             return
         with open(SETUP, "rb") as f:
             script = f.read().replace(b"\r\n", b"\n")
