@@ -548,7 +548,7 @@ $$('#vres-seg button').forEach(b => b.onclick = () => { NEW.vres = b.dataset.v; 
 $$('[data-step]').forEach(b => b.onclick = () => { $('#nkf').value = +$('#nkf').value + +b.dataset.step; syncCreate(); });
 $('#nkf').oninput = syncCreate;
 
-const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label)}${e.installed ? '' : ' · downloading'}</option>`).join('');
+const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label)}${e.installed ? '' : ' · ' + (e.note || 'downloading')}</option>`).join('');
 async function refreshEngines() {
   ENG = await api('/api/engines');
   $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
@@ -1309,7 +1309,11 @@ async function refreshGpu() {
     : s === 'stopping' ? 'Stopping…' : 'Fast GPU';
   // redraw only when something shown changed: a redraw every 4 s replaced the buttons under a phone tap (Connect did
   // nothing) and jumped the list back to the top
-  const key = JSON.stringify([s, GPU.message, GPU.minutes, GPU.cost, GPU.busy, GPU.idle_stop_in, (GPU.loras || []).length]);
+  const key = JSON.stringify([s, GPU.message, GPU.minutes, GPU.cost, GPU.busy, GPU.idle_stop_in, (GPU.loras || []).length,
+    GPU.video, GPU.extras]);
+  const engKey = JSON.stringify([s === 'ready', GPU.extras]);  // Ideogram 4 becomes pickable (or not)
+  if (refreshGpu.engKey !== undefined && engKey !== refreshGpu.engKey) refreshEngines().catch(() => {});
+  refreshGpu.engKey = engKey;
   if ($('#gpubox').classList.contains('on') && key !== refreshGpu.key) renderGpu();
   refreshGpu.key = key;
   gpuTimer = setTimeout(refreshGpu, s === 'starting' || s === 'stopping' || $('#gpubox').classList.contains('on') ? 4000 : 30000);
@@ -1328,12 +1332,19 @@ function gpuList() {  // pick a card: ✅ in stock / ❌ none now, its speed aga
   if (!GPUOPTS.length) return '<div class="progress" style="margin:0;border-color:var(--err)">⚠ Couldn\'t reach RunPod. Try again in a moment.</div>';
   return `<div class="gpus">${GPUOPTS.map(o => `<div class="gpu-row ${o.available ? '' : 'na'}">
       <div class="gpu-top"><span>${o.available ? '✅' : '❌'}</span><b>${esc(o.label)}</b>
-        <span class="gpu-sub">${o.mem} GB · <b class="gpu-x">${o.speed}×</b>${o.label === 'RTX 4090' ? ' (baseline)' : ''} · ${o.available ? esc(o.stock.toLowerCase()) + ' stock' : 'none free now'}</span></div>
+        <span class="gpu-sub">${o.mem} GB · <b class="gpu-x">${o.speed}×</b>${o.label === 'RTX 4090' ? ' (baseline)' : ''} · ${o.available ? esc(o.stock.toLowerCase()) + ' stock' : 'none free now'}${o.video ? ' · video: ' + esc(o.video) : ''}</span></div>
       <div class="gpu-prices">${[['COMMUNITY', 'Community', o.community], ['SECURE', 'Secure', o.secure]].map(([c, name, pr]) => pr == null ? ''
         : `<button class="gpu-pick ${GPUPICK && GPUPICK.id === o.id && GPUPICK.cloud === c ? 'on' : ''}" data-gpu="${esc(o.id)}" data-cloud="${c}" ${o.available && !(c === 'COMMUNITY' && o.community_broken) ? '' : 'disabled'}>${c === 'COMMUNITY' && o.community_broken ? '❌ ' + name + ': faulty machine' : name + ' $' + pr.toFixed(2) + '/h'}</button>`).join('')}</div>
     </div>`).join('')}</div>
     <p style="color:var(--muted);font-size:11px;margin:8px 0 0">Speed: about how much faster than an RTX 4090 (estimates). Community = cheaper, other people's
-      machines (now and then a faulty one); Secure = RunPod's own data centres.</p>`;
+      machines (now and then a faulty one); Secure = RunPod's own data centres. MiniMax H3's licence doesn't allow the US, EU, UK
+      or Korea: those cards are rented elsewhere (Canada, Japan, India, Iceland…), or use LTX-2.5 if none is free there.</p>`;
+}
+function gpuEngines(g) {  // what the connected card gives; the extras download in the first minutes after it's ready
+  const x = g.extras || {}, mark = on => on ? '✅' : '<i class="spin" style="width:10px;height:10px;vertical-align:-1px"></i>';
+  return `<br>Videos: <b style="color:var(--text)">${g.video === 'h3' ? 'MiniMax H3' : 'LTX-2.5'}</b> with sound
+    <br>${mark(x.qwen_hq)} Qwen-Image 2.1 full quality${x.qwen_hq ? '' : ' (downloading; standard quality until then)'}
+    <br>${mark(x.ideogram)} Ideogram 4.0${x.ideogram ? ' (pick it under Image engine)' : ' (downloading)'}`;
 }
 function renderGpu() {
   const g = GPU, s = g.status, admin = ME && ME.admin, live = s === 'starting' || s === 'ready' || s === 'stopping';
@@ -1343,14 +1354,16 @@ function renderGpu() {
   $('#gpubox').innerHTML = `<div class="glass pad" style="width:100%;max-width:460px;max-height:90vh;overflow:auto">
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">⚡ Fast GPU</h2><button id="gp-close">✕</button></div>
     <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rent a card on RunPod. While it's on, <b>Qwen-Image 2.1</b> pictures and edits
-      and <b>Wan 2.2</b> videos run there; Z-Image stays on this PC. Getting it ready takes about 8–12 minutes.</p>
+      run there at full quality, <b>Ideogram 4.0</b> becomes an image engine, and videos (with sound) use <b>MiniMax H3</b> on
+      80 GB+ cards or <b>LTX-2.5</b> on the others. Z-Image stays on this PC. Getting it ready takes about 5–12 minutes.</p>
     ${live || g.message ? `<div class="progress" style="margin:0 0 12px;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
       <span style="flex:1">${esc(g.message || s)}</span></div>` : ''}
     ${!live && admin ? gpuList() : ''}
     ${live && g.started ? `<div style="font-size:13px;color:var(--muted);line-height:1.8">
       Running ${g.minutes} min · about <b style="color:var(--text)">$${g.cost.toFixed(2)}</b> so far ($${g.price.toFixed(2)}/h)<br>
       ${s === 'ready' ? (g.busy ? 'Working on a picture now' : `Stops by itself after ${g.idle_minutes} idle minutes (in ~${g.idle_stop_in} min)`) + ` · always after ${g.max_hours} h` : ''}
-      ${g.loras.length ? `<br>Trained characters on it: ${g.loras.map(esc).join(', ')}` : s !== 'stopping' ? '<br>Trained characters are still uploading' : ''}</div>` : ''}
+      ${g.loras.length ? `<br>Trained characters on it: ${g.loras.map(esc).join(', ')}` : s !== 'stopping' ? '<br>Trained characters are still uploading' : ''}
+      ${s === 'ready' ? gpuEngines(g) : ''}</div>` : ''}
     ${admin ? `<div class="row gp-actions">${live
         ? `<button class="stop" id="gp-stop" style="flex:1" ${s === 'stopping' ? 'disabled' : ''}>■ Stop and delete the GPU</button>`
         : `<button class="primary" id="gp-start" style="flex:1" ${pickPrice != null ? '' : 'disabled'}>${pickPrice != null

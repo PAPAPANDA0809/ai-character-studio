@@ -1,10 +1,15 @@
 #!/bin/bash
 # Reelmint fast-GPU pod (RunPod, runpod/pytorch image with torch 2.9.1 for CUDA 12.8): ComfyUI v0.38.0 (the version on
-# the PC) with Qwen-Image 2.1 and Wan 2.2. The app sends this script to the pod's agent (cloud_agent.py), which runs it.
+# the PC). The app sends this script to the pod's agent (cloud_agent.py), which runs it, and puts two lines after the
+# first one: VIDEO=h3|ltx25 (the card's video engine: MiniMax H3 on 80 GB+ cards where its licence allows, else
+# LTX-2.5) and H3_TE (H3's text encoder for this card).
 # Progress goes to /root/status, ending in READY or ERROR: ...; trained characters arrive in /root/loras through the agent.
+# Before READY: Qwen-Image 2.1 (int8) and the video engine. After READY, in the background: full-quality Qwen-Image 2.1
+# (bf16) and Ideogram 4.0; /root/done_qwen_hq and /root/done_ideogram tell the app each one is in.
 # Lessons from the first pods: pip resolving the full requirements tried to replace torch (gigabytes), and
 # pypi.org downloads stalled in some data centres, so packages are pinned and installed without resolving,
 # with short timeouts, retries and a mirror as fallback; Hugging Face downloads are fast everywhere.
+VIDEO=${VIDEO:-ltx25}
 st() { echo "$*" > /root/status; }
 cd /root
 
@@ -24,23 +29,38 @@ mkdir -p /root/loras
 printf 'reelmint:\n  base_path: /root\n  loras: loras\n' > extra_model_paths.yaml
 
 H=https://huggingface.co
-get() { curl -sS -L --retry 20 --retry-all-errors -C - -o "$2" "$1" || echo "$2" >> /root/dl_fail; }
+Q=$H/Comfy-Org/Qwen-Image-2.1/resolve/main
+M=$H/Comfy-Org/MiniMax-H3/resolve/main
+L=$H/comfyicu/LTX-2.5/resolve/main  # open mirror of Lightricks/LTX-2.5 (the original asks for a Hugging Face login)
+I=$H/Comfy-Org/Ideogram-4/resolve/main
+# cloud_dl.py (sent by the app in DL_B64): 8 connections a file, stalled pieces fetched again. A single curl
+# connection crawled on some hosts and hung forever at 99 % on one (5 Oct).
+echo "$DL_B64" | base64 -d > /root/dl.py
+get() { python3 /root/dl.py "$1" "$2" 2>> /root/dl.log || echo "$2" >> /root/dl_fail; }
 (
-  get $H/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors models/diffusion_models/qwen_image_2.1_int8_convrot.safetensors &
-  get $H/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors models/text_encoders/qwen3vl_8b_int8_convrot.safetensors &
-  get $H/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors models/vae/qwen_image_2.1_vae_bf16.safetensors &
+  get $Q/diffusion_models/qwen_image_2.1_int8_convrot.safetensors models/diffusion_models/qwen_image_2.1_int8_convrot.safetensors &
+  get $Q/text_encoders/qwen3vl_8b_int8_convrot.safetensors models/text_encoders/qwen3vl_8b_int8_convrot.safetensors &
+  get $Q/vae/qwen_image_2.1_vae_bf16.safetensors models/vae/qwen_image_2.1_vae_bf16.safetensors &
   get $H/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors models/upscale_models/4x-UltraSharp.safetensors &
-  # Wan 2.2 14B for Make video / Animate (the PC's files: GGUF Q4_K_S + lightx2v 4-step LoRAs)
-  W=$H/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files
-  get $H/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf models/unet/Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf &
-  get $H/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf models/unet/Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf &
-  get $H/city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q5_K_M.gguf models/text_encoders/umt5-xxl-encoder-Q5_K_M.gguf &
-  get $W/vae/wan_2.1_vae.safetensors models/vae/wan_2.1_vae.safetensors &
-  get $W/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors &
-  get $W/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors &
+  if [ "$VIDEO" = h3 ]; then
+    get $M/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors models/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors &
+    get $M/text_encoders/$H3_TE models/text_encoders/$H3_TE &
+    get $M/vae/minimax_h3_video_vae_int8_convrot.safetensors models/vae/minimax_h3_video_vae_int8_convrot.safetensors &
+    get $M/vae/minimax_h3_audio_vae_fp32.safetensors models/vae/minimax_h3_audio_vae_fp32.safetensors &
+  else
+    get $L/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors models/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors &
+    get $L/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors models/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors &
+    get $L/vae/ltx-2.5-video-vae-bf16.safetensors models/vae/ltx-2.5-video-vae-bf16.safetensors &
+    get $L/vae/ltx-2.5-audio-vae-bf16.safetensors models/vae/ltx-2.5-audio-vae-bf16.safetensors &
+  fi
   wait
   touch /root/dl_done
 ) &
+case "$VIDEO/$H3_TE" in
+  h3/*nvfp4*) TOTAL=71000; NAME="MiniMax H3" ;;
+  h3/*) TOTAL=82000; NAME="MiniMax H3" ;;
+  *) TOTAL=56000; NAME="LTX-2.5" ;;
+esac
 
 st "installing Python packages"
 PKGS="torchsde==0.2.6 trampoline==0.1.2 numpy==2.5.3 einops==0.8.2 transformers==5.17.0 tokenizers==0.23.2
@@ -51,10 +71,7 @@ PKGS="torchsde==0.2.6 trampoline==0.1.2 numpy==2.5.3 einops==0.8.2 transformers=
  charset-normalizer==3.5.1 urllib3==2.8.0 certifi==2026.7.22 simpleeval==1.0.8 blake3==1.0.10 kornia==0.8.3 kornia-rs==0.2.0
  spandrel==0.4.2 pydantic==2.13.5 pydantic-core==2.46.5 annotated-types==0.8.0 typing-inspection==0.4.4 pydantic-settings==2.15.0
  python-dotenv==1.2.3 fsspec==2026.9.0 httpx==0.28.1 httpcore==1.0.9 anyio==4.15.1 sniffio==1.3.1 h11==0.16.0 click==8.5.0
- comfyui-frontend-package==1.53.6 gguf==0.19.0 protobuf==7.36.2"
-# the GGUF loader nodes Wan uses, at the PC's version
-git clone -q https://github.com/city96/ComfyUI-GGUF custom_nodes/ComfyUI-GGUF && git -C custom_nodes/ComfyUI-GGUF checkout -q 6ea2651e7df66d7585f6ffee804b20e92fb38b8a \
-  || { st "ERROR: could not download the GGUF loader"; exit 1; }
+ comfyui-frontend-package==1.53.6 protobuf==7.36.2"
 ok=""
 for idx in https://pypi.org/simple https://mirrors.aliyun.com/pypi/simple https://pypi.org/simple; do
   if pip install -q --break-system-packages --no-deps --timeout 15 --retries 8 --resume-retries 20 --index-url $idx $PKGS > /root/pip.log 2>&1; then
@@ -70,15 +87,47 @@ python3 -c "import torchvision" 2>/dev/null || pip install -q --break-system-pac
   st "ERROR: torchvision failed to install (see /root/pip.log)"; exit 1; }
 
 while [ ! -f /root/dl_done ]; do
-  st "downloading Qwen-Image 2.1 and Wan 2.2 ($(du -sm models 2>/dev/null | cut -f1) of ~44,000 MB)"
+  st "downloading Qwen-Image 2.1 and $NAME ($(du -sm models 2>/dev/null | cut -f1) of ~$TOTAL MB)"
   sleep 5
 done
 [ -f /root/dl_fail ] && { st "ERROR: model download failed: $(cat /root/dl_fail)"; exit 1; }
 
+# after READY: one group of files into /root/extra (outside models/, so ComfyUI never sees half a file), then moved
+# into place together and flagged
+extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
+  local flag=$1 pids="" files=""
+  shift
+  mkdir -p /root/extra
+  while [ $# -gt 1 ]; do
+    local name=$(basename "$1")
+    get "$1" "/root/extra/$name" &
+    pids="$pids $!"
+    files="$files $name:$2"
+    shift 2
+  done
+  wait $pids  # not a bare wait: ComfyUI is a child of this shell too and never ends
+  for f in $files; do
+    [ -s "/root/extra/${f%%:*}" ] || return 1
+  done
+  for f in $files; do
+    mv "/root/extra/${f%%:*}" "${f#*:}/" || return 1
+  done
+  touch "/root/done_$flag"
+}
+
 st "starting ComfyUI"
 setsid nohup python main.py --listen 127.0.0.1 --port 8188 > /root/comfy.log 2>&1 < /dev/null &
 for i in $(seq 1 60); do
-  curl -s -m 3 -o /dev/null http://127.0.0.1:8188/system_stats && { st "READY"; exit 0; }
+  if curl -s -m 3 -o /dev/null http://127.0.0.1:8188/system_stats; then
+    st "READY"
+    extra qwen_hq $Q/diffusion_models/qwen_image_2.1_bf16.safetensors models/diffusion_models \
+      $Q/text_encoders/qwen3vl_8b_bf16.safetensors models/text_encoders
+    extra ideogram $I/diffusion_models/ideogram4_int8_convrot.safetensors models/diffusion_models \
+      $I/diffusion_models/ideogram4_unconditional_int8_convrot.safetensors models/diffusion_models \
+      $I/text_encoders/qwen3vl_8b_fp8_scaled.safetensors models/text_encoders \
+      $I/vae/flux2-vae.safetensors models/vae
+    exit 0
+  fi
   sleep 5
 done
 st "ERROR: ComfyUI did not start (see /root/comfy.log)"

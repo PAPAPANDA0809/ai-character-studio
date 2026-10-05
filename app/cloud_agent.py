@@ -8,6 +8,7 @@ address work too. Every request needs the session's key in X-RM-Key (RM_KEY, mad
   PUT  /rm/lora?name=&offset=  a piece of a trained character (offset 0 starts the file)
   POST /rm/lora?name=&size=    the last piece arrived: check the size and make it visible to ComfyUI
   GET  /rm/loras               the trained characters on the pod
+  GET  /rm/extras              {"qwen_hq": bool, "ideogram": bool}: the downloads that come after READY
   GET  /rm/log?f=setup|comfy|pip  the end of a log, for finding out what went wrong
   anything else                passed on to ComfyUI on 127.0.0.1:8188
 """
@@ -84,6 +85,9 @@ class H(BaseHTTPRequestHandler):
                     return self.send(409, "incomplete")
                 os.replace(part, os.path.join(LORAS, name))
                 return self.send(200, "ok")
+        if u.path == "/rm/extras":  # downloaded after READY: full-quality Qwen, Ideogram 4
+            return self.send(200, json.dumps({k: os.path.exists(f"/root/done_{k}") for k in ("qwen_hq", "ideogram")}),
+                             "application/json")
         if u.path == "/rm/loras":
             files = sorted(f for f in os.listdir(LORAS) if not f.startswith(".")) if os.path.isdir(LORAS) else []
             return self.send(200, json.dumps(files), "application/json")

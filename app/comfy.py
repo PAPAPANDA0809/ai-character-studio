@@ -135,6 +135,9 @@ IMAGE_ENGINES = {
                                 "text_encoders/qwen3vl_8b_int8_convrot.safetensors", "vae/qwen_image_2.1_vae_bf16.safetensors"]},
     "z-image": {"label": "Z-Image Turbo (excellent photoreal, ~45 s)",
                 "files": ["unet/z_image_turbo-Q8_0.gguf", "text_encoders/qwen_3_4b_fp8_mixed.safetensors"]},
+    # only on a rented card ("rented" names the download that brings it, see cloudgpu)
+    "ideogram4": {"label": "Ideogram 4.0 (best for text in pictures, non-commercial licence)", "files": [],
+                  "rented": "ideogram"},
 }
 # Engines that can use the character picture as a reference
 REFERENCE_ENGINES = ("qwen-image-21",)
@@ -235,6 +238,8 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None)
         return flux_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)
     if engine == "z-image":
         return zimage_workflow(cfg, prompt, width, height, seed, prefix)
+    if engine == "ideogram4":
+        return ideogram4_workflow(prompt, width, height, seed, prefix)
     if engine in ("flux2-klein-4b", "flux2-klein-9b"):
         return flux2_klein_workflow(cfg, engine, prompt, width, height, seed, prefix)
     if engine == "qwen-image-21":
@@ -615,6 +620,89 @@ def qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=Non
 LTX_NEGATIVE = ("blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, "
                 "flickering, motion blur, distorted proportions, unnatural skin tones, deformed facial features, "
                 "extra limbs, disfigured hands, watermark, text, subtitles")
+
+# Engines that only run on a rented card (cloud_setup.sh downloads them; the files never come to this PC).
+# MiniMax H3: #1 open image-to-video with sound (Oct 2026); 80 GB+ cards, and its licence excludes the US, EU, UK and
+# Korea, so cloudgpu rents it only in other data centres. First+last frame model, base 20 steps (the turbo LoRA took
+# 3 min instead of 7 for 5 s at 768x1344 on an RTX PRO 6000, at lower quality).
+H3 = {"unet": "minimax_h3_fl2va_int8_convrot.safetensors", "video_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+      "audio_vae": "minimax_h3_audio_vae_fp32.safetensors", "text_encoder": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "text_encoder_blackwell": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "steps": 20, "frames": 124, "fps": 24}
+# Ideogram 4.0: #2 open text-to-image (Oct 2026), best at text inside pictures; two models (with and without the
+# prompt) through DualModelGuider as in ComfyUI's template, "Quality" preset. Weights: non-commercial licence.
+IDEOGRAM4 = {"unet": "ideogram4_int8_convrot.safetensors", "unet_uncond": "ideogram4_unconditional_int8_convrot.safetensors",
+             "text_encoder": "qwen3vl_8b_fp8_scaled.safetensors", "vae": "flux2-vae.safetensors",
+             "steps": 48, "mu": 0.0, "std": 1.5, "cfg": 7.0, "late_cfg": 3.0}
+# LTX-2.5 on a rented card: the int8 transformer instead of the PC's 4-bit GGUF (same workflow)
+LTX25_POD = {"unet": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+             "text_encoder": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+             "video_vae": "ltx-2.5-video-vae-bf16.safetensors", "audio_vae": "ltx-2.5-audio-vae-bf16.safetensors"}
+
+
+def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_encoder=None):
+    """MiniMax H3 with sound: start+end = first/last frame, start = image-to-video, neither = text-to-video. Frames come
+    back through SaveImage and the soundtrack through SaveAudio, like LTX-2, so the pipeline stores both the same way."""
+    c = H3
+    # H3's native canvas: a 768 px short edge, at most 768x1344, multiples of 32 (MiniMax's prompting tips); the
+    # project's 480p/720p choice only gives the shape
+    short, long_ = min(width, height), max(width, height)
+    long_ = min(1344, round(long_ * 768 / short / 32) * 32)
+    width, height = (768, long_) if width <= height else (long_, 768)
+    wf = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": c["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": text_encoder or c["text_encoder"], "type": "minimax",
+                                                     "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": c["video_vae"]}},
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": c["audio_vae"]}},
+        "6": {"class_type": "MiniMaxH3ImageToVideo",
+              "inputs": {"clip": ["2", 0], "vae": ["3", 0], "prompt": prompt, "width": width // 32 * 32,
+                         "height": height // 32 * 32, "length": c["frames"]}},
+        "8": {"class_type": "BasicScheduler", "inputs": {"model": ["1", 0], "scheduler": "simple", "steps": c["steps"],
+                                                         "denoise": 1.0}},
+        "9": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "res_multistep"}},
+        "10": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "11": {"class_type": "BasicGuider", "inputs": {"model": ["1", 0], "conditioning": ["6", 0]}},
+        "12": {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": ["10", 0], "guider": ["11", 0], "sampler": ["9", 0],
+                                                                 "sigmas": ["8", 0], "latent_image": ["6", 1]}},
+        "13": {"class_type": "VAEDecode", "inputs": {"samples": ["12", 0], "vae": ["3", 0]}},
+        "14": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["12", 0], "vae": ["4", 0]}},
+        "15": {"class_type": "SaveImage", "inputs": {"images": ["13", 0], "filename_prefix": prefix}},
+        "16": {"class_type": "SaveAudio", "inputs": {"audio": ["14", 0], "filename_prefix": prefix + "_audio"}},
+    }
+    for key, name, slot in (("5", start_name, "first_frame"), ("7", end_name, "last_frame")):
+        if name:
+            wf[key] = {"class_type": "LoadImage", "inputs": {"image": name}}
+            wf["6"]["inputs"][slot] = [key, 0]
+    return wf
+
+
+def ideogram4_workflow(prompt, width, height, seed, prefix):
+    """Ideogram 4.0 text-to-image (ComfyUI's image_ideogram4_t2i template). The model reads a JSON prompt; a plain one
+    goes in as its high-level description."""
+    c = IDEOGRAM4
+    w, h = max((width + 15) // 16 * 16, 256), max((height + 15) // 16 * 16, 256)
+    text = prompt if prompt.lstrip().startswith("{") else json.dumps({"high_level_description": prompt}, ensure_ascii=False)
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": c["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "UNETLoader", "inputs": {"unet_name": c["unet_uncond"], "weight_dtype": "default"}},
+        "3": {"class_type": "CLIPLoader", "inputs": {"clip_name": c["text_encoder"], "type": "ideogram4", "device": "default"}},
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": c["vae"]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": text, "clip": ["3", 0]}},
+        "6": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["5", 0]}},
+        "7": {"class_type": "CFGOverride", "inputs": {"model": ["1", 0], "cfg": c["late_cfg"], "start_percent": 0.7,
+                                                      "end_percent": 1.0}},
+        "8": {"class_type": "DualModelGuider", "inputs": {"model": ["7", 0], "model_negative": ["2", 0], "positive": ["5", 0],
+                                                          "negative": ["6", 0], "cfg": c["cfg"]}},
+        "9": {"class_type": "Ideogram4Scheduler", "inputs": {"steps": c["steps"], "width": w, "height": h, "mu": c["mu"],
+                                                             "std": c["std"]}},
+        "10": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "11": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "12": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
+        "13": {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": ["11", 0], "guider": ["8", 0], "sampler": ["10", 0],
+                                                                 "sigmas": ["9", 0], "latent_image": ["12", 0]}},
+        "14": {"class_type": "VAEDecode", "inputs": {"samples": ["13", 0], "vae": ["4", 0]}},
+        "15": {"class_type": "SaveImage", "inputs": {"images": ["14", 0], "filename_prefix": prefix}},
+    }
 
 
 def ltx2_workflow(cfg, engine, prompt, start_name, end_name, width, height, seed, prefix):

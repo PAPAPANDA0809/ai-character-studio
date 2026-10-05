@@ -26,7 +26,7 @@ os.makedirs(CHARACTERS, exist_ok=True)
 
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
-NATIVE_HD = ("qwen-image-21", "z-image")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
+NATIVE_HD = ("qwen-image-21", "z-image", "ideogram4")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
 PERSON_WORDS = re.compile(r"(?i)\b(she|he|her|his|him|woman|women|man|men|girl|boy|lady|guy|person|people|model|"
                           r"wife|husband|mom|mum|dad|kid|child|baby|face|smil\w*)\b")
 CLOTHING_WORDS = re.compile(r"(?i)\b(wear\w*|outfit|cloth\w*|dress\w*|shirt|t-shirt|tee|top|blouse|jacket|coat|raincoat|"
@@ -462,6 +462,9 @@ def engines():
         return bool(path) and time.time() - os.path.getmtime(path) > 90
 
     def entry(key, e):
+        if e.get("rented"):  # files only on the rented card
+            on = cloudgpu.state["status"] == "ready" and cloudgpu.state["extras"].get(e["rented"])
+            return {"id": key, "label": e["label"], "installed": bool(on), "note": "with Fast GPU"}
         return {"id": key, "label": e["label"], "installed": all(ready(f) for f in e["files"])}
     return {
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
@@ -640,6 +643,10 @@ def use_version(pid, index, name):
 def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
     """Qwen-Image 2.1 pictures and edits run on the rented GPU while a fast-GPU session is ready; everything else here."""
     remote = cloudgpu.url()
+    if remote and (engine or p.get("image_engine")) == "ideogram4" and not edit and not refs_of(p):
+        log(p, f"using the rented {cloudgpu.info()['label']}")
+        with cloudgpu.using():
+            return _keyframes(p, indices, reseed, engine, edit, remote)
     if remote and engine != "gpt-image" and (edit or p.get("image_engine") == "qwen-image-21"):
         lora = lora_entry(load_config(), p.get("lora", ""), "qwen-image-21")
         if not lora or cloudgpu.has_lora(lora["file"]):
@@ -654,6 +661,8 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
     """edit = an instruction ("make her hair red"): Qwen-Image 2.1 changes the finished picture as told; the
     result becomes a new version like any regenerated picture. remote = ComfyUI on the rented GPU."""
     cfg = load_config()
+    if remote and cloudgpu.state["extras"].get("qwen_hq"):  # the rented card has the full-quality (bf16) Qwen files
+        cfg["qwen_image_21"] = {**cfg["qwen_image_21"], **cloudgpu.HQ_QWEN}
     c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
@@ -684,7 +693,14 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             use = comfy.REFERENCE_ENGINES[0]
         if edit:  # only Qwen-Image 2.1 edits; the picture itself is the reference
             use = "qwen-image-21"
-        log(p, f"keyframe {i + 1}/{n}: {'editing' if edit else 'generating'} with {use}")
+        if use == "ideogram4" and not (remote and cloudgpu.state["extras"].get("ideogram")):
+            raise RuntimeError("Ideogram 4.0 runs on a rented card: connect a Fast GPU and wait until Ideogram is "
+                               "ready in its panel, or pick Qwen-Image 2.1")
+        if use == "qwen-image-21" and remote and cloudgpu.state["extras"].get("qwen_hq"):
+            use_label = "qwen-image-21 (full quality)"
+        else:
+            use_label = use
+        log(p, f"keyframe {i + 1}/{n}: {'editing' if edit else 'generating'} with {use_label}")
         t = time.time()
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
         if use == "gpt-image":  # cloud, pay-per-use: only when picked for this picture
@@ -748,14 +764,34 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
 
 
 def on_rented(p, run):
-    """Wan 2.2 14B video jobs run on the rented GPU while a fast-GPU session is ready (~1-2 min a clip instead of ~20);
-    run(remote) gets that ComfyUI's address, or None for this PC."""
-    remote = cloudgpu.url() if (p.get("video_engine") or "wan22-14b") == "wan22-14b" else None
+    """Video jobs run on the rented GPU while a fast-GPU session is ready, with that card's video engine (MiniMax H3 or
+    LTX-2.5, both with sound) instead of this PC's; run(remote) gets that ComfyUI's address, or None for this PC."""
+    remote = cloudgpu.url() if cloudgpu.state.get("video") else None
     if not remote:
         return run(None)
-    log(p, f"using the rented {cloudgpu.info()['label']}")
+    log(p, f"using the rented {cloudgpu.info()['label']} ({cloudgpu.VIDEO_LABEL[cloudgpu.state['video']]})")
     with cloudgpu.using():
         return run(remote)
+
+
+def clip_engine(p, cfg, remote, key="video_engine", local_default="wan22-14b", engines=None):
+    """The engine a video job uses: the rented card's (cfg gets its file names) or the project's own on this PC."""
+    if remote:
+        engine = cloudgpu.state["video"]
+        if engine == "ltx25":
+            cfg["ltx25"] = {**cfg["ltx25"], **comfy.LTX25_POD}
+        return engine
+    engines = comfy.VIDEO_ENGINES if engines is None else engines
+    return p.get(key) if p.get(key) in engines else local_default
+
+
+def clip_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix):
+    """A clip from first/last frames (start only = animate one picture; neither = text-to-video)."""
+    if engine == "h3":
+        return comfy.h3_workflow(prompt, start, end, w, h, seed, prefix, text_encoder=cloudgpu.state.get("h3_te"))
+    if not start:
+        return comfy.t2v_workflow(cfg, engine, prompt, w, h, seed, prefix)
+    return comfy.video_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix)
 
 
 def do_animate(p, only=None):
@@ -769,7 +805,7 @@ def _animate(p, only=None, remote=None):
     if not c.alive():
         raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
     w, h = video_size(cfg, p)
-    engine = p.get("video_engine") if p.get("video_engine") in comfy.VIDEO_ENGINES else "wan22-14b"
+    engine = clip_engine(p, cfg, remote)
     fps = engine_fps(cfg, engine)
     n = len(p["plan"]["keyframes"])
     for i in range(n):
@@ -786,7 +822,7 @@ def _animate(p, only=None, remote=None):
         prompt = ". ".join(x for x in [p["plan"]["motions"][i], p["plan"].get("character", ""), p.get("style", "")] if x)
         t = time.time()
         log(p, f"clip {i + 1}/{n - 1}: animating with {engine} (this is the slow part)")
-        out = c.run(comfy.video_workflow(cfg, engine, prompt, a, b, w, h, p["seed"] + i, f"aics/{p['id']}/clip{i:02d}"))
+        out = c.run(clip_workflow(cfg, engine, prompt, a, b, w, h, p["seed"] + i, f"aics/{p['id']}/clip{i:02d}"))
         frames = next(o["images"] for o in out.values() if o.get("images"))
         save_clip_frames(p, c, ff, i, frames, fps, out)
         log(p, f"clip {i + 1}/{n - 1}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
@@ -797,14 +833,18 @@ def _animate(p, only=None, remote=None):
 
 
 def do_t2v(p, only=None):
+    return on_rented(p, lambda remote: _t2v(p, only, remote))
+
+
+def _t2v(p, only=None, remote=None):
     """Video-only mode: each scene is generated straight from text, then the clips are joined."""
     cfg = load_config()
     ff = find_ffmpeg(cfg["ffmpeg"])
-    c = comfy.Comfy(cfg["comfy_url"], lambda: p["id"] in cancelled)
+    c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
     if not c.alive():
-        raise RuntimeError("ComfyUI is not running at " + cfg["comfy_url"])
+        raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
     w, h = video_size(cfg, p)
-    engine = p.get("t2v_engine") if p.get("t2v_engine") in comfy.T2V_ENGINES else "wan22-5b"
+    engine = clip_engine(p, cfg, remote, "t2v_engine", "wan22-5b", comfy.T2V_ENGINES)
     fps = engine_fps(cfg, engine)
     n = len(p["plan"]["keyframes"])
     c.free()
@@ -815,7 +855,7 @@ def do_t2v(p, only=None):
                                        p["plan"].get("character", ""), p["plan"].get("setting", "")] if x)
         t = time.time()
         log(p, f"scene {i + 1}/{n}: generating video with {engine}")
-        out = c.run(comfy.t2v_workflow(cfg, engine, prompt, w, h, p["seed"] + i, f"aics/{p['id']}/scene{i:02d}"))
+        out = c.run(clip_workflow(cfg, engine, prompt, None, None, w, h, p["seed"] + i, f"aics/{p['id']}/scene{i:02d}"))
         frames = next(o["images"] for o in out.values() if o.get("images"))
         save_clip_frames(p, c, ff, i, frames, fps, out)
         log(p, f"scene {i + 1}/{n}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
@@ -825,7 +865,7 @@ def do_t2v(p, only=None):
 
 def engine_fps(cfg, engine):
     return {"ltxv-2b": cfg["ltxv"]["fps"], "hunyuan15": cfg["hunyuan15"]["fps"], "wan22-5b": cfg["wan5b"]["fps"],
-            **{e: cfg[e]["fps"] for e in comfy.LTX2_ENGINES}}.get(engine, cfg["video"]["fps"])
+            "h3": comfy.H3["fps"], **{e: cfg[e]["fps"] for e in comfy.LTX2_ENGINES}}.get(engine, cfg["video"]["fps"])
 
 
 def save_clip_audio(c, out, dest):
@@ -870,7 +910,7 @@ def _animate_image(p, index, motion="", remote=None):
     src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
     if not os.path.exists(src):
         raise RuntimeError(f"picture {i + 1} isn't generated yet")
-    engine = p.get("video_engine") if p.get("video_engine") in comfy.VIDEO_ENGINES else "wan22-14b"
+    engine = clip_engine(p, cfg, remote)
     fps = engine_fps(cfg, engine)
     w, h = video_size(cfg, p)
     c.free()
@@ -881,7 +921,7 @@ def _animate_image(p, index, motion="", remote=None):
                                    k["image_prompt"]] if x)
     log(p, f"picture {i + 1}: animating with {engine}")
     t = time.time()
-    out = c.run(comfy.video_workflow(cfg, engine, prompt, a, None, w, h, p["seed"] + 100 + i, f"aics/{p['id']}/img{i:02d}"))
+    out = c.run(clip_workflow(cfg, engine, prompt, a, None, w, h, p["seed"] + 100 + i, f"aics/{p['id']}/img{i:02d}"))
     frames = next(o["images"] for o in out.values() if o.get("images"))
     fdir = pdir(p["id"], "clips", f"imgframes_{i:02d}")
     shutil.rmtree(fdir, ignore_errors=True)

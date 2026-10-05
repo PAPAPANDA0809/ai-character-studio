@@ -19,6 +19,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(APP_DIR, "cloud_gpu.json")  # the running pod and its key, so a restart can find it
 SETUP = os.path.join(APP_DIR, "cloud_setup.sh")
 AGENT = os.path.join(APP_DIR, "cloud_agent.py")
+DOWNLOADER = os.path.join(APP_DIR, "cloud_dl.py")  # sent inside the setup script
 RUNPODCTL = os.path.expanduser(r"~\.local\bin\runpodctl.exe")
 GATE_PORT = 8189
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -26,25 +27,35 @@ DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the VPN
 # The pod's start command: unpack the agent from RM_AGENT and run it (the image's own start script, sshd and
 # Jupyter, isn't needed).
 START_CMD = "bash -c 'echo \"$RM_AGENT\" | base64 -d > /root/agent.py && python3 /root/agent.py > /root/agent.log 2>&1'"
+# full-quality Qwen-Image 2.1, used on the rented card once its background download is done (state["extras"])
+HQ_QWEN = {"unet": "qwen_image_2.1_bf16.safetensors", "text_encoder": "qwen3vl_8b_bf16.safetensors"}
+# The video engine a card gets: MiniMax H3 (the best open one, 80 GB+) or LTX-2.5. H3's licence excludes the US, the
+# EU, the UK and South Korea, so it is only rented in other data centres (else the card gets LTX-2.5).
+VIDEO_LABEL = {"h3": "MiniMax H3", "ltx25": "LTX-2.5"}
+H3_MIN_MEM = 80
+H3_EXCLUDED = ("US", "EU", "UK", "GB", "KR")  # data centre id prefixes / country codes
+DISK_GB = {"h3": 180, "ltx25": 160}  # models (~150 / ~125 GB with the full-quality extras) plus ComfyUI
 CHUNK = 8 << 20  # trained characters go up in 8 MB pieces (one request through the gateway can't be huge)
 
 # The cards offered (the RTX 4090 and stronger; the list is shown cheapest first). speed = rough speed for
 # Qwen-Image / Wan against an RTX 4090 (estimates from the cards' compute and memory speed, not measured here).
 CATALOG = [
     {"id": "NVIDIA GeForce RTX 4090", "label": "RTX 4090", "mem": 24, "speed": 1.0},
-    {"id": "NVIDIA GeForce RTX 5090", "label": "RTX 5090", "mem": 32, "speed": 1.3},
+    {"id": "NVIDIA GeForce RTX 5090", "label": "RTX 5090", "mem": 32, "speed": 1.3, "blackwell": True},
     {"id": "NVIDIA L40S", "label": "L40S", "mem": 48, "speed": 1.0},
     {"id": "NVIDIA RTX 6000 Ada Generation", "label": "RTX 6000 Ada", "mem": 48, "speed": 1.0},
     {"id": "NVIDIA A100 80GB PCIe", "label": "A100 80 GB", "mem": 80, "speed": 1.0},
-    {"id": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "label": "RTX PRO 6000", "mem": 96, "speed": 1.4},
+    {"id": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "label": "RTX PRO 6000", "mem": 96, "speed": 1.4,
+     "blackwell": True},
     {"id": "NVIDIA H100 80GB HBM3", "label": "H100", "mem": 80, "speed": 2.0},
     {"id": "NVIDIA H200", "label": "H200", "mem": 141, "speed": 2.2},
-    {"id": "NVIDIA B200", "label": "B200", "mem": 180, "speed": 3.0},
+    {"id": "NVIDIA B200", "label": "B200", "mem": 180, "speed": 3.0, "blackwell": True},
 ]
 
 lock = threading.Lock()
 state = {"status": "off", "message": "", "pod": None, "key": "", "price": 0.0, "gpu": "",
-         "started": 0.0, "last_used": 0.0, "loras": []}
+         "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "where": "",
+         "extras": {"qwen_hq": False, "ideogram": False}}
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 relay = [None]     # the local relay server
 _opts = [0.0, []]  # options() cache: when, list
@@ -54,14 +65,14 @@ _broken = {}       # card id -> when a community machine for it turned out fault
 def cfg():
     with open(os.path.join(APP_DIR, "config.json"), encoding="utf-8") as f:
         c = json.load(f).get("cloud_gpu", {})
-    return {"image": "runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2404", "disk_gb": 90, "local_port": 8190,
+    return {"image": "runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2404", "local_port": 8190,
             "idle_minutes": 15, "max_hours": 4, **c}
 
 
 def _set(**kw):
     with lock:
         state.update(kw)
-        keep = {k: state[k] for k in ("pod", "key", "price", "gpu", "started")}
+        keep = {k: state[k] for k in ("pod", "key", "price", "gpu", "started", "video", "h3_te", "where")}
     if state["pod"]:
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(keep, f)
@@ -95,7 +106,8 @@ def options():
         res.append({**c, "stock": stock, "available": bool(g.get("available")) and stock.lower() != "none",
                     "community": g.get("communityPricePerHr") if g.get("communityCloud") else None,
                     "secure": g.get("securePricePerHr") if g.get("secureCloud") else None,
-                    "community_broken": time.time() - _broken.get(c["id"], 0) < 3600})
+                    "community_broken": time.time() - _broken.get(c["id"], 0) < 3600,
+                    "video": VIDEO_LABEL["h3" if c["mem"] >= H3_MIN_MEM else "ltx25"]})
     res.sort(key=lambda o: min([p for p in (o["community"], o["secure"]) if p is not None] or [1e9]))  # cheapest first
     _opts[:] = [time.time(), res]
     return res
@@ -138,12 +150,40 @@ def _call(method, path, data=None, timeout=60, headers=None):
         return e.code, e.read()
 
 
-def _create(c, gpu, cloud, key):
+def h3_allowed(place):
+    """True for a data centre id (CA-MTL-1, EUR-IS-3...) or country code outside H3's excluded territories."""
+    head = str(place or "").upper().split("-")[0]
+    return bool(head) and head not in H3_EXCLUDED
+
+
+def _h3_datacenters():
+    """RunPod's data centres where H3 may run (Canada, India, Japan, Singapore, Australia, Iceland, Norway...)."""
+    code, out, err = _run([RUNPODCTL, "datacenter", "list"], timeout=60)
+    try:
+        return [d["id"] for d in json.loads(out[out.index("["):]) if h3_allowed(d.get("id"))]
+    except (ValueError, KeyError):
+        return []
+
+
+def _place(pod_id):
+    """Where the rented pod is: its data centre id, or the machine's country code ("" if RunPod doesn't say)."""
+    code, out, err = _run([RUNPODCTL, "pod", "get", pod_id, "--include-machine"], timeout=60)
+    try:
+        p = json.loads(out[out.index("{"):])
+    except ValueError:
+        return ""
+    m = p.get("machine") or {}
+    return str(p.get("dataCenterId") or m.get("dataCenterId") or m.get("location") or "")
+
+
+def _create(c, gpu, cloud, key, disk_gb, datacenters=None):
     with open(AGENT, "rb") as f:
         agent = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
     args = [RUNPODCTL, "pod", "create", "--name", "reelmint-fast-gpu", "--image", c["image"], "--gpu-id", gpu,
-            "--cloud-type", cloud, "--container-disk-in-gb", str(c["disk_gb"]), "--ports", f"{GATE_PORT}/http",
+            "--cloud-type", cloud, "--container-disk-in-gb", str(disk_gb), "--ports", f"{GATE_PORT}/http",
             "--docker-args", START_CMD, "--env", json.dumps({"RM_KEY": key, "RM_AGENT": agent})]
+    if datacenters:
+        args += ["--data-center-ids", ",".join(datacenters)]
     code, out, err = _run(args, timeout=180)
     text = out + err
     if code != 0 or "{" not in out:
@@ -212,21 +252,41 @@ def _wait_agent(minutes):
 def _start(card, cloud):
     c = cfg()
     key = secrets.token_urlsafe(24)
+    video = "h3" if card["mem"] >= H3_MIN_MEM else "ltx25"
+    note, why = "", ""
     try:
-        pod, why = _create(c, card["id"], cloud, key)
-        if pod and state["status"] != "starting":  # Stop was pressed while it was being rented
-            _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
+        pod = None
+        if video == "h3":
+            dcs = _h3_datacenters()
+            if dcs:
+                pod, why = _create(c, card["id"], cloud, key, DISK_GB["h3"], dcs)
+            if not pod:  # none free where H3 may run: rent it anywhere, videos use LTX-2.5
+                video, note = "ltx25", " (no free one where MiniMax H3 is allowed, so videos use LTX-2.5)"
+        if not pod and state["status"] == "starting":
+            pod, why = _create(c, card["id"], cloud, key, DISK_GB[video])
+        if state["status"] != "starting":  # Stop was pressed while it was being rented
+            if pod:
+                _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
             return
         if not pod:
             return _set(status="error", message=f"Couldn't rent an {card['label']} (RunPod: {why}). "
                                                 "Pick another card or try again.")
         price = pod.get("costPerHr") or next((o[cloud.lower()] for o in _opts[1] if o["id"] == card["id"]), 0)
+        where = _place(pod["id"])
+        if video == "h3" and not h3_allowed(where):  # RunPod placed it elsewhere after all: no H3 there
+            video, note = "ltx25", f" (it's in {where or 'an unknown place'}, where MiniMax H3 isn't allowed: videos use LTX-2.5)"
+        h3_te = comfy_te(card) if video == "h3" else ""
         _set(pod=pod["id"], key=key, price=float(price or 0), started=time.time(), last_used=time.time(), loras=[],
-             message="Starting the machine…")
+             video=video, h3_te=h3_te, where=where, extras={"qwen_hq": False, "ideogram": False},
+             message="Starting the machine" + note + "…")
         if not _wait_agent(8):  # good machines answer in under a minute
             return
         with open(SETUP, "rb") as f:
             script = f.read().replace(b"\r\n", b"\n")
+        # what this card installs: its video engine (and H3's text encoder), read by cloud_setup.sh
+        with open(DOWNLOADER, "rb") as f:
+            dl = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
+        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nDL_B64={dl}\n".encode(), 1)
         for _ in range(24):  # just after boot the gateway can still answer 404 for a while
             try:
                 code, body = _call("POST", "/rm/setup", script)
@@ -237,7 +297,7 @@ def _start(card, cloud):
             time.sleep(5)
         else:
             raise RuntimeError(f"couldn't start the setup ({code})")
-        _set(message="Installing ComfyUI, Qwen-Image 2.1 and Wan 2.2…")
+        _set(message=f"Installing ComfyUI, Qwen-Image 2.1 and {VIDEO_LABEL[video]}{note}…")
         threading.Thread(target=_send_loras, daemon=True).start()
         deadline = time.time() + 40 * 60
         while time.time() < deadline:
@@ -258,7 +318,8 @@ def _start(card, cloud):
         else:
             raise RuntimeError("setup took over 40 minutes")
         _open_relay()
-        _set(status="ready", message=f"{state['gpu']} ready", last_used=time.time())
+        _set(status="ready", message=f"{state['gpu']} ready · videos with {VIDEO_LABEL[video]}{note}",
+             last_used=time.time())
         _free_local()
     except Exception as e:
         try:  # keep the end of the pod's setup log for finding out what went wrong (the pod is deleted next)
@@ -399,7 +460,8 @@ def _delete(reason, error=False):
     if pod:  # keep it in the state file so the watchdog tries again
         return _set(status="error", message=f"Couldn't delete pod {pod}: delete it on runpod.io (it is still billing)")
     cost = info()["cost"]
-    _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[],
+    _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[], video=None, h3_te="", where="",
+         extras={"qwen_hq": False, "ideogram": False},
          message=f"{reason} (this session: about ${cost:.2f})")
 
 
@@ -415,10 +477,30 @@ def _watch():
                     stop(f"Stopped after {c['max_hours']} hours")
                 elif not active[0] and time.time() - state["last_used"] > c["idle_minutes"] * 60:
                     stop(f"Stopped after {c['idle_minutes']} idle minutes")
+                elif not all(state["extras"].values()):
+                    _check_extras()
             elif s == "error" and state["pod"]:
                 _delete("Stopped")
         except Exception:
             pass
+
+
+def comfy_te(card):
+    """H3's text encoder for this card: the 16 GB 4-bit one on Blackwell (tested on an RTX PRO 6000), int8 elsewhere."""
+    return "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" if card.get("blackwell") else \
+        "qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
+
+
+def _check_extras():
+    """Full-quality Qwen and Ideogram 4 download after the card is ready: switch each on when it's in."""
+    try:
+        code, body = _call("GET", "/rm/extras", timeout=20)
+        got = json.loads(body) if code == 200 else {}
+    except (urllib.error.URLError, OSError, ValueError):
+        return
+    extras = {k: bool(got.get(k)) for k in ("qwen_hq", "ideogram")}
+    if extras != state["extras"]:
+        _set(extras=extras)
 
 
 def resume():
@@ -439,6 +521,7 @@ def resume():
                 state["loras"] = json.loads(body) if code == 200 else []
             _open_relay()
             _set(status="ready", message=f"{saved.get('gpu', 'GPU')} ready")
+            _check_extras()
         except Exception:
             _delete("Stopped the pod left from before the restart")
     threading.Thread(target=_watch, daemon=True).start()
