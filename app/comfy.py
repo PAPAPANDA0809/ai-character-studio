@@ -253,14 +253,14 @@ def reference_workflow(cfg, engine, prompt, ref_name, width, height, seed, prefi
     return kontext_workflow(cfg, prompt, ref_name, width, height, seed, prefix, steps)
 
 
-def video_workflow(cfg, engine, prompt, start_name, end_name, width, height, seed, prefix):
+def video_workflow(cfg, engine, prompt, start_name, end_name, width, height, seed, prefix, frames=None):
     if engine in LTX2_ENGINES:
         return ltx2_workflow(cfg, engine, prompt, start_name, end_name, width, height, seed, prefix)
     if engine == "ltxv-2b":
         return ltxv_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix)
     if engine == "hunyuan15":
         return hunyuan15_i2v_workflow(cfg, prompt, start_name, width, height, seed, prefix)
-    return wan_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix)
+    return wan_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix, frames)
 
 
 def add_zimage_polish(cfg, wf, prompt, seed, denoise):
@@ -480,8 +480,11 @@ WAN_NEGATIVE = ("blurry, low quality, distorted face, deformed hands, extra limb
                 "watermark, text, subtitles, overexposed, worst quality, jpeg artifacts")
 
 
-def wan_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix):
+def wan_flf_workflow(cfg, prompt, start_name, end_name, width, height, seed, prefix, frames=None):
+    """frames: the clip length (4n+1, 16 a second); None = the configured 81 (5 seconds)."""
     wf = _wan_flf(cfg, prompt, start_name, end_name or start_name, width, height, seed, prefix)
+    if frames:
+        wf["13"]["inputs"]["length"] = int(frames)
     if not end_name:  # single picture: plain image-to-video
         wf.pop("12")
         wf["13"]["inputs"].pop("end_image")
