@@ -624,8 +624,9 @@ LTX_NEGATIVE = ("blurry, out of focus, overexposed, underexposed, low contrast, 
 # Engines that only run on a rented card (cloud_setup.sh downloads them; the files never come to this PC).
 # MiniMax H3: #1 open image-to-video with sound (Oct 2026); 80 GB+ cards, and its licence excludes the US, EU, UK and
 # Korea, so cloudgpu rents it only in other data centres. First+last frame model, base 20 steps (the turbo LoRA took
-# 3 min instead of 7 for 5 s at 768x1344 on an RTX PRO 6000, at lower quality).
-H3 = {"unet": "minimax_h3_fl2va_int8_convrot.safetensors", "video_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+# 3 min instead of 7 for 5 s at 768x1344 on an RTX PRO 6000, at lower quality). The fp16 video VAE, not the int8 one:
+# its decode kernel failed on an Iceland 5090 ("CUDA driver version is insufficient for CUDA runtime version", 6 Oct).
+H3 = {"unet": "minimax_h3_fl2va_int8_convrot.safetensors", "video_vae": "minimax_h3_video_vae_fp16.safetensors",
       "audio_vae": "minimax_h3_audio_vae_fp32.safetensors", "text_encoder": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
       "text_encoder_blackwell": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "steps": 20, "frames": 124, "fps": 24}
 # Ideogram 4.0: #2 open text-to-image (Oct 2026), best at text inside pictures; two models (with and without the

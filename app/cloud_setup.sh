@@ -4,8 +4,9 @@
 # first one: VIDEO=h3|ltx25 (the card's video engine: MiniMax H3 on 80 GB+ cards where its licence allows, else
 # LTX-2.5) and H3_TE (H3's text encoder for this card).
 # Progress goes to /root/status, ending in READY or ERROR: ...; trained characters arrive in /root/loras through the agent.
-# Before READY: Qwen-Image 2.1 (int8) and the video engine. After READY, in the background: full-quality Qwen-Image 2.1
-# (bf16) and Ideogram 4.0; /root/done_qwen_hq and /root/done_ideogram tell the app each one is in.
+# Before READY: Qwen-Image 2.1 (int8), so pictures work within a few minutes. After READY, in the background: the
+# video engine, full-quality Qwen-Image 2.1 (bf16) and Ideogram 4.0; /root/done_video, done_qwen_hq and done_ideogram
+# tell the app each one is in.
 # Lessons from the first pods: pip resolving the full requirements tried to replace torch (gigabytes), and
 # pypi.org downloads stalled in some data centres, so packages are pinned and installed without resolving,
 # with short timeouts, retries and a mirror as fallback; Hugging Face downloads are fast everywhere.
@@ -37,33 +38,54 @@ I=$H/Comfy-Org/Ideogram-4/resolve/main
 # connection crawled on some hosts and hung forever at 99 % on one (5 Oct).
 echo "$DL_B64" | base64 -d > /root/dl.py
 get() { python3 /root/dl.py "$1" "$2" 2>> /root/dl.log || echo "$2" >> /root/dl_fail; }
+# a group of files into /root/extra (outside models/, so ComfyUI never sees half a file), moved into place together
+# and flagged with /root/done_<flag> (the app polls /rm/extras)
+extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
+  local flag=$1 pids="" files=""
+  shift
+  mkdir -p /root/extra
+  while [ $# -gt 1 ]; do
+    local name=$(basename "$1")
+    get "$1" "/root/extra/$name" &
+    pids="$pids $!"
+    files="$files $name:$2"
+    shift 2
+  done
+  wait $pids  # not a bare wait: other background work belongs to this shell too
+  for f in $files; do
+    [ -s "/root/extra/${f%%:*}" ] || return 1
+  done
+  for f in $files; do
+    mv "/root/extra/${f%%:*}" "${f#*:}/" || return 1
+  done
+  touch "/root/done_$flag"
+}
+
+# Qwen-Image 2.1 first: READY as soon as pictures work. Then, in this order in the background: the video engine
+# (MiniMax H3 or LTX-2.5), full-quality Qwen, Ideogram 4.
 (
   get $Q/diffusion_models/qwen_image_2.1_int8_convrot.safetensors models/diffusion_models/qwen_image_2.1_int8_convrot.safetensors &
   get $Q/text_encoders/qwen3vl_8b_int8_convrot.safetensors models/text_encoders/qwen3vl_8b_int8_convrot.safetensors &
   get $Q/vae/qwen_image_2.1_vae_bf16.safetensors models/vae/qwen_image_2.1_vae_bf16.safetensors &
   get $H/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors models/upscale_models/4x-UltraSharp.safetensors &
-  if [ "$VIDEO" = h3 ]; then
-    H3_UNET=${H3_UNET:-minimax_h3_fl2va_int8_convrot.safetensors}  # or the slimmed (pruned) one on 32-48 GB cards
-    get $M/diffusion_models/$H3_UNET models/diffusion_models/$H3_UNET &
-    get $M/text_encoders/$H3_TE models/text_encoders/$H3_TE &
-    get $M/vae/minimax_h3_video_vae_int8_convrot.safetensors models/vae/minimax_h3_video_vae_int8_convrot.safetensors &
-    get $M/vae/minimax_h3_audio_vae_fp32.safetensors models/vae/minimax_h3_audio_vae_fp32.safetensors &
-  else
-    get $L/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors models/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors &
-    get $L/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors models/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors &
-    get $L/vae/ltx-2.5-video-vae-bf16.safetensors models/vae/ltx-2.5-video-vae-bf16.safetensors &
-    get $L/vae/ltx-2.5-audio-vae-bf16.safetensors models/vae/ltx-2.5-audio-vae-bf16.safetensors &
-  fi
   wait
   touch /root/dl_done
+  if [ "$VIDEO" = h3 ]; then
+    H3_UNET=${H3_UNET:-minimax_h3_fl2va_int8_convrot.safetensors}  # or the slimmed (pruned) one on 32-48 GB cards
+    extra video $M/diffusion_models/$H3_UNET models/diffusion_models $M/text_encoders/$H3_TE models/text_encoders \
+      $M/vae/minimax_h3_video_vae_fp16.safetensors models/vae $M/vae/minimax_h3_audio_vae_fp32.safetensors models/vae
+  else
+    extra video $L/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors models/diffusion_models \
+      $L/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors models/text_encoders \
+      $L/vae/ltx-2.5-video-vae-bf16.safetensors models/vae $L/vae/ltx-2.5-audio-vae-bf16.safetensors models/vae
+  fi
+  extra qwen_hq $Q/diffusion_models/qwen_image_2.1_bf16.safetensors models/diffusion_models \
+    $Q/text_encoders/qwen3vl_8b_bf16.safetensors models/text_encoders
+  extra ideogram $I/diffusion_models/ideogram4_int8_convrot.safetensors models/diffusion_models \
+    $I/diffusion_models/ideogram4_unconditional_int8_convrot.safetensors models/diffusion_models \
+    $I/text_encoders/qwen3vl_8b_fp8_scaled.safetensors models/text_encoders \
+    $I/vae/flux2-vae.safetensors models/vae
 ) &
-case "$VIDEO/$H3_UNET/$H3_TE" in
-  h3/*pruned*/*nvfp4*) TOTAL=58000; NAME="MiniMax H3 lite" ;;
-  h3/*pruned*) TOTAL=69000; NAME="MiniMax H3 lite" ;;
-  h3/*/*nvfp4*) TOTAL=71000; NAME="MiniMax H3" ;;
-  h3/*) TOTAL=82000; NAME="MiniMax H3" ;;
-  *) TOTAL=56000; NAME="LTX-2.5" ;;
-esac
 
 st "installing Python packages"
 PKGS="torchsde==0.2.6 trampoline==0.1.2 numpy==2.5.3 einops==0.8.2 transformers==5.17.0 tokenizers==0.23.2
@@ -90,46 +112,17 @@ python3 -c "import torchvision" 2>/dev/null || pip install -q --break-system-pac
   st "ERROR: torchvision failed to install (see /root/pip.log)"; exit 1; }
 
 while [ ! -f /root/dl_done ]; do
-  st "downloading Qwen-Image 2.1 and $NAME ($(du -sm models 2>/dev/null | cut -f1) of ~$TOTAL MB)"
+  st "downloading Qwen-Image 2.1 ($(du -sm models 2>/dev/null | cut -f1) of ~17,000 MB)"
   sleep 5
 done
 [ -f /root/dl_fail ] && { st "ERROR: model download failed: $(cat /root/dl_fail)"; exit 1; }
-
-# after READY: one group of files into /root/extra (outside models/, so ComfyUI never sees half a file), then moved
-# into place together and flagged
-extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
-  local flag=$1 pids="" files=""
-  shift
-  mkdir -p /root/extra
-  while [ $# -gt 1 ]; do
-    local name=$(basename "$1")
-    get "$1" "/root/extra/$name" &
-    pids="$pids $!"
-    files="$files $name:$2"
-    shift 2
-  done
-  wait $pids  # not a bare wait: ComfyUI is a child of this shell too and never ends
-  for f in $files; do
-    [ -s "/root/extra/${f%%:*}" ] || return 1
-  done
-  for f in $files; do
-    mv "/root/extra/${f%%:*}" "${f#*:}/" || return 1
-  done
-  touch "/root/done_$flag"
-}
 
 st "starting ComfyUI"
 setsid nohup python main.py --listen 127.0.0.1 --port 8188 > /root/comfy.log 2>&1 < /dev/null &
 for i in $(seq 1 60); do
   if curl -s -m 3 -o /dev/null http://127.0.0.1:8188/system_stats; then
     st "READY"
-    extra qwen_hq $Q/diffusion_models/qwen_image_2.1_bf16.safetensors models/diffusion_models \
-      $Q/text_encoders/qwen3vl_8b_bf16.safetensors models/text_encoders
-    extra ideogram $I/diffusion_models/ideogram4_int8_convrot.safetensors models/diffusion_models \
-      $I/diffusion_models/ideogram4_unconditional_int8_convrot.safetensors models/diffusion_models \
-      $I/text_encoders/qwen3vl_8b_fp8_scaled.safetensors models/text_encoders \
-      $I/vae/flux2-vae.safetensors models/vae
-    exit 0
+    exit 0  # the video engine and the extras keep downloading in the background
   fi
   sleep 5
 done

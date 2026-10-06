@@ -471,7 +471,8 @@ def engines():
                                            else "on Fast GPU (full quality in a few minutes)")
         if (key in comfy.VIDEO_ENGINES or key in comfy.T2V_ENGINES) and cloudgpu.state["status"] == "ready" \
                 and cloudgpu.state.get("video"):  # every video job goes to the rented card's engine (on_rented)
-            label = f"{cloudgpu.video_label(cloudgpu.state['video'], cloudgpu.state['h3_unet'])} with sound · on Fast GPU"
+            label = f"{cloudgpu.video_label(cloudgpu.state['video'], cloudgpu.state['h3_unet'])} with sound · on Fast GPU" + (
+                "" if cloudgpu.state["extras"].get("video") else " (downloading, a few minutes)")
         return {"id": key, "label": label, "installed": all(ready(f) for f in e["files"])}
     return {
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
@@ -776,6 +777,16 @@ def on_rented(p, run):
     remote = cloudgpu.url() if cloudgpu.state.get("video") else None
     if not remote:
         return run(None)
+    t = time.time()
+    while not cloudgpu.state["extras"].get("video"):  # pictures come first; the video engine a few minutes later
+        if time.time() - t > 20 * 60 or not cloudgpu.url():
+            raise RuntimeError(f"the rented card's video engine ({cloudgpu.info()['video_label']}) didn't finish "
+                               "downloading; try again in a moment, or stop and reconnect the Fast GPU")
+        if int(time.time() - t) % 60 < 5:
+            log(p, f"waiting for {cloudgpu.info()['video_label']} to finish downloading on the rented card")
+        check_cancel(p)
+        cloudgpu._check_extras()
+        time.sleep(5)
     log(p, f"using the rented {cloudgpu.info()['label']} ({cloudgpu.info()['video_label']})")
     with cloudgpu.using():
         return run(remote)

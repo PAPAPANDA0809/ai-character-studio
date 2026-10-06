@@ -72,7 +72,7 @@ lock = threading.Lock()
 state = {"status": "off", "message": "", "pod": None, "key": "", "price": 0.0, "gpu": "",
          "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "h3_unet": "", "h3_short": 768,
          "where": "",
-         "extras": {"qwen_hq": False, "ideogram": False}}
+         "extras": {"video": False, "qwen_hq": False, "ideogram": False}}
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 relay = [None]     # the local relay server
 _opts = [0.0, []]  # options() cache: when, list
@@ -302,9 +302,14 @@ def _start(card, cloud):
     try:
         pod = None
         if video == "h3":
-            dcs = h3_stock().get(card["id"], [])
-            if dcs:
-                pod, why = _create(c, card["id"], cloud, key, DISK_GB["h3" if h3_unet == H3_FULL else "h3lite"], dcs)
+            for attempt in range(2):
+                dcs = h3_stock().get(card["id"], [])
+                if dcs:
+                    pod, why = _create(c, card["id"], cloud, key, DISK_GB["h3" if h3_unet == H3_FULL else "h3lite"], dcs)
+                if pod or not dcs or state["status"] != "starting":
+                    break
+                _h3_stock[0] = 0  # RunPod's stock list was stale: read it again and try once more
+                time.sleep(3)
             if not pod:  # none free where H3 may run: rent it anywhere, videos use LTX-2.5
                 video, note = "ltx25", " (no free one where MiniMax H3 is allowed, so videos use LTX-2.5)"
         if not pod and state["status"] == "starting":
@@ -324,7 +329,7 @@ def _start(card, cloud):
         h3_unet = h3_unet if video == "h3" else ""
         _set(pod=pod["id"], key=key, price=float(price or 0), started=time.time(), last_used=time.time(), loras=[],
              video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where,
-             extras={"qwen_hq": False, "ideogram": False},
+             extras={"video": False, "qwen_hq": False, "ideogram": False},
              message="Starting the machine" + note + "…")
         if not _wait_agent(8):  # good machines answer in under a minute
             return
@@ -365,7 +370,8 @@ def _start(card, cloud):
         else:
             raise RuntimeError("setup took over 40 minutes")
         _open_relay()
-        _set(status="ready", message=f"{state['gpu']} ready · videos with {video_label(video, h3_unet)}{note}",
+        _set(status="ready", message=f"{state['gpu']} ready for pictures · {video_label(video, h3_unet)} videos in a few "
+                                     f"minutes{note}",
              last_used=time.time())
         _free_local()
     except Exception as e:
@@ -509,7 +515,7 @@ def _delete(reason, error=False):
     cost = info()["cost"]
     _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[], video=None, h3_te="", h3_unet="",
          where="",
-         extras={"qwen_hq": False, "ideogram": False},
+         extras={"video": False, "qwen_hq": False, "ideogram": False},
          message=f"{reason} (this session: about ${cost:.2f})")
 
 
@@ -540,13 +546,14 @@ def comfy_te(card):
 
 
 def _check_extras():
-    """Full-quality Qwen and Ideogram 4 download after the card is ready: switch each on when it's in."""
+    """The video engine, full-quality Qwen and Ideogram 4 download after the card is ready (pictures work at once):
+    switch each on when it's in."""
     try:
         code, body = _call("GET", "/rm/extras", timeout=20)
         got = json.loads(body) if code == 200 else {}
     except (urllib.error.URLError, OSError, ValueError):
         return
-    extras = {k: bool(got.get(k)) for k in ("qwen_hq", "ideogram")}
+    extras = {k: bool(got.get(k)) for k in ("video", "qwen_hq", "ideogram")}
     if extras != state["extras"]:
         _set(extras=extras)
 
