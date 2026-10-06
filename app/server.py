@@ -1,5 +1,6 @@
 """Reelmint - local web app. Run: python server.py  (then open http://127.0.0.1:7860)"""
 import gzip
+import io
 import http.cookies
 import json
 import mimetypes
@@ -9,6 +10,7 @@ import sys
 import threading
 import urllib.parse
 import urllib.request
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # embedded Python doesn't add the script dir
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -78,6 +80,34 @@ class Handler(BaseHTTPRequestHandler):
             body = gzip.compress(body, 6)
             self.send_header("Content-Encoding", "gzip")
         self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_zip(self, user, items):
+        """items = [{project, path, name}] of the person's own files, stored as they are (PNG/MP4 don't shrink)."""
+        buf, used = io.BytesIO(), set()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
+            for it in items[:500]:
+                pid, rel = str(it.get("project", "")), str(it.get("path", ""))
+                if not re.fullmatch(r"[\w\-]+", pid) or pipeline.user_of(pid) != user:
+                    continue
+                root = os.path.normpath(pipeline.pdir(pid))
+                full = os.path.normpath(pipeline.pdir(pid, *rel.split("/")))
+                if not full.startswith(root + os.sep) or not os.path.isfile(full):
+                    continue
+                name = os.path.basename(str(it.get("name") or "")) or os.path.basename(full)
+                stem, ext = os.path.splitext(name)
+                n = 1
+                while name in used:  # the same title twice: number it
+                    n += 1
+                    name = f"{stem}_{n}{ext}"
+                used.add(name)
+                z.write(full, name)
+        body = buf.getvalue()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="reelmint_{len(used)}_files.zip"')
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -312,6 +342,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(cloudgpu.info())
             if path == "/api/delete":
                 return self.send_json({"deleted": pipeline.delete_items(u, b.get("projects", []), b.get("files", []))})
+            if path == "/api/zip":  # several picked pictures/videos as one download (one save dialog, not one each)
+                return self.send_zip(u, b.get("items", []))
             if path == "/api/plan":
                 p = pipeline.create_project(u, b["idea"], b.get("keyframes", 4), b.get("style", ""),
                                             b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),
