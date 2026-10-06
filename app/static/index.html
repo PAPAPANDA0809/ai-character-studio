@@ -1410,8 +1410,9 @@ function renderGpu() {
   $('#gpubox').innerHTML = `<div class="glass pad" style="width:100%;max-width:460px;max-height:90vh;overflow:auto">
     <div class="row" style="justify-content:space-between"><h2 style="margin:0">⚡ Fast GPU</h2><button id="gp-close">✕</button></div>
     <p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Rent a card on RunPod. While it's on, <b>Qwen-Image 2.1</b> pictures and edits
-      run there at full quality, <b>Ideogram 4.0</b> becomes an image engine, and videos (with sound) use <b>MiniMax H3</b> on
-      80 GB+ cards or <b>LTX-2.5</b> on the others. Z-Image stays on this PC. Getting it ready takes about 5–12 minutes.</p>
+      run there at full quality, <b>Ideogram 4.0</b> becomes an image engine, and videos (with sound) use <b>MiniMax H3</b>
+      (lite on the RTX 5090 and 48 GB cards) or <b>LTX-2.5</b>: each row says which. Z-Image stays on this PC. Ready for
+      pictures in about 3–6 minutes. Stock changes by the minute: close and reopen this panel to refresh it.</p>
     ${live || g.message ? `<div class="progress" style="margin:0 0 12px;${s === 'error' ? 'border-color:var(--err)' : ''}">${s === 'starting' || s === 'stopping' ? '<i class="spin"></i>' : s === 'ready' ? '✅' : s === 'error' ? '⚠' : '⏸'}
       <span style="flex:1">${esc(g.message || s)}${s === 'starting' ? '<br><small style="color:var(--muted)">Usually ready for pictures in about 3–6 minutes; the first minutes can stay on "Starting the machine".</small>' : ''}</span></div>` : ''}
     ${!live && admin ? gpuList() : ''}
