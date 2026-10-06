@@ -72,7 +72,9 @@ extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
   touch /root/dl_done
   if [ "$VIDEO" = h3 ]; then
     H3_UNET=${H3_UNET:-minimax_h3_fl2va_int8_convrot.safetensors}  # or the slimmed (pruned) one on 32-48 GB cards
+    # + the reference-to-video model, for Video only with a character picture
     extra video $M/diffusion_models/$H3_UNET models/diffusion_models $M/text_encoders/$H3_TE models/text_encoders \
+      $M/diffusion_models/$H3_REF models/diffusion_models \
       $M/vae/minimax_h3_video_vae_fp16.safetensors models/vae $M/vae/minimax_h3_audio_vae_fp32.safetensors models/vae
   else
     extra video $L/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors models/diffusion_models \

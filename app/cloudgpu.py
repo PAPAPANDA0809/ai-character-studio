@@ -34,6 +34,8 @@ HQ_QWEN = {"unet": "qwen_image_2.1_bf16.safetensors", "text_encoder": "qwen3vl_8
 H3_EXCLUDED = ("US", "EU", "UK", "GB", "KR")  # data centre id prefixes / country codes
 H3_FULL = "minimax_h3_fl2va_int8_convrot.safetensors"           # 34 GB: 80 GB+ cards
 H3_PRUNED = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"  # 21 GB slimmed H3: fits a 32 GB RTX 5090
+# H3's reference-to-video model (Video only with a character picture), same size as the card's main H3 model
+H3_REF = {H3_FULL: "minimax_h3_ref2va_int8_convrot.safetensors", H3_PRUNED: "minimax_h3_ref2va_pruned_int8_convrot.safetensors"}
 DISK_GB = {"h3": 180, "h3lite": 150, "ltx25": 160}  # models with the full-quality extras, plus ComfyUI
 
 
@@ -338,7 +340,7 @@ def _start(card, cloud):
         # what this card installs: its video engine (and H3's text encoder), read by cloud_setup.sh
         with open(DOWNLOADER, "rb") as f:
             dl = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
-        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nDL_B64={dl}\n".encode(), 1)
+        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nDL_B64={dl}\n".encode(), 1)
         for _ in range(24):  # just after boot the gateway can still answer 404 for a while
             try:
                 code, body = _call("POST", "/rm/setup", script)

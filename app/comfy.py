@@ -628,7 +628,8 @@ LTX_NEGATIVE = ("blurry, out of focus, overexposed, underexposed, low contrast, 
 # its decode kernel failed on an Iceland 5090 ("CUDA driver version is insufficient for CUDA runtime version", 6 Oct).
 H3 = {"unet": "minimax_h3_fl2va_int8_convrot.safetensors", "video_vae": "minimax_h3_video_vae_fp16.safetensors",
       "audio_vae": "minimax_h3_audio_vae_fp32.safetensors", "text_encoder": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
-      "text_encoder_blackwell": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "steps": 20, "frames": 124, "fps": 24}
+      "text_encoder_blackwell": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "steps": 20, "frames": 124, "fps": 24,
+      "ref_unet": "minimax_h3_ref2va_int8_convrot.safetensors"}
 # Ideogram 4.0: #2 open text-to-image (Oct 2026), best at text inside pictures; two models (with and without the
 # prompt) through DualModelGuider as in ComfyUI's template, "Quality" preset. Weights: non-commercial licence.
 IDEOGRAM4 = {"unet": "ideogram4_int8_convrot.safetensors", "unet_uncond": "ideogram4_unconditional_int8_convrot.safetensors",
@@ -640,9 +641,12 @@ LTX25_POD = {"unet": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safet
              "video_vae": "ltx-2.5-video-vae-bf16.safetensors", "audio_vae": "ltx-2.5-audio-vae-bf16.safetensors"}
 
 
-def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_encoder=None, unet=None, short=768):
+def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_encoder=None, unet=None, short=768,
+                refs=None, ref_unet=None):
     """MiniMax H3 with sound: start+end = first/last frame, start = image-to-video, neither = text-to-video. Frames come
-    back through SaveImage and the soundtrack through SaveAudio, like LTX-2, so the pipeline stores both the same way."""
+    back through SaveImage and the soundtrack through SaveAudio, like LTX-2, so the pipeline stores both the same way.
+    refs = character pictures (uploaded names): H3's reference-to-video model keeps those people, named <Picture 1>...
+    in the prompt (ComfyUI's video_minimax_h3_r2v template)."""
     c = H3
     # H3's native canvas: a 768 px short edge, at most 768x1344, multiples of 32 (MiniMax's prompting tips); the
     # project's 480p/720p choice only gives the shape. short=480 on 32 GB cards (the slimmed model, 864x480).
@@ -670,6 +674,17 @@ def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_
         "15": {"class_type": "SaveImage", "inputs": {"images": ["13", 0], "filename_prefix": prefix}},
         "16": {"class_type": "SaveAudio", "inputs": {"audio": ["14", 0], "filename_prefix": prefix + "_audio"}},
     }
+    if refs:
+        tags = " and ".join(f"<Picture {k + 1}>" for k in range(len(refs)))
+        lead = ("Use <Picture 1> as the reference for the main character: keep the same face, hair and clothes"
+                + (f"; {tags} show the people and things to use" if len(refs) > 1 else "") + ". ")
+        wf["1"]["inputs"]["unet_name"] = ref_unet or c["ref_unet"]
+        wf["6"] = {"class_type": "MiniMaxH3ReferenceToVideo",
+                   "inputs": {**wf["6"]["inputs"], "prompt": lead + prompt, "audio_vae": ["4", 0], "ref_image_size": "match"}}
+        for k, name in enumerate(refs[:9]):
+            wf[f"r{k}"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+            wf["6"]["inputs"][f"ref_images.ref_image_{k}"] = [f"r{k}", 0]
+        return wf
     for key, name, slot in (("5", start_name, "first_frame"), ("7", end_name, "last_frame")):
         if name:
             wf[key] = {"class_type": "LoadImage", "inputs": {"image": name}}

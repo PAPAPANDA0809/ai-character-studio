@@ -803,11 +803,15 @@ def clip_engine(p, cfg, remote, key="video_engine", local_default="wan22-14b", e
     return p.get(key) if p.get(key) in engines else local_default
 
 
-def clip_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix):
-    """A clip from first/last frames (start only = animate one picture; neither = text-to-video)."""
+def clip_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix, p=None, refs=None):
+    """A clip from first/last frames (start only = animate one picture; neither = text-to-video; refs = character
+    pictures for H3's reference-to-video). H3 follows the project's setting: 720p = its native 768x1344 (about 2.5x
+    slower: 7.3 min of sampling on an RTX 5090 against ~2.5 at 480), 480p = 480x832."""
     if engine == "h3":
+        short = 768 if (p or {}).get("video_res") == "720p" else 480
+        unet = cloudgpu.state.get("h3_unet")
         return comfy.h3_workflow(prompt, start, end, w, h, seed, prefix, text_encoder=cloudgpu.state.get("h3_te"),
-                                 unet=cloudgpu.state.get("h3_unet"), short=cloudgpu.state.get("h3_short") or 768)
+                                 unet=unet, short=short, refs=refs, ref_unet=cloudgpu.H3_REF.get(unet))
     if not start:
         return comfy.t2v_workflow(cfg, engine, prompt, w, h, seed, prefix)
     return comfy.video_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix)
@@ -841,7 +845,7 @@ def _animate(p, only=None, remote=None):
         prompt = ". ".join(x for x in [p["plan"]["motions"][i], p["plan"].get("character", ""), p.get("style", "")] if x)
         t = time.time()
         log(p, f"clip {i + 1}/{n - 1}: animating with {engine} (this is the slow part)")
-        out = c.run(clip_workflow(cfg, engine, prompt, a, b, w, h, p["seed"] + i, f"aics/{p['id']}/clip{i:02d}"))
+        out = c.run(clip_workflow(cfg, engine, prompt, a, b, w, h, p["seed"] + i, f"aics/{p['id']}/clip{i:02d}", p))
         frames = next(o["images"] for o in out.values() if o.get("images"))
         save_clip_frames(p, c, ff, i, frames, fps, out)
         log(p, f"clip {i + 1}/{n - 1}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
@@ -868,13 +872,23 @@ def _t2v(p, only=None, remote=None):
     n = len(p["plan"]["keyframes"])
     c.free()
     last_engine[0] = None
+    refs, ref_names = refs_of(p), None
+    if refs and engine == "h3":  # H3 keeps the character from the picture(s)
+        user = user_of(p["id"])
+        ref_names = [c.upload_image(os.path.join(char_dir(user), r), "aics_ref_" + re.sub(r"[^\w.\-]", "_", user + "_" + r))
+                     for r in refs if r in list_characters(user)]
+        log(p, f"keeping the character from {', '.join(refs)} (MiniMax H3 reference)")
+    elif refs:
+        log(p, f"the character picture isn't used: {engine} makes video-only clips from text (an H3 Fast GPU card uses "
+               "it; or make a picture with the character first and use Make video)")
     for i in (range(n) if only is None else [int(only)]):
         check_cancel(p)
         prompt = ". ".join(x for x in [p.get("style", ""), p["plan"]["keyframes"][i]["image_prompt"],
                                        p["plan"].get("character", ""), p["plan"].get("setting", "")] if x)
         t = time.time()
         log(p, f"scene {i + 1}/{n}: generating video with {engine}")
-        out = c.run(clip_workflow(cfg, engine, prompt, None, None, w, h, p["seed"] + i, f"aics/{p['id']}/scene{i:02d}"))
+        out = c.run(clip_workflow(cfg, engine, prompt, None, None, w, h, p["seed"] + i, f"aics/{p['id']}/scene{i:02d}",
+                                  p, ref_names))
         frames = next(o["images"] for o in out.values() if o.get("images"))
         save_clip_frames(p, c, ff, i, frames, fps, out)
         log(p, f"scene {i + 1}/{n}: done in {time.time() - t:.0f}s ({len(frames)} frames)")
@@ -940,7 +954,7 @@ def _animate_image(p, index, motion="", remote=None):
                                    k["image_prompt"]] if x)
     log(p, f"picture {i + 1}: animating with {engine}")
     t = time.time()
-    out = c.run(clip_workflow(cfg, engine, prompt, a, None, w, h, p["seed"] + 100 + i, f"aics/{p['id']}/img{i:02d}"))
+    out = c.run(clip_workflow(cfg, engine, prompt, a, None, w, h, p["seed"] + 100 + i, f"aics/{p['id']}/img{i:02d}", p))
     frames = next(o["images"] for o in out.values() if o.get("images"))
     fdir = pdir(p["id"], "clips", f"imgframes_{i:02d}")
     shutil.rmtree(fdir, ignore_errors=True)
