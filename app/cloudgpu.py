@@ -111,6 +111,16 @@ def info():
             "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": active[0]}
 
 
+def card_video(card):
+    """What the card list says this card makes videos with, right now: H3 only if one is free where it may run."""
+    plan = h3_plan(card)
+    if not plan:
+        return video_label("ltx25")
+    if h3_stock().get(card["id"]):
+        return video_label("h3", plan[0])
+    return "LTX-2.5 (none free right now where MiniMax H3 is allowed)"
+
+
 def options():
     """The cards in CATALOG with RunPod's live stock and both prices (community = cheaper hosts, secure = RunPod's
     own data centres). Asked at most once a minute."""
@@ -126,7 +136,7 @@ def options():
                     "community": g.get("communityPricePerHr") if g.get("communityCloud") else None,
                     "secure": g.get("securePricePerHr") if g.get("secureCloud") else None,
                     "community_broken": time.time() - _broken.get(c["id"], 0) < 3600,
-                    "video": video_label("h3", h3_plan(c)[0]) if h3_plan(c) else video_label("ltx25")})
+                    "video": card_video(c)})
     res.sort(key=lambda o: min([p for p in (o["community"], o["secure"]) if p is not None] or [1e9]))  # cheapest first
     _opts[:] = [time.time(), res]
     return res
@@ -175,13 +185,27 @@ def h3_allowed(place):
     return bool(head) and head not in H3_EXCLUDED
 
 
-def _h3_datacenters():
-    """RunPod's data centres where H3 may run (Canada, India, Japan, Singapore, Australia, Iceland, Norway...)."""
+_h3_stock = [0.0, {}]  # when, {gpu id: [data centres where H3 may run that have the card in stock]}
+
+
+def h3_stock():
+    """Per card, RunPod's data centres outside H3's excluded territories (Canada, India, Japan, Singapore, Australia,
+    Iceland, Norway...) that have it in stock now. Renting must name only these: asking for all 17 allowed ones
+    failed ("no longer any instances") while two of them had free RTX 5090s (6 Oct). Asked at most once a minute."""
+    if time.time() - _h3_stock[0] < 60:
+        return _h3_stock[1]
     code, out, err = _run([RUNPODCTL, "datacenter", "list"], timeout=60)
+    stock = {}
     try:
-        return [d["id"] for d in json.loads(out[out.index("["):]) if h3_allowed(d.get("id"))]
+        for d in json.loads(out[out.index("["):]):
+            if h3_allowed(d.get("id")):
+                for g in d.get("gpuAvailability") or []:
+                    if g.get("gpuId") and str(g.get("stockStatus") or "").lower() not in ("", "none"):
+                        stock.setdefault(g["gpuId"], []).append(d["id"])
     except (ValueError, KeyError):
-        return []
+        return _h3_stock[1]
+    _h3_stock[:] = [time.time(), stock]
+    return stock
 
 
 def _place(pod_id):
@@ -278,7 +302,7 @@ def _start(card, cloud):
     try:
         pod = None
         if video == "h3":
-            dcs = _h3_datacenters()
+            dcs = h3_stock().get(card["id"], [])
             if dcs:
                 pod, why = _create(c, card["id"], cloud, key, DISK_GB["h3" if h3_unet == H3_FULL else "h3lite"], dcs)
             if not pod:  # none free where H3 may run: rent it anywhere, videos use LTX-2.5
