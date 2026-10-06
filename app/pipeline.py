@@ -488,8 +488,10 @@ def engines():
 
 
 def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine=None, quality=None, video_res=None,
-                lora=None, style=None):
+                lora=None, style=None, video_seconds=None):
     p = load(pid)
+    if video_seconds:  # H3 clip length (5-15 s); other engines make 5 s
+        p["video_seconds"] = max(5, min(15, int(video_seconds)))
     if style is not None:  # the visual style added to every prompt ("" = none)
         p["style"] = " ".join(str(style).split())[:300]
     cfg = load_config()
@@ -808,13 +810,23 @@ def clip_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix, p=None, r
     pictures for H3's reference-to-video). H3 follows the project's setting: 720p = its native 768x1344 (about 2.5x
     slower: 7.3 min of sampling on an RTX 5090 against ~2.5 at 480), 480p = 480x832."""
     if engine == "h3":
-        short = 768 if (p or {}).get("video_res") == "720p" else 480
+        res = "720p" if (p or {}).get("video_res") == "720p" else "480p"
         unet = cloudgpu.state.get("h3_unet")
         return comfy.h3_workflow(prompt, start, end, w, h, seed, prefix, text_encoder=cloudgpu.state.get("h3_te"),
-                                 unet=unet, short=short, refs=refs, ref_unet=cloudgpu.H3_REF.get(unet))
+                                 unet=unet, short=768 if res == "720p" else 480, refs=refs,
+                                 ref_unet=cloudgpu.H3_REF.get(unet), frames=h3_frames(p, res))
     if not start:
         return comfy.t2v_workflow(cfg, engine, prompt, w, h, seed, prefix)
     return comfy.video_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix)
+
+
+def h3_frames(p, res):
+    """The project's clip length (5-15 s, its "video_seconds") as H3 frames: 24 fps on its 17-frame grid (17k+5;
+    124 = 5 s, 362 = 15 s), capped by what the rented card can hold at this resolution."""
+    card = cloudgpu.info()
+    cap = (card.get("h3_max") or {}).get(res, 5)
+    seconds = max(5, min(cap, int((p or {}).get("video_seconds") or 5)))
+    return 17 * -(-(24 * seconds - 5) // 17) + 5
 
 
 def do_animate(p, only=None):
@@ -928,7 +940,13 @@ def save_clip_frames(p, c, ff, i, frames, fps, out=None):
     p["clips_version"] = time.time()
 
 
-def do_animate_image(p, index, motion=""):
+def do_animate_image(p, index, motion="", seconds=None, video_res=None):
+    if video_res in ("480p", "720p"):  # chosen in the Make video box: kept as the project's setting
+        p["video_res"] = video_res
+    if seconds:
+        p["video_seconds"] = max(5, min(15, int(seconds)))
+    if video_res or seconds:
+        save(p)
     return on_rented(p, lambda remote: _animate_image(p, index, motion, remote))
 
 

@@ -51,6 +51,16 @@ def h3_plan(card):
     return None
 
 
+def h3_max_seconds(mem):
+    """The longest H3 clip a card can hold, per resolution. Measured on an RTX 5090 (slimmed H3): 768x1344 for 5 s
+    used 31 of 31.4 GB, so its 720p stays at 5 s; the rest scales with the memory left beside the model."""
+    if mem >= 80:
+        return {"480p": 15, "720p": 15}
+    if mem >= 48:
+        return {"480p": 15, "720p": 10}
+    return {"480p": 10, "720p": 5}
+
+
 def video_label(video, unet=""):
     return "LTX-2.5" if video != "h3" else "MiniMax H3" + (" lite" if unet == H3_PRUNED else "")
 CHUNK = 8 << 20  # trained characters go up in 8 MB pieces (one request through the gateway can't be huge)
@@ -109,6 +119,7 @@ def info():
     idle_left = c["idle_minutes"] * 60 - (time.time() - s["last_used"]) if s["status"] == "ready" and not active[0] else None
     return {**s, "label": s["gpu"] or "GPU", "minutes": round(up / 60), "cost": round(up / 3600 * s["price"], 2),
             "video_label": video_label(s["video"], s["h3_unet"]) if s["video"] else "",
+            **_card_facts(s),
             "idle_stop_in": max(0, round(idle_left / 60)) if idle_left is not None else None,
             "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": active[0]}
 
@@ -121,6 +132,15 @@ def card_video(card):
     if h3_stock().get(card["id"]):
         return video_label("h3", plan[0])
     return "LTX-2.5 (none free right now where MiniMax H3 is allowed)"
+
+
+def _card_facts(s):
+    """Memory, speed and the H3 length limits of the rented card, for the page's slider and time estimate."""
+    card = next((c for c in CATALOG if c["label"] == s.get("gpu")), None)
+    if not card:
+        return {}
+    return {"mem": card["mem"], "speed": card["speed"],
+            "h3_max": h3_max_seconds(card["mem"]) if s.get("video") == "h3" else None}
 
 
 def options():

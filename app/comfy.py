@@ -642,7 +642,7 @@ LTX25_POD = {"unet": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safet
 
 
 def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_encoder=None, unet=None, short=768,
-                refs=None, ref_unet=None):
+                refs=None, ref_unet=None, frames=None):
     """MiniMax H3 with sound: start+end = first/last frame, start = image-to-video, neither = text-to-video. Frames come
     back through SaveImage and the soundtrack through SaveAudio, like LTX-2, so the pipeline stores both the same way.
     refs = character pictures (uploaded names): H3's reference-to-video model keeps those people, named <Picture 1>...
@@ -661,7 +661,7 @@ def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_
         "4": {"class_type": "VAELoader", "inputs": {"vae_name": c["audio_vae"]}},
         "6": {"class_type": "MiniMaxH3ImageToVideo",
               "inputs": {"clip": ["2", 0], "vae": ["3", 0], "prompt": prompt, "width": width // 32 * 32,
-                         "height": height // 32 * 32, "length": c["frames"]}},
+                         "height": height // 32 * 32, "length": frames or c["frames"]}},
         "8": {"class_type": "BasicScheduler", "inputs": {"model": ["1", 0], "scheduler": "simple", "steps": c["steps"],
                                                          "denoise": 1.0}},
         "9": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "res_multistep"}},

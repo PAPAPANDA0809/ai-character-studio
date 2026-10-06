@@ -47,6 +47,15 @@
   input, textarea, select { width:100%; background:rgba(0,0,0,.35); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:11px 13px; font:inherit; outline:none; transition:border .15s, box-shadow .15s; }
   input:focus, textarea:focus, select:focus { border-color:rgba(46,242,181,.6); box-shadow:0 0 0 3px rgba(46,242,181,.12); }
   textarea { resize:vertical; }
+  .vdlg { width:100%; max-width:460px; display:flex; flex-direction:column; gap:12px; }
+  .vdlg textarea { width:100%; box-sizing:border-box; font-size:15px; resize:none; }
+  .vd-row { display:flex; gap:8px; }
+  .vd-res { flex:1; }
+  .vd-res.on { border-color:var(--mint); color:var(--mint); background:rgba(46,242,181,.08); }
+  .vd-len { display:flex; align-items:center; gap:10px; font-size:14px; margin:0; }
+  .vd-len b { min-width:36px; }
+  .vd-len input { flex:1; accent-color:var(--mint); }
+  .vd-note { margin:0; color:var(--muted); font-size:12px; }
   select { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%; background-size:5px 5px; background-repeat:no-repeat; padding-right:34px; }
   .idea { font-size:17px; min-height:110px; }
   .enh textarea { border-color:rgba(138,92,255,.35); background:linear-gradient(180deg,rgba(138,92,255,.08),rgba(0,0,0,.35)); }
@@ -1028,7 +1037,10 @@ function renderStudio() {
         <label>Character pictures <span style="font-weight:400">· 1 = main, 2–3 extra</span></label>
         ${[0, 1, 2].map(r => `<select class="f-ref" style="${r ? 'margin-top:6px' : ''}${r && !pRefs[r - 1] ? ';display:none' : ''}" ${busy || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts(r)}</select>`).join('')}
         ${!refEngines().includes(P.image_engine) && !P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Qwen-Image 2.1</div>` : ''}` : ''}
-      ${!isImg ? `<label>Video resolution</label><select id="f-vres" ${dis}>${opt([['480p', '480p'], ['720p', '720p · ~2-3× slower']], P.video_res || '480p')}</select>` : ''}
+      ${!isImg ? `<label>Video resolution</label><select id="f-vres" ${dis}>${opt([['480p', '480p'], ['720p', '720p · ~2-3× slower']], P.video_res || '480p')}</select>
+        <label>Clip length with MiniMax H3 <b id="f-vsecs-v">${P.video_seconds || 5} s</b></label>
+        <input type="range" id="f-vsecs" min="5" max="15" step="1" value="${P.video_seconds || 5}" ${dis} style="width:100%;accent-color:var(--mint)">
+        <p class="vd-note">${GPU && GPU.status === 'ready' && GPU.video === 'h3' ? `About ${h3Minutes(P.video_res || '480p', P.video_seconds || 5)} min a clip on the ${esc(GPU.label)} (up to ${(GPU.h3_max || {})[P.video_res || '480p']} s here)` : 'Other video engines make 5 s clips'}</p>` : ''}
       ${isT2V ? `<label>Text-to-video engine</label><select id="f-t2v-eng" ${dis}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select>`
         : `<label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${dis}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select>`}
       <label>Visual style</label><select id="f-style-sel" ${dis}>${styleOptions(P.style || '')}</select>
@@ -1119,14 +1131,7 @@ function renderStudio() {
   on('#st-stitch', async () => { dirty = true; await run('stitch')(); });
   on('#st-gpt', async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
     await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
-  on('#st-vid', async () => {  // the motion is typed by hand; empty = gentle natural movement
-    const pod = GPU && GPU.status === 'ready' && GPU.video;  // a rented card: its engine makes sound too
-    const motion = prompt(pod
-      ? `${GPU.video_label || 'LTX-2.5'} on Fast GPU, with sound. Describe the scene, the moves in order, the camera and the sound (empty = gentle natural movement)\ne.g. 0-2 s: she turns to the camera and smiles. 2-5 s: she sips her latte. Camera: slow push-in. Sound: café chatter, she says "Good morning"`
-      : 'How should it move? (leave empty for gentle natural movement)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
-    if (motion === null) return;
-    setPanel(false);
-    await run('animate_image', {index: i, motion: motion.trim()})(); });
+  on('#st-vid', () => videoBox(async (motion, opts) => { setPanel(false); await run('animate_image', {index: i, motion, ...opts})(); }));
   $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));
   $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; }));
   on('#st-cur', () => again(() => { STV = null; }));
@@ -1164,11 +1169,13 @@ function renderStudio() {
   const setEng = async () => {
     await savePlan();
     try { P = await api(`/api/projects/${P.id}/engines`, {image_engine: val('#f-img-eng'), video_engine: val('#f-vid-eng'), mode: val('#f-mode'),
-      t2v_engine: val('#f-t2v-eng'), quality: val('#f-quality'), video_res: val('#f-vres'), lora: val('#f-lora'), style: val('#f-style')}); }
+      t2v_engine: val('#f-t2v-eng'), quality: val('#f-quality'), video_res: val('#f-vres'), lora: val('#f-lora'), style: val('#f-style'),
+      video_seconds: val('#f-vsecs')}); }
     catch (e) { alert(e.message); }
     render();
   };
-  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres', '#f-lora', '#f-style'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
+  ['#f-img-eng', '#f-vid-eng', '#f-mode', '#f-t2v-eng', '#f-quality', '#f-vres', '#f-lora', '#f-style', '#f-vsecs'].forEach(s => { if ($(s)) $(s).onchange = setEng; });
+  if ($('#f-vsecs')) $('#f-vsecs').oninput = e => { $('#f-vsecs-v').textContent = e.target.value + ' s'; };
   if ($('#f-style-sel')) bindStyle($('#f-style-sel'), $('#f-style'));  // picking a style saves it (via #f-style's change)
   $$('.f-ref').forEach(s => s.onchange = async () => {
     await savePlan();
@@ -1342,6 +1349,52 @@ function gpuList() {  // pick a card: ✅ in stock / ❌ none now, its speed aga
     <p style="color:var(--muted);font-size:11px;margin:8px 0 0">Speed: about how much faster than an RTX 4090 (estimates). Community = cheaper, other people's
       machines (now and then a faulty one); Secure = RunPod's own data centres. MiniMax H3's licence doesn't allow the US, EU, UK
       or Korea: those cards are rented elsewhere (Canada, Japan, India, Iceland…), or use LTX-2.5 if none is free there.</p>`;
+}
+// H3 time estimate in minutes, from runs on an RTX 5090 (speed 1.3): 5 s took ~2.8 min to make + ~1.3 to bring back
+// at 480p, ~8 + ~1.7 at 720p; scaled by length and the card's speed (estimates beyond what was measured)
+function h3Minutes(res, secs) {
+  const k = secs / 5, sp = 1.3 / ((GPU && GPU.speed) || 1.3);
+  return Math.max(1, Math.round((res === '720p' ? 8 : 2.8) * k * sp + (res === '720p' ? 1.7 : 1.3) * k));
+}
+function lengthPicker(res0, secs0, onChange) {  // 480p/720p + 5-15 s slider + estimate, within the card's limits
+  const max = GPU.h3_max || {'480p': 5, '720p': 5};
+  const html = `<div class="vd-row"><button class="vd-res ${res0 === '480p' ? 'on' : ''}" data-res="480p">480p · fast</button>
+      <button class="vd-res ${res0 === '720p' ? 'on' : ''}" data-res="720p">720p · sharp</button></div>
+    <label class="vd-len">Length <b id="vd-s"></b><input type="range" id="vd-r" min="5" max="15" step="1" value="${secs0}"></label>
+    <p class="vd-note" id="vd-note"></p>`;
+  const bind = () => {
+    let res = res0;
+    const upd = () => {
+      const r = $('#vd-r'), cap = max[res] || 5;
+      r.max = cap; if (+r.value > cap) r.value = cap;
+      const v = +r.value;
+      $('#vd-s').textContent = v + ' s';
+      $('#vd-note').textContent = `About ${h3Minutes(res, v)} min on the ${GPU.label} · up to ${cap} s at ${res} on this card`;
+      onChange(res, v);
+    };
+    $$('.vd-res').forEach(b => b.onclick = () => { res = b.dataset.res; $$('.vd-res').forEach(x => x.classList.toggle('on', x === b)); upd(); });
+    $('#vd-r').oninput = upd;
+    upd();
+  };
+  return {html, bind};
+}
+function videoBox(go) {  // Make video: the motion, and with an H3 card its size, length and time
+  const h3 = GPU && GPU.status === 'ready' && GPU.video === 'h3', pod = GPU && GPU.status === 'ready' && GPU.video;
+  let opts = {};
+  const pick = h3 ? lengthPicker(P.video_res || '480p', P.video_seconds || 5, (res, secs) => { opts = {video_res: res, seconds: secs}; }) : null;
+  $('#lb').innerHTML = `<div class="glass pad vdlg">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Make video</h2><button id="vd-x">✕</button></div>
+    <p class="vd-note" style="margin:0">${pod ? `${esc(GPU.video_label)} on the Fast GPU, with sound. Describe the scene, the moves in order, the camera and the sound.`
+      : 'On this PC (5 s, no sound). Connect a Fast GPU for MiniMax H3: longer clips with sound.'}</p>
+    <textarea id="vd-motion" rows="4" placeholder="${pod ? 'e.g. 0-2 s: she turns to the camera and smiles. 2-5 s: she sips her latte. Camera: slow push-in. Sound: café chatter, she says &quot;Good morning&quot;' : 'e.g. she turns her head and smiles, hair moving in the breeze'} (empty = gentle natural movement)"></textarea>
+    ${pick ? pick.html : ''}
+    <button class="primary" id="vd-go">▶ Make video</button></div>`;
+  if (pick) pick.bind();
+  const close = () => $('#lb').classList.remove('on');
+  $('#vd-x').onclick = close;
+  $('#vd-go').onclick = () => { const motion = $('#vd-motion').value.trim(); close(); go(motion, opts); };
+  $('#lb').classList.add('on');
+  $('#vd-motion').focus();
 }
 function gpuEngines(g) {  // what the connected card gives; the extras download in the first minutes after it's ready
   const x = g.extras || {}, mark = on => on ? '✅' : '<i class="spin" style="width:10px;height:10px;vertical-align:-1px"></i>';

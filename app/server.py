@@ -325,7 +325,8 @@ class Handler(BaseHTTPRequestHandler):
             if action == "engines":
                 return self.send_json(pipeline.set_engines(pid, b.get("image_engine"), b.get("video_engine"),
                                                            b.get("mode"), b.get("t2v_engine"), b.get("quality"),
-                                                           b.get("video_res"), b.get("lora"), b.get("style")))
+                                                           b.get("video_res"), b.get("lora"), b.get("style"),
+                                                           b.get("video_seconds")))
             if action == "reference":
                 return self.send_json(pipeline.set_reference(pid, b.get("references") or b.get("reference", "")))
             if action == "pin":
@@ -345,7 +346,8 @@ class Handler(BaseHTTPRequestHandler):
             if action == "stop":
                 return self.send_json({"ok": pipeline.cancel(pid)})
             if action == "animate_image":
-                pipeline.enqueue(pid, "animate_image", index=int(b.get("index", 0)), motion=b.get("motion", ""))
+                pipeline.enqueue(pid, "animate_image", index=int(b.get("index", 0)), motion=b.get("motion", ""),
+                                 seconds=b.get("seconds"), video_res=b.get("video_res"))
                 return self.send_json({"ok": True})
             if action == "use_version":
                 return self.send_json(pipeline.use_version(pid, b.get("index", 0), b.get("name", "")))
