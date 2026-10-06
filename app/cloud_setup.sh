@@ -43,7 +43,8 @@ get() { python3 /root/dl.py "$1" "$2" 2>> /root/dl.log || echo "$2" >> /root/dl_
   get $Q/vae/qwen_image_2.1_vae_bf16.safetensors models/vae/qwen_image_2.1_vae_bf16.safetensors &
   get $H/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors models/upscale_models/4x-UltraSharp.safetensors &
   if [ "$VIDEO" = h3 ]; then
-    get $M/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors models/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors &
+    H3_UNET=${H3_UNET:-minimax_h3_fl2va_int8_convrot.safetensors}  # or the slimmed (pruned) one on 32-48 GB cards
+    get $M/diffusion_models/$H3_UNET models/diffusion_models/$H3_UNET &
     get $M/text_encoders/$H3_TE models/text_encoders/$H3_TE &
     get $M/vae/minimax_h3_video_vae_int8_convrot.safetensors models/vae/minimax_h3_video_vae_int8_convrot.safetensors &
     get $M/vae/minimax_h3_audio_vae_fp32.safetensors models/vae/minimax_h3_audio_vae_fp32.safetensors &
@@ -56,8 +57,10 @@ get() { python3 /root/dl.py "$1" "$2" 2>> /root/dl.log || echo "$2" >> /root/dl_
   wait
   touch /root/dl_done
 ) &
-case "$VIDEO/$H3_TE" in
-  h3/*nvfp4*) TOTAL=71000; NAME="MiniMax H3" ;;
+case "$VIDEO/$H3_UNET/$H3_TE" in
+  h3/*pruned*/*nvfp4*) TOTAL=58000; NAME="MiniMax H3 lite" ;;
+  h3/*pruned*) TOTAL=69000; NAME="MiniMax H3 lite" ;;
+  h3/*/*nvfp4*) TOTAL=71000; NAME="MiniMax H3" ;;
   h3/*) TOTAL=82000; NAME="MiniMax H3" ;;
   *) TOTAL=56000; NAME="LTX-2.5" ;;
 esac

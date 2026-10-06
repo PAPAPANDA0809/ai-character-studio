@@ -639,17 +639,17 @@ LTX25_POD = {"unet": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safet
              "video_vae": "ltx-2.5-video-vae-bf16.safetensors", "audio_vae": "ltx-2.5-audio-vae-bf16.safetensors"}
 
 
-def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_encoder=None):
+def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_encoder=None, unet=None, short=768):
     """MiniMax H3 with sound: start+end = first/last frame, start = image-to-video, neither = text-to-video. Frames come
     back through SaveImage and the soundtrack through SaveAudio, like LTX-2, so the pipeline stores both the same way."""
     c = H3
     # H3's native canvas: a 768 px short edge, at most 768x1344, multiples of 32 (MiniMax's prompting tips); the
-    # project's 480p/720p choice only gives the shape
-    short, long_ = min(width, height), max(width, height)
-    long_ = min(1344, round(long_ * 768 / short / 32) * 32)
-    width, height = (768, long_) if width <= height else (long_, 768)
+    # project's 480p/720p choice only gives the shape. short=480 on 32 GB cards (the slimmed model, 864x480).
+    s_, long_ = min(width, height), max(width, height)
+    long_ = min(1344 * short // 768 // 32 * 32, round(long_ * short / s_ / 32) * 32)
+    width, height = (short, long_) if width <= height else (long_, short)
     wf = {
-        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": c["unet"], "weight_dtype": "default"}},
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": unet or c["unet"], "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": text_encoder or c["text_encoder"], "type": "minimax",
                                                      "device": "default"}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": c["video_vae"]}},

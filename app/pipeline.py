@@ -471,7 +471,7 @@ def engines():
                                            else "on Fast GPU (full quality in a few minutes)")
         if (key in comfy.VIDEO_ENGINES or key in comfy.T2V_ENGINES) and cloudgpu.state["status"] == "ready" \
                 and cloudgpu.state.get("video"):  # every video job goes to the rented card's engine (on_rented)
-            label = f"{cloudgpu.VIDEO_LABEL[cloudgpu.state['video']]} with sound · on Fast GPU"
+            label = f"{cloudgpu.video_label(cloudgpu.state['video'], cloudgpu.state['h3_unet'])} with sound · on Fast GPU"
         return {"id": key, "label": label, "installed": all(ready(f) for f in e["files"])}
     return {
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
@@ -776,7 +776,7 @@ def on_rented(p, run):
     remote = cloudgpu.url() if cloudgpu.state.get("video") else None
     if not remote:
         return run(None)
-    log(p, f"using the rented {cloudgpu.info()['label']} ({cloudgpu.VIDEO_LABEL[cloudgpu.state['video']]})")
+    log(p, f"using the rented {cloudgpu.info()['label']} ({cloudgpu.info()['video_label']})")
     with cloudgpu.using():
         return run(remote)
 
@@ -795,7 +795,8 @@ def clip_engine(p, cfg, remote, key="video_engine", local_default="wan22-14b", e
 def clip_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix):
     """A clip from first/last frames (start only = animate one picture; neither = text-to-video)."""
     if engine == "h3":
-        return comfy.h3_workflow(prompt, start, end, w, h, seed, prefix, text_encoder=cloudgpu.state.get("h3_te"))
+        return comfy.h3_workflow(prompt, start, end, w, h, seed, prefix, text_encoder=cloudgpu.state.get("h3_te"),
+                                 unet=cloudgpu.state.get("h3_unet"), short=cloudgpu.state.get("h3_short") or 768)
     if not start:
         return comfy.t2v_workflow(cfg, engine, prompt, w, h, seed, prefix)
     return comfy.video_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix)

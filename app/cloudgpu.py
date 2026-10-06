@@ -31,10 +31,26 @@ START_CMD = "bash -c 'echo \"$RM_AGENT\" | base64 -d > /root/agent.py && python3
 HQ_QWEN = {"unet": "qwen_image_2.1_bf16.safetensors", "text_encoder": "qwen3vl_8b_bf16.safetensors"}
 # The video engine a card gets: MiniMax H3 (the best open one, 80 GB+) or LTX-2.5. H3's licence excludes the US, the
 # EU, the UK and South Korea, so it is only rented in other data centres (else the card gets LTX-2.5).
-VIDEO_LABEL = {"h3": "MiniMax H3", "ltx25": "LTX-2.5"}
-H3_MIN_MEM = 80
 H3_EXCLUDED = ("US", "EU", "UK", "GB", "KR")  # data centre id prefixes / country codes
-DISK_GB = {"h3": 180, "ltx25": 160}  # models (~150 / ~125 GB with the full-quality extras) plus ComfyUI
+H3_FULL = "minimax_h3_fl2va_int8_convrot.safetensors"           # 34 GB: 80 GB+ cards
+H3_PRUNED = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"  # 21 GB slimmed H3: fits a 32 GB RTX 5090
+DISK_GB = {"h3": 180, "h3lite": 150, "ltx25": 160}  # models with the full-quality extras, plus ComfyUI
+
+
+def h3_plan(card):
+    """(H3 model file, short edge in px) for this card, or None when it gets LTX-2.5. A 5090 was shown running H3
+    (864x480, 15 s in 8 min); the slimmed model keeps it on the card, at 480 px there and H3's native 768 on 48 GB."""
+    if card["mem"] >= 80:
+        return H3_FULL, 768
+    if card["mem"] >= 48:
+        return H3_PRUNED, 768
+    if card["mem"] >= 32:
+        return H3_PRUNED, 480
+    return None
+
+
+def video_label(video, unet=""):
+    return "LTX-2.5" if video != "h3" else "MiniMax H3" + (" lite" if unet == H3_PRUNED else "")
 CHUNK = 8 << 20  # trained characters go up in 8 MB pieces (one request through the gateway can't be huge)
 
 # The cards offered (the RTX 4090 and stronger; the list is shown cheapest first). speed = rough speed for
@@ -54,7 +70,8 @@ CATALOG = [
 
 lock = threading.Lock()
 state = {"status": "off", "message": "", "pod": None, "key": "", "price": 0.0, "gpu": "",
-         "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "where": "",
+         "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "h3_unet": "", "h3_short": 768,
+         "where": "",
          "extras": {"qwen_hq": False, "ideogram": False}}
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 relay = [None]     # the local relay server
@@ -72,7 +89,8 @@ def cfg():
 def _set(**kw):
     with lock:
         state.update(kw)
-        keep = {k: state[k] for k in ("pod", "key", "price", "gpu", "started", "video", "h3_te", "where")}
+        keep = {k: state[k] for k in ("pod", "key", "price", "gpu", "started", "video", "h3_te", "h3_unet", "h3_short",
+                                      "where")}
     if state["pod"]:
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(keep, f)
@@ -88,6 +106,7 @@ def info():
     up = time.time() - s["started"] if s["started"] else 0
     idle_left = c["idle_minutes"] * 60 - (time.time() - s["last_used"]) if s["status"] == "ready" and not active[0] else None
     return {**s, "label": s["gpu"] or "GPU", "minutes": round(up / 60), "cost": round(up / 3600 * s["price"], 2),
+            "video_label": video_label(s["video"], s["h3_unet"]) if s["video"] else "",
             "idle_stop_in": max(0, round(idle_left / 60)) if idle_left is not None else None,
             "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": active[0]}
 
@@ -107,7 +126,7 @@ def options():
                     "community": g.get("communityPricePerHr") if g.get("communityCloud") else None,
                     "secure": g.get("securePricePerHr") if g.get("secureCloud") else None,
                     "community_broken": time.time() - _broken.get(c["id"], 0) < 3600,
-                    "video": VIDEO_LABEL["h3" if c["mem"] >= H3_MIN_MEM else "ltx25"]})
+                    "video": video_label("h3", h3_plan(c)[0]) if h3_plan(c) else video_label("ltx25")})
     res.sort(key=lambda o: min([p for p in (o["community"], o["secure"]) if p is not None] or [1e9]))  # cheapest first
     _opts[:] = [time.time(), res]
     return res
@@ -252,14 +271,16 @@ def _wait_agent(minutes):
 def _start(card, cloud):
     c = cfg()
     key = secrets.token_urlsafe(24)
-    video = "h3" if card["mem"] >= H3_MIN_MEM else "ltx25"
+    plan = h3_plan(card)
+    video = "h3" if plan else "ltx25"
+    h3_unet, h3_short = plan or ("", 768)
     note, why = "", ""
     try:
         pod = None
         if video == "h3":
             dcs = _h3_datacenters()
             if dcs:
-                pod, why = _create(c, card["id"], cloud, key, DISK_GB["h3"], dcs)
+                pod, why = _create(c, card["id"], cloud, key, DISK_GB["h3" if h3_unet == H3_FULL else "h3lite"], dcs)
             if not pod:  # none free where H3 may run: rent it anywhere, videos use LTX-2.5
                 video, note = "ltx25", " (no free one where MiniMax H3 is allowed, so videos use LTX-2.5)"
         if not pod and state["status"] == "starting":
@@ -276,8 +297,10 @@ def _start(card, cloud):
         if video == "h3" and not h3_allowed(where):  # RunPod placed it elsewhere after all: no H3 there
             video, note = "ltx25", f" (it's in {where or 'an unknown place'}, where MiniMax H3 isn't allowed: videos use LTX-2.5)"
         h3_te = comfy_te(card) if video == "h3" else ""
+        h3_unet = h3_unet if video == "h3" else ""
         _set(pod=pod["id"], key=key, price=float(price or 0), started=time.time(), last_used=time.time(), loras=[],
-             video=video, h3_te=h3_te, where=where, extras={"qwen_hq": False, "ideogram": False},
+             video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where,
+             extras={"qwen_hq": False, "ideogram": False},
              message="Starting the machine" + note + "…")
         if not _wait_agent(8):  # good machines answer in under a minute
             return
@@ -286,7 +309,7 @@ def _start(card, cloud):
         # what this card installs: its video engine (and H3's text encoder), read by cloud_setup.sh
         with open(DOWNLOADER, "rb") as f:
             dl = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
-        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nDL_B64={dl}\n".encode(), 1)
+        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nDL_B64={dl}\n".encode(), 1)
         for _ in range(24):  # just after boot the gateway can still answer 404 for a while
             try:
                 code, body = _call("POST", "/rm/setup", script)
@@ -297,7 +320,7 @@ def _start(card, cloud):
             time.sleep(5)
         else:
             raise RuntimeError(f"couldn't start the setup ({code})")
-        _set(message=f"Installing ComfyUI, Qwen-Image 2.1 and {VIDEO_LABEL[video]}{note}…")
+        _set(message=f"Installing ComfyUI, Qwen-Image 2.1 and {video_label(video, h3_unet)}{note}…")
         threading.Thread(target=_send_loras, daemon=True).start()
         deadline = time.time() + 40 * 60
         while time.time() < deadline:
@@ -318,7 +341,7 @@ def _start(card, cloud):
         else:
             raise RuntimeError("setup took over 40 minutes")
         _open_relay()
-        _set(status="ready", message=f"{state['gpu']} ready · videos with {VIDEO_LABEL[video]}{note}",
+        _set(status="ready", message=f"{state['gpu']} ready · videos with {video_label(video, h3_unet)}{note}",
              last_used=time.time())
         _free_local()
     except Exception as e:
@@ -460,7 +483,8 @@ def _delete(reason, error=False):
     if pod:  # keep it in the state file so the watchdog tries again
         return _set(status="error", message=f"Couldn't delete pod {pod}: delete it on runpod.io (it is still billing)")
     cost = info()["cost"]
-    _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[], video=None, h3_te="", where="",
+    _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[], video=None, h3_te="", h3_unet="",
+         where="",
          extras={"qwen_hq": False, "ideogram": False},
          message=f"{reason} (this session: about ${cost:.2f})")
 

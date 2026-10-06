@@ -1122,7 +1122,7 @@ function renderStudio() {
   on('#st-vid', async () => {  // the motion is typed by hand; empty = gentle natural movement
     const pod = GPU && GPU.status === 'ready' && GPU.video;  // a rented card: its engine makes sound too
     const motion = prompt(pod
-      ? `${pod === 'h3' ? 'MiniMax H3' : 'LTX-2.5'} on Fast GPU, with sound. Describe the scene, the moves in order, the camera and the sound (empty = gentle natural movement)\ne.g. 0-2 s: she turns to the camera and smiles. 2-5 s: she sips her latte. Camera: slow push-in. Sound: café chatter, she says "Good morning"`
+      ? `${GPU.video_label || 'LTX-2.5'} on Fast GPU, with sound. Describe the scene, the moves in order, the camera and the sound (empty = gentle natural movement)\ne.g. 0-2 s: she turns to the camera and smiles. 2-5 s: she sips her latte. Camera: slow push-in. Sound: café chatter, she says "Good morning"`
       : 'How should it move? (leave empty for gentle natural movement)\ne.g. she turns her head and smiles, hair moving in the breeze', '');
     if (motion === null) return;
     setPanel(false);
@@ -1345,7 +1345,7 @@ function gpuList() {  // pick a card: ✅ in stock / ❌ none now, its speed aga
 }
 function gpuEngines(g) {  // what the connected card gives; the extras download in the first minutes after it's ready
   const x = g.extras || {}, mark = on => on ? '✅' : '<i class="spin" style="width:10px;height:10px;vertical-align:-1px"></i>';
-  return `<br>Videos: <b style="color:var(--text)">${g.video === 'h3' ? 'MiniMax H3' : 'LTX-2.5'}</b> with sound
+  return `<br>Videos: <b style="color:var(--text)">${esc(g.video_label || 'LTX-2.5')}</b> with sound
     <br>${mark(x.qwen_hq)} Qwen-Image 2.1 full quality${x.qwen_hq ? '' : ' (downloading; standard quality until then)'}
     <br>${mark(x.ideogram)} Ideogram 4.0${x.ideogram ? ' (pick it under Image engine)' : ' (downloading)'}`;
 }
