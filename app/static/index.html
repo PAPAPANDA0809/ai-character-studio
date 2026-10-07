@@ -342,7 +342,7 @@
         <p id="nkf-hint" style="color:var(--muted);font-size:12px;margin:8px 0 0"></p>
         <label>Picture resolution</label>
         <div class="seg small" id="q-seg" style="grid-template-columns:repeat(5,1fr)"><button data-q="standard">360p</button><button data-q="sharp">720p</button><button data-q="high">1080p</button><button data-q="2k">2K</button><button data-q="ultra">4K</button></div>
-        <p style="color:var(--muted);font-size:12px;margin:6px 0 0">Per picture with Qwen-Image 2.1: 720p ~30 s · 1080p ~1.5 min · 2K and 4K a few minutes (~4 min with a character picture)</p>
+        <p id="q-hint" style="color:var(--muted);font-size:12px;margin:6px 0 0">Per picture with Qwen-Image 2.1: 720p ~30 s · 1080p ~1.5 min · 2K and 4K a few minutes (~4 min with a character picture)</p>
         <div id="vres-wrap"><label>Video resolution</label>
         <div class="seg small" id="vres-seg" style="grid-template-columns:1fr 1fr"><button data-v="480p">480p</button><button data-v="720p">720p · ~2-3× slower</button></div></div>
         <label>Visual style</label>
@@ -534,8 +534,11 @@ function syncCreate() {
   const m = NEW.mode;
   $$('#mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   $$('#aspect-seg button').forEach(b => b.classList.toggle('on', b.dataset.aspect === NEW.aspect));
+  const gpt = $('#img-eng') && $('#img-eng').value === 'gpt-image';
+  if (gpt && (NEW.quality || (m === 'images' ? 'sharp' : 'standard')) === 'standard') NEW.quality = 'high';  // GPT can't draw 360p
   const q = NEW.quality || (m === 'images' ? 'sharp' : 'standard');
-  $$('#q-seg button').forEach(b => b.classList.toggle('on', b.dataset.q === q));
+  $$('#q-seg button').forEach(b => { b.classList.toggle('on', b.dataset.q === q); b.disabled = gpt && b.dataset.q === 'standard'; });
+  $('#q-hint').textContent = gpt ? GPT_HINT : QWEN_HINT;
   $$('#vres-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === NEW.vres));
   $('#vres-wrap').style.display = m === 'images' ? 'none' : '';
   $('#nkf-label').textContent = {images: 'Images', t2v: 'Scenes'}[m] || 'Keyframes';
@@ -618,7 +621,10 @@ function renderChars() {
   $('#char-up').onclick = () => $('#ref-file').click();
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
-$('#img-eng').onchange = () => { renderChars(); renderLora(); };
+$('#img-eng').onchange = () => { renderChars(); renderLora(); syncCreate(); };
+// GPT Image draws Reelmint's sizes as they are (1080p = 1088x1920), so no resizing; prices for GPT Image 2.5 at high quality
+const GPT_HINT = 'GPT Image 2.5 draws these sizes directly (1080p = 1088×1920): about $0.04 at 720p · $0.05 at 1080p · $0.06 at 2K · $0.10 at 4K a picture, ~1 min';
+const QWEN_HINT = 'Per picture with Qwen-Image 2.1: 720p ~30 s · 1080p ~1.5 min · 2K and 4K a few minutes (~4 min with a character picture)';
 $('#use-kontext').onclick = e => { e.preventDefault(); $('#img-eng').value = bestRefEngine(); renderChars(); };
 $('#ref-file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -1023,7 +1029,7 @@ function renderStudio() {
   let acts = '';
   if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') : '') + act('st-regen', '↻', `${made ? 'New version' : 'Generate'} of ${word}${of_}`) +
     (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
-    (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.17)') : '') +
+    (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.05)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
       act('st-delpic', '🗑', STV && made ? 'Delete this version' : `Delete ${word}`) : '');
   if (sel === 'clip') acts += act('st-reanim', '▶', `${clipMade(i) ? 'Re-animate' : 'Animate'} clip ${i + 1}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_clip${i + 1}.mp4`, 'Download clip') : '');
@@ -1139,7 +1145,7 @@ function renderStudio() {
   on('#st-anim', run('animate'));
   on('#st-t2v', run('t2v'));
   on('#st-stitch', async () => { dirty = true; await run('stitch')(); });
-  on('#st-gpt', async () => { if (confirm('Redo this picture with GPT-image? Costs about $0.17 on your OpenAI account.'))
+  on('#st-gpt', async () => { if (confirm('Redo this picture with GPT Image 2.5? Costs about $0.05 at 1080p (up to $0.10 at 4K) on your OpenAI account.'))
     await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
   on('#st-vid', () => videoBox(async (motion, opts) => { setPanel(false); await run('animate_image', {index: i, motion, ...opts})(); }));
   $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));

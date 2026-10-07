@@ -480,8 +480,8 @@ def engines():
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
         "reference_engines": list(comfy.REFERENCE_ENGINES) + (["gpt-image"] if cloud.available() else []),
         "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()] + ([{
-            "id": "gpt-image", "label": "GPT Image 2.5 (OpenAI, paid: ~$0.17 a picture, keeps character pictures well, "
-            "no NSFW)", "installed": True}] if cloud.available() else []),
+            "id": "gpt-image", "label": "GPT Image 2.5 (OpenAI, paid: ~$0.05 a picture at 1080p, keeps character "
+            "pictures well, no NSFW)", "installed": True}] if cloud.available() else []),
         "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
         "t2v": [entry(k, e) for k, e in comfy.T2V_ENGINES.items()],
         "default_t2v": cfg.get("default_t2v_engine", "wan22-5b"),

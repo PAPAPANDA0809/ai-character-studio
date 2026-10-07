@@ -14,6 +14,24 @@ MODEL = "gpt-image-2.5-sunburst"
 FALLBACK = "gpt-image-2"
 
 SIZES = {"portrait": "1024x1536", "landscape": "1536x1024", "square": "1024x1024"}
+# GPT Image 2/2.5 draw any size with both edges multiples of 16, the long edge up to 3840 and 655,360-8,294,400 pixels,
+# so Reelmint's 720p/1080p/2K/4K come out at their own size (1080 -> 1088, the nearest multiple of 16) with no resizing.
+# 360p is under the minimum. About $0.04 (720p) to $0.10 (4K) a picture with 2.5 at high quality (GPT Image 2: ~4x).
+MIN_PIXELS, MAX_PIXELS, MAX_EDGE = 655_360, 8_294_400, 3840
+
+
+def native_size(out_size):
+    """(w, h) GPT can draw for this output size: multiples of 16, inside its limits (None = let it pick)."""
+    if not out_size:
+        return None
+    w, h = (int(v) for v in out_size)
+    if w * h < MIN_PIXELS:  # 360p: scale up to the smallest size GPT draws
+        k = (MIN_PIXELS / (w * h)) ** 0.5
+        w, h = w * k, h * k
+    w, h = int(-(-w // 16) * 16), int(-(-h // 16) * 16)
+    if max(w, h) > MAX_EDGE or w * h > MAX_PIXELS:
+        return None
+    return w, h
 
 
 def available():
@@ -54,8 +72,9 @@ def gpt_image(cfg, prompt, aspect, out_size=None, refs=None):
     if not key:
         raise RuntimeError("GPT-image needs an OpenAI API key in app/secrets.json (\"openai_api_key\")")
     c = cfg.get("gpt_image", {})
+    size = native_size(out_size)
     payload = {"model": c.get("model", MODEL), "prompt": prompt[:4000], "n": 1,
-               "size": SIZES.get(aspect, "1024x1536"), "quality": c.get("quality", "high")}
+               "size": f"{size[0]}x{size[1]}" if size else SIZES.get(aspect, "1024x1536"), "quality": c.get("quality", "high")}
     try:
         try:
             res = _post(payload, key, refs)
@@ -85,8 +104,10 @@ def gpt_image(cfg, prompt, aspect, out_size=None, refs=None):
             data = r.read()
     if out_size:
         from PIL import Image, ImageOps
-        img = ImageOps.fit(Image.open(io.BytesIO(data)).convert("RGB"), tuple(out_size), Image.LANCZOS)
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        if size is None or img.size != tuple(size):  # GPT picked another size: fit it to the one asked for
+            img = ImageOps.fit(img, tuple(out_size), Image.LANCZOS)
         buf = io.BytesIO()
-        img.save(buf, "PNG")
+        img.save(buf, "PNG")  # GPT's own size kept as it is (1088x1920 for 1080p: no resizing)
         data = buf.getvalue()
     return data
