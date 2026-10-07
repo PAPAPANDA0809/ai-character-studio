@@ -269,8 +269,9 @@ body.auth-page { background:var(--bg); }
   .pcard .pick { top:8px; left:8px; }
   body.inproject .app-header { display:none; }
   body.inproject main.wide { padding:12px 12px calc(76px + env(safe-area-inset-bottom)); }
-  .studio,.studio:not(:has(.st-strip>*)) { height:calc(100dvh - 88px - env(safe-area-inset-bottom)); grid-template-columns:minmax(0,1fr); grid-template-areas:'top' 'job' 'canvas' 'strip' 'actions' 'prompt'; grid-template-rows:max-content 0 minmax(0,1fr) max-content max-content max-content; gap:10px; }
-  .studio:has(.st-job:not(:empty)) { grid-template-rows:max-content max-content minmax(0,1fr) max-content max-content max-content; }
+  /* Let the phone page scroll so prompts and version controls cannot shrink the picture. */
+  .studio,.studio:not(:has(.st-strip>*)) { height:auto; grid-template-columns:minmax(0,1fr); grid-template-areas:'top' 'job' 'canvas' 'strip' 'actions' 'prompt'; grid-template-rows:max-content 0 auto max-content max-content max-content; gap:10px; }
+  .studio:has(.st-job:not(:empty)) { grid-template-rows:max-content max-content auto max-content max-content max-content; }
   .st-top { gap:8px; flex-wrap:nowrap; }
   .st-project-controls { width:auto; }
   .st-project-controls #st-settings { display:block; }
@@ -278,8 +279,8 @@ body.auth-page { background:var(--bg); }
   .st-top #btn-back { padding:8px; min-width:44px; font-size:0; }
   .st-top #btn-back::before { content:'←'; font-size:20px; }
   .st-zoom { display:none; }
-  .studio .st-canvas { container-type:size; height:100%; background:#05070d; border:0; padding:0; min-height:0; }
-  .studio .st-canvas .zoom img,.studio .st-canvas video { max-height:100cqh; max-width:100cqw; }
+  .studio .st-canvas { container-type:normal; height:auto; background:#05070d; border:0; padding:0; min-height:160px; }
+  .studio .st-canvas .zoom img,.studio .st-canvas video { max-height:78dvh; max-width:100%; }
   .st-strip { flex-direction:row; overflow-x:auto; max-height:76px; }
   .st-strip .lbl { writing-mode:horizontal-tb; transform:none; }
   .st-th { width:40px; }
