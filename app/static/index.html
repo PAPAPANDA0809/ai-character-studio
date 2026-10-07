@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-2">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -395,6 +395,7 @@
 <div class="lb" id="lb"></div>
 <div class="lb" id="acct"></div>
 <div class="lb" id="gpubox"></div>
+<div class="project-delete-modal" id="project-delete-confirm"></div>
 
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -448,7 +449,7 @@ function setPanel(on) {
   if (on) history.pushState({overlay: 'panel'}, '', location.href);
   else if (history.state && history.state.overlay === 'panel') overlayBack();
 }
-const OVERLAYS = [[document.body, 'immersive'], ['#v-create', 'sheet'], ['#lb', 'on'], ['#acct', 'on'], ['#gpubox', 'on']];
+const OVERLAYS = [[document.body, 'immersive'], ['#v-create', 'sheet'], ['#lb', 'on'], ['#acct', 'on'], ['#gpubox', 'on'], ['#project-delete-confirm', 'on']];
 function watchOverlays() {
   OVERLAYS.forEach(([el, cls], k) => {
     el = typeof el === 'string' ? $(el) : el;
@@ -767,7 +768,8 @@ async function refreshProjects() {
         <button data-ren="${p.id}" data-title="${esc(p.title)}" title="Rename">✎</button></div>
       <div class="th" style="background-image:url('${small(fileOf(p.id, 'keyframes/kf_00.png', 1))}')"></div>
       <div class="pinfo"><b title="${esc(p.title)}">${esc(p.title)}</b>
-        <div class="meta"><span>${p.pinned ? fmtDate(p.created) : time}</span>${/^done/.test(st) ? '' : `<span class="badge ${cls}">${esc(st.split(':')[0])}</span>`}</div></div></div>`;
+        <div class="meta"><span>${p.pinned ? fmtDate(p.created) : time}</span>${/^done/.test(st) ? '' : `<span class="badge ${cls}">${esc(st.split(':')[0])}</span>`}</div>
+        <button class="project-delete" data-delete-project="${p.id}" data-title="${esc(p.title)}" aria-label="Delete project ${esc(p.title)}" ${/^(queued|running)/.test(st) ? 'disabled' : ''}>Delete project</button></div></div>`;
   };
   // pinned first, then one group per day (newest first): Today, Yesterday, Thu, Oct 2, ...
   const day = t => new Date(t * 1000).toDateString(), today = new Date().toDateString(), yest = new Date(Date.now() - 864e5).toDateString();
@@ -789,6 +791,10 @@ async function refreshProjects() {
     try { await api(`/api/projects/${b.dataset.pin}/pin`, {pinned: !b.dataset.on}); } catch (err) { return alert(err.message); }
     refreshProjects();
   });
+  $$('.pcard [data-delete-project]').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    deleteProject(b.dataset.deleteProject, b.dataset.title);
+  });
   renderSelbar('projects');
 }
 $('#project-search').oninput = () => refreshProjects();
@@ -798,9 +804,32 @@ async function renameProject(id, title) {  // true when renamed
     try { await api(`/api/projects/${id}/rename`, {title: t}); return true; } catch (e) { alert(e.message); return false; }
 }
 async function deleteProject(id, title) {  // to the PC's trash folder, then back to the list
-  if (!confirm(`Delete the project "${title}" with all its pictures and videos? It's moved to the Trash folder on the PC.`)) return;
-  try { await api('/api/delete', {projects: [id]}); } catch (e) { return alert(e.message); }
-  show('projects');
+  const modal = $('#project-delete-confirm'), trigger = document.activeElement;
+  modal.innerHTML = `<div class="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-project-title" aria-describedby="delete-project-description">
+    <h2 id="delete-project-title">Delete project?</h2>
+    <p id="delete-project-description">Move <strong>${esc(title)}</strong> and all its pictures and videos to the Trash folder on your PC?</p>
+    <p id="project-delete-error" role="alert"></p>
+    <div class="delete-dialog-actions"><button id="cancel-project-delete">Cancel</button><button id="confirm-project-delete" class="project-delete">Delete project</button></div>
+  </div>`;
+  const cancel = $('#cancel-project-delete'), confirmDelete = $('#confirm-project-delete');
+  const close = () => { modal.classList.remove('on'); if (trigger?.isConnected) trigger.focus({preventScroll:true}); };
+  modal.classList.add('on'); cancel.focus({preventScroll:true});
+  cancel.onclick = close;
+  modal.onclick = e => { if (e.target === modal && !confirmDelete.disabled) close(); };
+  modal.onkeydown = e => {
+    if (e.key === 'Escape' && !confirmDelete.disabled) { e.preventDefault(); close(); }
+    if (e.key === 'Tab') { e.preventDefault(); (document.activeElement === cancel ? confirmDelete : cancel).focus(); }
+  };
+  confirmDelete.onclick = async () => {
+    cancel.disabled = confirmDelete.disabled = true;
+    try {
+      await api('/api/delete', {projects:[id]}); close();
+      await Promise.resolve(); await backDone; show('projects');
+    } catch (e) {
+      $('#project-delete-error').textContent = e.message;
+      cancel.disabled = confirmDelete.disabled = false;
+    }
+  };
 }
 async function openProject(id) { dirty = false; STI = 0; STK = 'kf'; STV = null; STE = null; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
   navTo('#project/' + encodeURIComponent(id)); render(); poll(); }
@@ -1052,6 +1081,7 @@ function renderStudio() {
     (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.05)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
       act('st-delpic', '🗑', STV && made ? 'Delete this version' : `Delete ${word}`) : '');
+  if (onPic && (made || STV)) acts += act('st-fullscreen', '⛶', 'Full screen');
   if (sel === 'clip') acts += act('st-reanim', '▶', `${clipMade(i) ? 'Re-animate' : 'Animate'} clip ${i + 1}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_clip${i + 1}.mp4`, 'Download clip') : '');
   if (isT2V && sel === 'kf') acts += act('st-rescene', '↻', `${clipMade(i) ? 'Regenerate' : 'Generate'} scene${of_}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_scene${i + 1}.mp4`, 'Download scene') : '');
   if (!isImg && P.final_version) acts += dl(finalSrc(), `${P.id}.mp4`, 'Download video with text') + dl(finalSrc('final.mp4'), `${P.id}_clean.mp4`, 'Download clean video') +
@@ -1096,6 +1126,7 @@ function renderStudio() {
     <div class="st-job" role="status">${busy ? `<div class="progress"><i class="spin"></i><span>${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">Stop</button></div>` : /^error/.test(P.status) ? `<div class="progress error">${esc(P.message)}</div>` : ''}</div>
     <div class="st-strip">${strip}</div>
     <div class="st-canvas">${canvas}${overlay}
+      ${onPic && (made || STV) ? '<button class="st-fullscreen-close" id="st-fullscreen-close" aria-label="Close full screen">✕ Close</button>' : ''}
       ${STV ? `<div class="st-ver">${made ? 'Older version' : 'Current picture was deleted'}<button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
     </div>
     <div class="st-actions" id="st-actions"></div>
@@ -1128,6 +1159,7 @@ function renderStudio() {
   const toolbar = $('#st-actions');
   ['#st-regen','#st-editmode','#st-vid','#st-reanim','#st-rescene'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
   const download = $('.st-panel a[download]'); if (download) toolbar.appendChild(download);
+  ['#st-fullscreen','#st-delproj'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
   if ($('#st-regen')) $('#st-regen').setAttribute('aria-pressed', String(!editing));
   if ($('#st-editmode')) $('#st-editmode').setAttribute('aria-pressed', String(editing));
   $$('#v-project details[data-detail]').forEach(d => { if (openDetails.has(d.dataset.detail)) d.open = true; });
@@ -1230,13 +1262,18 @@ function renderStudio() {
   });
   const z = makeZoom($('#st-img'));
   if (z) {
+    on('#st-fullscreen', () => document.body.classList.add('immersive'));
+    on('#st-fullscreen-close', () => {
+      document.body.classList.remove('immersive');
+      z.zoomTo(1);
+    });
     $('#st-img').onerror = () => { z.outerHTML = empty('Not generated yet. Write the prompt below and press Generate'); };
     z.addEventListener('zoom', e => $('#z-pct').textContent = Math.round(e.detail * 100) + '%');
     $('#z-in').onclick = () => z.zoomTo(z.scale() * 1.25);
     $('#z-out').onclick = () => z.zoomTo(z.scale() / 1.25);
     $('#z-pct').onclick = () => z.zoomTo(1);
-    z.addEventListener('click', () => {  // phones: a tap shows only the picture (not while zoomed in and dragging)
-      if (isPhone() && z.scale() <= 1.01) document.body.classList.toggle('immersive'); });
+    z.addEventListener('click', () => {  // enter on a phone tap; Close or Back exits so double-tap zoom stays stable
+      if (isPhone() && z.scale() <= 1.01) document.body.classList.add('immersive'); });
     // phones: swipe left / right for the next / previous version (or picture, when there are no versions)
     // Zoomed in, a drag moves the picture; a swipe that starts with the picture already pushed to that edge changes
     // version, like a phone's photo gallery.
