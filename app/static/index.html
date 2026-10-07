@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-3">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-4">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -1134,9 +1134,10 @@ function renderStudio() {
     <div class="st-strip">${strip}</div>
     <div class="st-canvas">${canvas}${overlay}
       ${onPic && (made || STV) ? '<button class="st-fullscreen-close" id="st-fullscreen-close" aria-label="Close full screen">✕ Close</button>' : ''}
-      ${STV ? `<div class="st-ver">${made ? 'Older version' : 'Current picture was deleted'}<button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
     </div>
-    <div class="st-actions" id="st-actions"></div>
+    <div class="st-actions" id="st-actions">
+      ${STV ? `<div class="st-ver" role="group" aria-label="Image version controls"><span class="st-version-label">${made ? 'Older version' : 'Current picture was deleted'}</span><button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
+    </div>
     <div class="st-summary"><span>${esc({standard:'360p',sharp:'720p',high:'1080p','2k':'2K',ultra:'4K'}[P.quality] || '')} · ${esc(P.aspect || 'portrait')}</span><button id="ma-more" aria-expanded="${PANEL}">Settings</button></div>
     ${promptBar}
     <div class="st-panel">
