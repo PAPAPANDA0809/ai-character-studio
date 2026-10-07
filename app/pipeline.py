@@ -529,7 +529,7 @@ def set_reference(pid, reference):
     p = load(pid)
     p["references"] = clean_refs(user_of(pid), reference)
     p["reference"] = p["references"][0] if p["references"] else ""
-    if p["reference"] and p.get("image_engine") not in comfy.REFERENCE_ENGINES:
+    if p["reference"] and p.get("image_engine") not in (*comfy.REFERENCE_ENGINES, "gpt-image"):
         p["image_engine"] = comfy.REFERENCE_ENGINES[0]
     save(p)
     return p
@@ -671,15 +671,25 @@ def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
     return _keyframes(p, indices, reseed, engine, edit)
 
 
+def gpt_keyframe(cfg, p, index, out_size):
+    """Use the same subject and prompt for direct GPT images and local-engine fallbacks."""
+    refs = refs_of(p)
+    paths = [os.path.join(char_dir(user_of(p["id"])), ref) for ref in refs]
+    prompt = reference_prompt(p, index) if refs else keyframe_prompt(p, index)
+    return cloud.gpt_image(cfg, prompt, p.get("aspect", "portrait"), out_size, paths)
+
+
 def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=None):
     """edit = an instruction ("make her hair red"): Qwen-Image 2.1 changes the finished picture as told; the
     result becomes a new version like any regenerated picture. remote = ComfyUI on the rented GPU."""
     cfg = load_config()
     if remote and cloudgpu.state["extras"].get("qwen_hq"):  # the rented card has the full-quality (bf16) Qwen files
         cfg["qwen_image_21"] = {**cfg["qwen_image_21"], **cloudgpu.HQ_QWEN}
-    c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
-    if not c.alive():
-        raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
+    c = None
+    if edit or (engine or p.get("image_engine")) != "gpt-image":
+        c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
+        if not c.alive():
+            raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
     q = p.get("quality", "standard")
     hq = q in ("high", "sharp", "2k", "ultra")  # upscale pass; "high"/"2k"/"ultra" also render bigger with more steps
     table = {"high": "hires_sizes", "2k": "hires_sizes", "ultra": "hires_sizes", "sharp": "sharp_sizes"}.get(q)
@@ -693,7 +703,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
         raise RuntimeError(f'the character picture "{gone[0]}" was deleted; pick another one (or None) under Character picture')
     ref = bool(refs)
     ref_names = [c.upload_image(os.path.join(char_dir(user_of(p["id"])), r),
-                                "aics_ref_" + re.sub(r"[^\w.\-]", "_", user_of(p["id"]) + "_" + r)) for r in refs]
+                                "aics_ref_" + re.sub(r"[^\w.\-]", "_", user_of(p["id"]) + "_" + r)) for r in refs] if c else []
     for i in indices:
         check_cancel(p)
         key = str(i)
@@ -721,9 +731,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
         t = time.time()
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
         if use == "gpt-image":  # cloud, pay-per-use: picked for the project or for this picture
-            ref_paths = [os.path.join(char_dir(user_of(p["id"])), r) for r in refs]
-            data = cloud.gpt_image(cfg, reference_prompt(p, i) if refs else keyframe_prompt(p, i),
-                                   p.get("aspect", "portrait"), out_size, ref_paths)
+            data = gpt_keyframe(cfg, p, i, out_size)
             save_keyframe(p, i, data, pic_info(p, i, "gpt-image"))
             p.setdefault("keyframe_engines", {})[key] = "gpt-image"
             p["keyframes_version"] = time.time()
@@ -773,7 +781,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
                 raise
             # last resort: the local engine failed, so make this one picture with GPT-image
             log(p, f"keyframe {i + 1}/{n}: local engine failed ({str(e)[:80]}), using GPT-image instead")
-            data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
+            data = gpt_keyframe(cfg, p, i, out_size)
             use = "gpt-image"
         save_keyframe(p, i, data, pic_info(p, i, use, edit))
         p.setdefault("keyframe_engines", {})[key] = use

@@ -83,7 +83,9 @@ CATALOG = [
     {"id": "NVIDIA B200", "label": "B200", "mem": 180, "speed": 3.0, "blackwell": True},
 ]
 
-lock = threading.Lock()
+lock = threading.RLock()
+_lifecycle = threading.RLock()  # startup and deletion must finish before another lifecycle worker runs
+_generation = [0]  # queued workers from an earlier rental must never alter a new one
 state = {"status": "off", "message": "", "pod": None, "key": "", "price": 0.0, "gpu": "",
          "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "h3_unet": "", "h3_short": 768,
          "where": "",
@@ -106,11 +108,20 @@ def _set(**kw):
         state.update(kw)
         keep = {k: state[k] for k in ("pod", "key", "price", "gpu", "started", "video", "h3_te", "h3_unet", "h3_short",
                                       "where")}
-    if state["pod"]:
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(keep, f)
-    elif os.path.exists(STATE_FILE):
-        os.remove(STATE_FILE)
+        if state["pod"]:
+            tmp = STATE_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(keep, f)
+            for attempt in range(40):
+                try:
+                    os.replace(tmp, STATE_FILE)
+                    break
+                except PermissionError:
+                    if attempt == 39:
+                        raise
+                    time.sleep(0.05)
+        elif os.path.exists(STATE_FILE):
+            os.remove(STATE_FILE)
 
 
 def info():
@@ -265,11 +276,13 @@ def start(gpu_id, cloud):
     if not card or cloud not in ("COMMUNITY", "SECURE"):
         raise ValueError("pick a card and community or secure first")
     with lock:
-        if state["status"] not in ("off", "error"):
+        if state["status"] not in ("off", "error") or state["pod"]:
             return False
+        _generation[0] += 1
+        generation = _generation[0]
         state.update(status="starting", gpu=card["label"],
                      message=f"Renting an {card['label']} ({cloud.lower()} cloud)…")
-    threading.Thread(target=_start, args=(card, cloud), daemon=True).start()
+    threading.Thread(target=_start, args=(card, cloud, generation), daemon=True).start()
     return True
 
 
@@ -317,7 +330,14 @@ def _wait_agent(minutes):
                        " so try again")
 
 
-def _start(card, cloud):
+def _start(card, cloud, generation=None):
+    with _lifecycle:
+        if (generation is not None and generation != _generation[0]) or state["status"] != "starting":
+            return
+        return _start_locked(card, cloud)
+
+
+def _start_locked(card, cloud):
     c = cfg()
     key = secrets.token_urlsafe(24)
     disk = lambda v: DISK_GB[v] + (FLUX2_DISK if card["mem"] >= FLUX2_MIN_MEM else 0)
@@ -340,21 +360,26 @@ def _start(card, cloud):
                 video, note = "ltx25", " (no free one where MiniMax H3 is allowed, so videos use LTX-2.5)"
         if not pod and state["status"] == "starting":
             pod, why = _create(c, card["id"], cloud, key, disk(video))
-        if state["status"] != "starting":  # Stop was pressed while it was being rented
-            if pod:
-                _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
-            return
         if not pod:
+            if state["status"] != "starting":
+                return
             return _set(status="error", message=f"Couldn't rent an {card['label']} (RunPod: {why}). "
                                                 "Pick another card or try again.")
         price = pod.get("costPerHr") or next((o[cloud.lower()] for o in _opts[1] if o["id"] == card["id"]), 0)
+        # Record the rental before another blocking call, including one returned after Stop was pressed.
+        _set(pod=pod["id"], key=key, price=float(price or 0), started=time.time(), last_used=time.time(), loras=[])
+        if state["status"] != "starting":
+            _delete("Stopped during startup")
+            return
         where = _place(pod["id"])
+        if state["status"] != "starting":
+            _delete("Stopped during startup")
+            return
         if video == "h3" and not h3_allowed(where):  # RunPod placed it elsewhere after all: no H3 there
             video, note = "ltx25", f" (it's in {where or 'an unknown place'}, where MiniMax H3 isn't allowed: videos use LTX-2.5)"
         h3_te = comfy_te(card) if video == "h3" else ""
         h3_unet = h3_unet if video == "h3" else ""
-        _set(pod=pod["id"], key=key, price=float(price or 0), started=time.time(), last_used=time.time(), loras=[],
-             video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where,
+        _set(video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where,
              extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False},
              message="Starting the machine" + note + "…")
         if not _wait_agent(8):  # good machines answer in under a minute
@@ -366,6 +391,8 @@ def _start(card, cloud):
             dl = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
         script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nFLUX2={int(card['mem'] >= FLUX2_MIN_MEM)}\nDL_B64={dl}\n".encode(), 1)
         for _ in range(24):  # just after boot the gateway can still answer 404 for a while
+            if state["status"] != "starting":
+                return
             try:
                 code, body = _call("POST", "/rm/setup", script)
             except (urllib.error.URLError, OSError):
@@ -396,9 +423,12 @@ def _start(card, cloud):
         else:
             raise RuntimeError("setup took over 40 minutes")
         _open_relay()
-        _set(status="ready", message=f"{state['gpu']} ready for pictures · {video_label(video, h3_unet)} videos in a few "
-                                     f"minutes{note}",
-             last_used=time.time())
+        with lock:
+            if state["status"] != "starting":
+                return
+            _set(status="ready", message=f"{state['gpu']} ready for pictures · {video_label(video, h3_unet)} videos in a few "
+                                         f"minutes{note}",
+                 last_used=time.time())
         _free_local()
     except Exception as e:
         try:  # keep the end of the pod's setup log for finding out what went wrong (the pod is deleted next)
@@ -519,19 +549,30 @@ def _open_relay():
 
 def stop(reason="Stopped"):
     with lock:
-        if state["status"] in ("off", "stopping"):
+        if state["status"] == "stopping" or (state["status"] == "off" and not state["pod"]):
             return False
+        generation = _generation[0]
         state.update(status="stopping", message="Deleting the pod…")
-    threading.Thread(target=_delete, args=(reason,), daemon=True).start()
+    threading.Thread(target=_delete, args=(reason, False, generation), daemon=True).start()
     return True
 
 
-def _delete(reason, error=False):
+def _delete(reason, error=False, generation=None):
+    with _lifecycle:
+        if generation is not None and generation != _generation[0]:
+            return
+        return _delete_locked(reason, error)
+
+
+def _delete_locked(reason, error=False):
     pod = state["pod"]
     for _ in range(3):
         if not pod:
             break
-        code, out, err = _run([RUNPODCTL, "pod", "delete", pod], timeout=60)
+        try:
+            code, out, err = _run([RUNPODCTL, "pod", "delete", pod], timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            code, out, err = 1, "", "delete command failed"
         if code == 0 or "not found" in (out + err).lower():
             pod = None
             break
@@ -559,7 +600,7 @@ def _watch():
                     stop(f"Stopped after {c['idle_minutes']} idle minutes")
                 elif not all(state["extras"].values()):
                     _check_extras()
-            elif s == "error" and state["pod"]:
+            elif s in ("error", "off") and state["pod"]:
                 _delete("Stopped")
         except Exception:
             pass

@@ -12,7 +12,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS = os.path.join(APP_DIR, "users.json")
 SESSIONS = os.path.join(APP_DIR, "sessions.json")
 SESSION_DAYS = 90
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 def _read(path):
@@ -64,6 +64,14 @@ def set_user(name, password, admin=False):
                    "created": u.get(name, {}).get("created", time.time())}
         _write(USERS, u)
     return name
+
+
+def create_admin(name, password):
+    """Only the first setup request may create an administrator."""
+    with _lock:
+        if users():
+            raise ValueError("already set up")
+        return set_user(name, password, admin=True)
 
 
 def delete_user(name):

@@ -278,6 +278,9 @@
   .bnav { display:none; }
   @media (max-width:820px) {
     nav.tabs { display:none; }
+    header { flex-wrap:wrap; gap:8px; padding:10px 14px; }
+    .chips { flex-wrap:wrap; justify-content:flex-end; max-width:100%; }
+    .chips button.chip { min-width:44px; min-height:44px; }
     .create-grid { grid-template-columns:1fr; }
     .chips .chip span.t { display:none; }
     main { padding:12px 14px 140px; }
@@ -1420,7 +1423,7 @@ function gpuEngines(g) {  // what the connected card gives; the extras download 
     ${g.flux2 ? `<br>${mark(x.flux2)} FLUX.2 [dev]${x.flux2 ? ' (pick it under Image engine)' : ' (downloading, ~54 GB)'}` : ''}`;
 }
 function renderGpu() {
-  const g = GPU, s = g.status, admin = ME && ME.admin, live = s === 'starting' || s === 'ready' || s === 'stopping';
+  const g = GPU, s = g.status, admin = ME && ME.admin, live = s === 'starting' || s === 'ready' || s === 'stopping' || !!g.pod;
   const pick = GPUPICK && (GPUOPTS || []).find(o => o.id === GPUPICK.id);
   const pickPrice = pick && (GPUPICK.cloud === 'COMMUNITY' ? pick.community : pick.secure);
   const scroll = $('#gpubox > div') ? $('#gpubox > div').scrollTop : 0;  // keep the list where it was scrolled
@@ -1456,7 +1459,7 @@ function renderGpu() {
 }
 $('#gpu-chip').onclick = async () => {
   $('#gpubox').classList.add('on'); if (!GPU) await refreshGpu(); renderGpu(); refreshGpu();
-  if (!['starting', 'ready', 'stopping'].includes(GPU.status)) loadGpuOptions();  // fresh stock each time it's opened
+  if (!['starting', 'ready', 'stopping'].includes(GPU.status) && !GPU.pod) loadGpuOptions();  // no new rental until cleanup finishes
 };
 $('#gpubox').onclick = e => { if (e.target.id === 'gpubox') $('#gpubox').classList.remove('on'); };
 $('#acct').onclick = e => { if (e.target.id === 'acct') $('#acct').classList.remove('on'); };

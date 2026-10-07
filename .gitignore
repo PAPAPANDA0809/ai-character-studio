@@ -7,6 +7,9 @@ __pycache__/
 *.gguf
 *.mp4
 *.png
+!app/static/reelmint-*.png
+!myapp/icon-*.png
+!myapp/reelmint-192.png
 app/characters/
 models/
 setup/pending.txt

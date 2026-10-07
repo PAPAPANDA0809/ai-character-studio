@@ -278,9 +278,7 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/api/login", "/api/setup"):
                 b = self.body()
                 if path == "/api/setup":
-                    if auth.has_users():
-                        return self.send_json({"error": "already set up"}, 400)
-                    name = auth.set_user(b.get("user"), b.get("password"), admin=True)
+                    name = auth.create_admin(b.get("user"), b.get("password"))
                     pipeline.migrate_legacy(name)
                 elif not auth.check(b.get("user"), b.get("password")):
                     return self.send_json({"error": "wrong username or password"}, 401)
