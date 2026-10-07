@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(84,223,255,.7); color:var(--mint); background:rgba(84,223,255,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-10">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-11">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -408,24 +408,18 @@ const ICON = {
   videos: '<rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10l6-3v10l-6-3z"/>'
 };
 ICON.library = ICON.images;
+ICON.refresh = '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.5-1L20 9M4 15l2.4 3A7 7 0 0 0 17.9 17"/>';
+ICON.edit = '<path d="M15 5l4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/>';
+ICON.download = '<path d="M12 3v12m-5-5l5 5 5-5M4 16v4h16v-4"/>';
+ICON.fullscreen = '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>';
+ICON.delete = '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>';
 const svgIcon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${ICON[k]}</svg>`;
 const TABS = [['create', 'Create'], ['library', 'Library'], ['projects', 'Projects']];
 let LIBRARY_VIEW = 'images';
-$('#bnav').innerHTML = `<button class="bnav-toggle" id="bnav-toggle" aria-label="Open main navigation" aria-expanded="false" aria-controls="bnav-menu"><svg viewBox="0 0 56 20" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 16L28 4l23 12" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="bnav-menu" id="bnav-menu" inert aria-hidden="true"><div class="bnav-items">${TABS.map(([k, l]) => `<button data-view="${k}" title="${l}" aria-label="${l}">${svgIcon(k)}</button>`).join('')}</div></div>`;
-function setMobileMenu(open) {
-  $('#bnav').classList.toggle('open', open);
-  $('#bnav-toggle').setAttribute('aria-expanded', String(open));
-  $('#bnav-toggle').setAttribute('aria-label', open ? 'Close main navigation' : 'Open main navigation');
-  $('#bnav-menu').inert = !open;
-  $('#bnav-menu').setAttribute('aria-hidden', String(!open));
-}
-$('#bnav-toggle').onclick = () => setMobileMenu(!$('#bnav').classList.contains('open'));
-$('#bnav').addEventListener('keydown', e => {
-  if (e.key === 'Escape') { setMobileMenu(false); $('#bnav-toggle').focus(); }
-});
+$('#bnav').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}" aria-label="${l}">${svgIcon(k)}${l}</button>`).join('');
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}" title="${l}" aria-label="${l}">${svgIcon(k)}${l}</button>`).join('');
 async function goView(v) {
-  try { if (VIEW === 'project' && dirty) await savePlan(); show(v === 'library' ? LIBRARY_VIEW : v); setMobileMenu(false); }
+  try { if (VIEW === 'project' && dirty) await savePlan(); show(v === 'library' ? LIBRARY_VIEW : v); }
   catch (e) { alert("Couldn't save your changes: " + e.message); }
 }
 $$('[data-view]').forEach(b => b.onclick = () => goView(b.dataset.view));
@@ -1043,9 +1037,22 @@ function render() {  // every project type opens in the studio layout
 // STI = its index, STV = an older version being looked at (null = current), STE = the prompt bar edits the picture
 // (null = the default: show the saved image prompt; true = explicitly editing),
 // STEXT = the edit instruction being typed (survives refreshes)
-let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '', studioSubmitting = false;
+let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '', studioSubmitting = false, STCONTROLS = false;
+function setStudioControls(open) {
+  STCONTROLS = open;
+  const drawer = $('#st-mobile-drawer'), content = $('#st-mobile-controls'), toggle = $('#st-controls-toggle');
+  if (!drawer || !content || !toggle) return;
+  drawer.classList.toggle('open', open);
+  const hidden = PHONE.matches && !open;
+  content.inert = hidden;
+  content.setAttribute('aria-hidden', String(hidden));
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', open ? 'Hide picture controls' : 'Show picture controls');
+}
+PHONE.addEventListener('change', () => setStudioControls(STCONTROLS));
 function renderStudio() {
   const openDetails = new Set(renderStudio.pid === P.id ? $$('#v-project details[data-detail][open]').map(d => d.dataset.detail) : []);
+  if (renderStudio.pid !== P.id) STCONTROLS = false;
   renderStudio.pid = P.id;
   const pl = P.plan, n = pl.keyframes.length, busy = running() || studioSubmitting;
   const isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
@@ -1171,15 +1178,20 @@ function renderStudio() {
       <div class="st-zoom" style="${onPic && (made || STV) ? '' : 'visibility:hidden'}"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div>
       <div class="st-project-controls" id="st-project-controls"><button id="st-settings" aria-expanded="${PANEL}">Settings</button></div></div>
     <div class="st-job" role="status">${busy ? `<div class="progress"><i class="spin"></i><span>${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">Stop</button></div>` : /^error/.test(P.status) ? `<div class="progress error">${esc(P.message)}</div>` : ''}</div>
-    <div class="st-strip">${strip}</div>
     <div class="st-canvas">${canvas}${overlay}
       ${onPic && (made || STV) ? '<button class="st-fullscreen-close" id="st-fullscreen-close" aria-label="Close full screen">✕ Close</button>' : ''}
     </div>
+    <div class="st-mobile-drawer" id="st-mobile-drawer">
+      <button class="st-controls-toggle" id="st-controls-toggle" aria-label="Show picture controls" aria-expanded="false" aria-controls="st-mobile-controls"><svg viewBox="0 0 56 20" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 16L28 4l23 12" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div class="st-drawer-content" id="st-mobile-controls">
+    <div class="st-strip">${strip}</div>
     <div class="st-actions" id="st-actions">
       ${STV ? `<div class="st-ver" role="group" aria-label="Image version controls"><span class="st-version-label">${made ? 'Older version' : 'Current picture was deleted'}</span><button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
     </div>
     <div class="st-summary"><span>${esc({standard:'360p',sharp:'720p',high:'1080p','2k':'2K',ultra:'4K'}[P.quality] || '')} · ${esc(P.aspect || 'portrait')}</span><button id="ma-more" aria-expanded="${PANEL}">Settings</button></div>
     ${promptBar}
+      </div>
+    </div>
     <div class="st-panel">
       <button class="st-pclose" id="st-pclose">Done</button>
       ${settings}
@@ -1208,6 +1220,20 @@ function renderStudio() {
   ['#st-regen','#st-editmode','#st-vid','#st-reanim','#st-rescene'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
   const download = $('.st-panel a[download]'); if (download) toolbar.appendChild(download);
   ['#st-fullscreen','#st-delpic'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
+  const actionIcons = {'st-regen':'refresh','st-editmode':'edit','st-vid':'videos','st-reanim':'refresh','st-rescene':'refresh','st-fullscreen':'fullscreen','st-delpic':'delete'};
+  toolbar.querySelectorAll(':scope > button, :scope > a > button').forEach(button => {
+    const oldIcon = button.querySelector('span');
+    const label = button.textContent.replace(oldIcon?.textContent || '', '').trim();
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.innerHTML = svgIcon(actionIcons[button.id] || 'download') + `<span class="st-action-label">${esc(label)}</span>`;
+    if (button.parentElement.tagName === 'A') button.parentElement.setAttribute('aria-label', label);
+  });
+  $('#st-controls-toggle').onclick = () => setStudioControls(!STCONTROLS);
+  $('#st-mobile-drawer').addEventListener('keydown', e => {
+    if (e.key === 'Escape' && PHONE.matches) { setStudioControls(false); $('#st-controls-toggle').focus(); }
+  });
+  setStudioControls(STCONTROLS);
   if ($('#st-delpic')) $('#st-delpic').classList.add('image-delete');
   if ($('#st-editmode')) $('#st-editmode').setAttribute('aria-pressed', String(editing));
   $$('#v-project details[data-detail]').forEach(d => { if (openDetails.has(d.dataset.detail)) d.open = true; });
