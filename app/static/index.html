@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-4">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-5">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -319,6 +319,7 @@
     <div class="msheet-back" id="m-back"></div>
     <div class="page-heading"><div><p class="eyebrow">Your creative workspace</p><h1>Create something new</h1><p>Describe your idea. Bring it to life.</p></div><button id="open-create-settings" class="settings-trigger">Settings</button></div>
     <div class="create-grid">
+      <div class="create-main">
       <div class="glass pad create-composer">
         <div class="creation-summary" id="create-summary"></div>
         <label for="idea" class="prompt-label">What would you like to create?</label>
@@ -335,6 +336,8 @@
         <div id="create-ref-preview" class="selected-references"></div>
         <p class="engine-status" id="create-engine-status" aria-live="polite">Checking engine…</p>
         <div id="plan-msg" class="progress" style="display:none" role="status"><i class="spin"></i><span>Planning your project…</span></div>
+      </div>
+      <section class="recent-projects"><div class="section-heading"><h2>Recent projects</h2><button class="quiet" data-view="projects">View all</button></div><div class="mfeed" id="m-feed"></div></section>
       </div>
       <div class="glass pad create-settings">
         <div class="msheet-bar"><h2>Settings</h2><button id="m-done">Done</button></div>
@@ -377,7 +380,6 @@
         </details>
       </div>
     </div>
-    <section class="recent-projects"><div class="section-heading"><h2>Recent projects</h2><button class="quiet" data-view="projects">View all</button></div><div class="mfeed" id="m-feed"></div></section>
   </section>
 
   <!-- PROJECTS -->
@@ -908,7 +910,7 @@ async function refreshGallery(kind) {
     ? `<div class="it" data-i="${i}" data-key="${esc(it.project + '|' + it.path)}"><span class="pick">✓</span><img loading="lazy" src="${small(fileOf(it.project, it.path, Math.floor(it.mtime)))}"><div class="cap">${esc(it.label)}</div></div>`
     : `<div class="it" data-i="${i}" data-key="${esc(it.project + '|' + it.path)}"><span class="pick">✓</span><video preload="metadata" muted playsinline src="${fileOf(it.project, it.path, Math.floor(it.mtime))}#t=0.5"></video><div class="play">▶</div><div class="cap">${esc(it.label)}</div></div>`).join('')
     : `<div class="empty">Nothing here yet.</div>`;
-  $$('#gal-' + kind + ' .it').forEach(t => t.onclick = e => (e.target.closest('.pick') || SEL.on) ? togglePick(t) : lightbox(kind, items[+t.dataset.i]));
+  $$('#gal-' + kind + ' .it').forEach(t => t.onclick = e => (e.target.closest('.pick') || SEL.on) ? togglePick(t) : lightbox(kind, items[+t.dataset.i], items));
   renderSelbar(kind);
 }
 // Lightbox pictures: mouse wheel / pinch zooms around the pointer, drag pans once zoomed, double-click toggles.
@@ -921,7 +923,7 @@ function makeZoom(img) {
   img.replaceWith(box);
   box.appendChild(img);
   img.draggable = false;
-  let s = 1, x = 0, y = 0, last = null, pinch = null;
+  let s = 1, x = 0, y = 0, last = null, pinch = null, gesture = null, suppressClick = false;
   const pts = new Map();
   const apply = () => {
     const w = box.clientWidth, h = box.clientHeight;
@@ -941,11 +943,19 @@ function makeZoom(img) {
   };
   box.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, s * Math.exp(-e.deltaY * 0.0015)); }, {passive: false});
   box.ondblclick = e => zoomAt(e.clientX, e.clientY, s > 1 ? 1 : 2.5);
+  box.addEventListener('click', e => {
+    if (suppressClick) { e.preventDefault(); e.stopImmediatePropagation(); suppressClick = false; }
+  }, true);  // a swipe or pinch must not also open full screen as a tap
   box.onpointerdown = e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     try { box.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional: dragging still works without it */ }
     pts.set(e.pointerId, [e.clientX, e.clientY]);
     last = [e.clientX, e.clientY];
-    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = {d: Math.hypot(a[0] - b[0], a[1] - b[1]), s}; }
+    if (pts.size === 1) {
+      suppressClick = false;
+      gesture = {x:e.clientX, y:e.clientY, edge:s > 1.01 ? box.edges() : {left:true, right:true}};
+    } else { gesture = null; suppressClick = true; }
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = {d: Math.max(1, Math.hypot(a[0] - b[0], a[1] - b[1])), s}; }
   };
   box.onpointermove = e => {
     if (!pts.has(e.pointerId)) return;
@@ -958,22 +968,38 @@ function makeZoom(img) {
     last = [e.clientX, e.clientY];
   };
   box.onpointerup = box.onpointercancel = e => {
+    if (!pts.has(e.pointerId)) return;
+    const start = gesture;
+    const dx = start ? e.clientX - start.x : 0, dy = start ? e.clientY - start.y : 0;
+    if (Math.hypot(dx, dy) >= 10) suppressClick = true;
     pts.delete(e.pointerId);
     pinch = null;
     last = [...pts.values()][0] || last;
+    gesture = null;
+    if (e.type === 'pointercancel' || !start || pts.size) return;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+    if (dx < 0 ? !start.edge.right : !start.edge.left) return;  // pan first; navigate only from an existing edge
+    box.dispatchEvent(new CustomEvent('swipe', {detail:dx < 0 ? 1 : -1}));
   };
   box.scale = () => s;  // for zoom buttons: zoom about the centre
   box.edges = () => { const w = box.clientWidth; return {left: x >= -1, right: x <= w - w * s + 1}; };  // pushed to an edge?
   box.zoomTo = ns => { const r = box.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, ns); };
   return box;
 }
-function lightbox(kind, it) {
+function lightbox(kind, it, items = [it]) {
   const src = fileOf(it.project, it.path, Math.floor(it.mtime));
   $('#lb').innerHTML = (kind === 'images' ? `<img src="${big(src)}">` : `<video src="${src}" controls autoplay playsinline></video>`) +
-    `<div style="color:var(--muted);font-size:13px">${esc(it.label)} · ${fmtDate(it.mtime)}${kind === 'images' ? ZOOM_HINT : ''}</div>
+    `<div style="color:var(--muted);font-size:13px">${esc(it.label)} · ${fmtDate(it.mtime)}${kind === 'images' ? (items.length > 1 ? '<span style="opacity:.7"> · swipe left/right for pictures</span>' : '') + ZOOM_HINT : ''}</div>
      <div class="row"><a href="${src}" download><button class="primary">Download</button></a>
      <button id="lb-open">Open project</button><button id="lb-close">Close</button></div>`;
-  if (kind === 'images') makeZoom($('#lb img'));
+  if (kind === 'images') {
+    const z = makeZoom($('#lb img'));
+    z.addEventListener('swipe', e => {
+      const at = items.findIndex(item => item.project === it.project && item.path === it.path);
+      const next = items[at + e.detail];
+      if (at >= 0 && next) lightbox(kind, next, items);
+    });
+  }
   $('#lb').classList.add('on');
   $('#lb-close').onclick = () => { $('#lb').classList.remove('on'); $('#lb').innerHTML = ''; };
   $('#lb-open').onclick = async () => { $('#lb-close').onclick(); await openProject(it.project);
@@ -1003,11 +1029,11 @@ function render() {  // every project type opens in the studio layout
 // STI = its index, STV = an older version being looked at (null = current), STE = the prompt bar edits the picture
 // (null = the default: edit on phones, like Grok's "Edit image" bar; new version on computers),
 // STEXT = the edit instruction being typed (survives refreshes)
-let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '';
+let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '', studioSubmitting = false;
 function renderStudio() {
   const openDetails = new Set(renderStudio.pid === P.id ? $$('#v-project details[data-detail][open]').map(d => d.dataset.detail) : []);
   renderStudio.pid = P.id;
-  const pl = P.plan, n = pl.keyframes.length, busy = running();
+  const pl = P.plan, n = pl.keyframes.length, busy = running() || studioSubmitting;
   const isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
   const word = isImg ? 'picture' : isT2V ? 'scene' : 'keyframe', Word = word[0].toUpperCase() + word.slice(1);
   if (STI >= n) STI = n - 1;
@@ -1075,7 +1101,7 @@ function renderStudio() {
       <div class="st-row">
         <textarea id="kp${i}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
         ${onPic ? `<textarea id="st-edit" rows="1" placeholder="Edit image, e.g. make her hair red" style="${editing ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
-        <button class="st-send" id="st-send" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}>${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}</button></div></div>`;
+        <button class="st-send" id="st-send" aria-label="${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}><span class="send-label">${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}</span><span class="send-icon" aria-hidden="true">↑</span></button></div></div>`;
 
   // right: actions for what's selected, the whole project, then settings
   const act = (id, icon, label, off) => `<button class="st-act" id="${id}" ${busy || off ? 'disabled' : ''}><span>${icon}</span>${label}</button>`;
@@ -1083,7 +1109,7 @@ function renderStudio() {
   const of_ = n > 1 ? ` ${i + 1}` : '';
   let acts = '';
   if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') : '') + act('st-regen', '↻', made ? 'New version' : `Generate ${word}${of_}`) +
-    (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
+    (made ? act('st-editmode', '✎', 'Edit image') : '') +
     (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.05)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
       act('st-delpic', '🗑', STV ? 'Delete version' : 'Delete image') : '');
@@ -1169,9 +1195,6 @@ function renderStudio() {
   const download = $('.st-panel a[download]'); if (download) toolbar.appendChild(download);
   ['#st-fullscreen','#st-delpic'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
   if ($('#st-delpic')) $('#st-delpic').classList.add('image-delete');
-  $('#st-project-controls').appendChild($('#st-delproj'));
-  $('#st-delproj').style.width = '';
-  if ($('#st-regen')) $('#st-regen').setAttribute('aria-pressed', String(!editing));
   if ($('#st-editmode')) $('#st-editmode').setAttribute('aria-pressed', String(editing));
   $$('#v-project details[data-detail]').forEach(d => { if (openDetails.has(d.dataset.detail)) d.open = true; });
   $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
@@ -1180,11 +1203,29 @@ function renderStudio() {
   const fit = ta => { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; };
   bar.forEach(ta => { fit(ta); ta.addEventListener('input', () => fit(ta)); });
   const again = async fn => { await savePlan(); fn && fn(); render(); };  // keep typed text when switching what's shown
-  $('#btn-back').textContent = 'Back'; $('#btn-back').onclick = () => goView('projects');
+  $('#btn-back').textContent = 'Back'; $('#btn-back').setAttribute('aria-label', 'Back to projects'); $('#btn-back').onclick = () => goView('projects');
   $('#st-title').onclick = async () => { await savePlan(); if (await renameProject(P.id, pl.title)) { P = await api('/api/projects/' + P.id); render(); } };
-  const run = (task, body) => async () => { await savePlan(); await api(`/api/projects/${P.id}/${task}`, body || {}); poll(); };
+  const run = (task, body, onQueued) => async () => {
+    if (running() || studioSubmitting) return;
+    const id = P.id; studioSubmitting = true;
+    $$('#st-actions button, #st-send').forEach(button => button.disabled = true);
+    $('.st-job').innerHTML = '<div class="progress"><i class="spin"></i><span>Starting generation…</span></div>';
+    try {
+      await savePlan(); await api(`/api/projects/${id}/${task}`, body || {});
+      if (P.id === id && VIEW === 'project') {
+        if (onQueued) onQueued();
+        P.status = 'queued'; P.message = 'Queued · Waiting for the engine…';
+        studioSubmitting = false; render(); poll();
+      }
+    } catch (e) {
+      if (P.id === id && VIEW === 'project') {
+        studioSubmitting = false; render();
+        $('.st-job').innerHTML = `<div class="progress error" role="alert">Couldn't start generation: ${esc(e.message)}</div>`;
+      }
+    } finally { studioSubmitting = false; }
+  };
   const send = async () => {
-    if (busy) return;
+    if (busy || studioSubmitting) return;
     if (sel === 'clip') return run('animate', {only: i})();
     if (isT2V) return run('t2v', {only: i})();
     if (editing) {
@@ -1199,7 +1240,11 @@ function renderStudio() {
   bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
     if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); send(); } });
   const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
-  on('#st-regen', async () => { await again(() => { STE = false; STV = null; }); $('#kp' + i).focus(); });
+  on('#st-regen', async () => {
+    if (busy || studioSubmitting) return;
+    if (STV && shown) dirty = true;  // regenerate from the selected version's displayed prompt
+    await run('keyframes', {indices:[i], reseed:true}, () => { STV = null; })();
+  });
   on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
   on('#st-toedit', () => { STE = true; render(); $('#st-edit').focus(); });
   if (PANEL) $('.studio').classList.add('panel-open');  // stays open while the page is redrawn
@@ -1286,25 +1331,12 @@ function renderStudio() {
     $('#z-pct').onclick = () => z.zoomTo(1);
     z.addEventListener('click', () => {  // enter on a phone tap; Close or Back exits so double-tap zoom stays stable
       if (isPhone() && z.scale() <= 1.01) document.body.classList.add('immersive'); });
-    // phones: swipe left / right for the next / previous version (or picture, when there are no versions)
-    // Zoomed in, a drag moves the picture; a swipe that starts with the picture already pushed to that edge changes
-    // version, like a phone's photo gallery.
-    let sx = null, sy = 0, edge = null;
-    z.addEventListener('touchstart', e => {
-      if (e.touches.length !== 1) return (sx = null);  // pinching
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
-      edge = z.scale() > 1.01 ? z.edges() : {left: true, right: true};
-    }, {passive: true});
-    z.addEventListener('touchend', e => {
-      if (sx === null) return;
-      const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
-      sx = null;
-      if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
-      if (dx < 0 ? !edge.right : !edge.left) return;  // still room to move the zoomed picture that way
+    // The same pointer gesture handles gallery, studio and full-screen pictures.
+    z.addEventListener('swipe', e => {
       const items = $$('.st-strip [data-stv]').length ? $$('.st-strip [data-stv]') : $$('.st-strip [data-pick]');
       const at = items.findIndex(b => b.classList.contains('on'));
-      const next = items[at + (dx < 0 ? 1 : -1)];
-      if (next) next.click();
+      const next = items[at + e.detail];
+      if (at >= 0 && next) next.click();
     });
   }
 }
