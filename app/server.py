@@ -20,6 +20,7 @@ import cloudgpu
 import comfy
 import llm
 import pipeline
+import imageundo
 import push
 
 STATIC = os.path.join(pipeline.APP_DIR, "static")
@@ -338,6 +339,13 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     cloudgpu.stop()
                 return self.send_json(cloudgpu.info())
+            if path == "/api/restore_image":
+                return self.send_json(imageundo.restore(u, b.get("token")))
+            if path == "/api/delete" and b.get("undo"):
+                files = b.get("files", [])
+                if b.get("projects") or len(files) != 1:
+                    raise ValueError("Undo supports one image at a time")
+                return self.send_json(imageundo.delete(u, files[0].get("project", ""), files[0].get("path", "")))
             if path == "/api/delete":
                 return self.send_json({"deleted": pipeline.delete_items(u, b.get("projects", []), b.get("files", []))})
             if path == "/api/zip":  # several picked pictures/videos as one download (one save dialog, not one each)

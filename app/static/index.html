@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(84,223,255,.7); color:var(--mint); background:rgba(84,223,255,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-11">
+<link rel="stylesheet" href="/static/studio.css?v=20261008-1">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -1037,7 +1037,7 @@ function render() {  // every project type opens in the studio layout
 // STI = its index, STV = an older version being looked at (null = current), STE = the prompt bar edits the picture
 // (null = the default: show the saved image prompt; true = explicitly editing),
 // STEXT = the edit instruction being typed (survives refreshes)
-let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '', studioSubmitting = false, STCONTROLS = false;
+let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '', studioSubmitting = false, STCONTROLS = false, STPROMPT = false;
 function setStudioControls(open) {
   STCONTROLS = open;
   const drawer = $('#st-mobile-drawer'), content = $('#st-mobile-controls'), toggle = $('#st-controls-toggle');
@@ -1049,10 +1049,107 @@ function setStudioControls(open) {
   toggle.setAttribute('aria-expanded', String(open));
   toggle.setAttribute('aria-label', open ? 'Hide picture controls' : 'Show picture controls');
 }
-PHONE.addEventListener('change', () => setStudioControls(STCONTROLS));
+function setStudioPrompt(open) {
+  STPROMPT = open;
+  const content = $('#st-prompt-content'), toggle = $('#st-prompt-toggle');
+  if (!content || !toggle) return;
+  $('.studio').classList.toggle('prompt-open', open);
+  const hidden = !PHONE.matches && !open;
+  content.inert = hidden; content.setAttribute('aria-hidden', String(hidden));
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', (open ? 'Hide ' : 'Show ') + 'image prompt');
+  const activePrompt = [...content.querySelectorAll('textarea')].find(ta => ta.style.display !== 'none');
+  if (activePrompt) $('.st-prompt-preview').textContent = activePrompt.value || activePrompt.placeholder;
+  if (!hidden) content.querySelectorAll('textarea').forEach(ta => {
+    if (ta.style.display !== 'none') { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; }
+  });
+}
+PHONE.addEventListener('change', () => { setStudioControls(STCONTROLS); setStudioPrompt(STPROMPT); });
+
+function bindTrayDrag(handle, drawer) {
+  let gesture = null, suppressClick = false;
+  handle.addEventListener('pointerdown', e => {
+    if (e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    suppressClick = false;
+    const hidden = Math.max(0, drawer.offsetHeight - handle.offsetHeight - 1 - parseFloat(getComputedStyle(drawer).paddingBottom));
+    gesture = {id:e.pointerId, y:e.clientY, x:e.clientX, hidden, wasOpen:STCONTROLS, offset:STCONTROLS ? 0 : hidden, moved:false};
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!gesture || gesture.id !== e.pointerId) return;
+    const dy = e.clientY - gesture.y;
+    if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(e.clientX - gesture.x)) gesture.moved = true;
+    if (!gesture.moved) return;
+    e.preventDefault();
+    gesture.offset = Math.max(0, Math.min(gesture.hidden, (gesture.wasOpen ? 0 : gesture.hidden) + dy));
+    drawer.style.transition = 'none'; drawer.style.transform = `translateY(${gesture.offset}px)`;
+  });
+  const finish = (e, cancelled) => {
+    if (!gesture || gesture.id !== e.pointerId) return;
+    const dy = e.clientY - gesture.y, g = gesture; gesture = null;
+    suppressClick = g.moved;
+    drawer.style.transition = ''; drawer.style.transform = '';
+    if (g.moved || cancelled) setStudioControls(cancelled ? g.wasOpen : Math.abs(dy) >= 32 ? dy < 0 : g.offset < g.hidden / 2);
+  };
+  handle.addEventListener('pointerup', e => finish(e, false));
+  handle.addEventListener('pointercancel', e => finish(e, true));
+  handle.addEventListener('click', e => { if (suppressClick) { suppressClick = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+}
+
+function bindHoldLabel(target, show, hide) {
+  let timer = null, held = false, start = null;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  target.addEventListener('pointerdown', e => {
+    cancel(); held = false; start = [e.clientX, e.clientY];
+    if (e.pointerType !== 'mouse') timer = setTimeout(() => { held = true; show(); }, 480);
+  });
+  target.addEventListener('pointermove', e => {
+    if (start && Math.hypot(e.clientX-start[0],e.clientY-start[1]) > 10) { cancel(); hide(); }
+  });
+  target.addEventListener('pointerup', () => { cancel(); start = null; });
+  target.addEventListener('pointercancel', () => { cancel(); held = false; start = null; hide(); });
+  target.addEventListener('click', e => { if (held) { held = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+}
+
+function bindActionHints(toolbar) {
+  toolbar.querySelectorAll(':scope > button, :scope > a').forEach(target => {
+    let timer;
+    const hide = () => { clearTimeout(timer); $('#st-action-hint')?.remove(); };
+    const show = () => {
+      if (!PHONE.matches) return;
+      hide(); const label = document.createElement('div'), r = target.getBoundingClientRect();
+      label.id = 'st-action-hint'; label.className = 'st-action-hint'; label.textContent = target.getAttribute('aria-label');
+      label.style.left = Math.max(88,Math.min(innerWidth-88,r.left+r.width/2)) + 'px';
+      label.style.top = Math.max(8,r.top-40) + 'px'; document.body.appendChild(label);
+      timer = setTimeout(hide, 1800);
+    };
+    bindHoldLabel(target, show, hide);
+    target.addEventListener('focus', show); target.addEventListener('blur', hide);
+  });
+}
+
+function offerImageUndo(token, pid, label) {
+  if (!token) return;
+  $('#image-undo-toast')?.remove();
+  const toast = document.createElement('div'); toast.id = 'image-undo-toast'; toast.className = 'image-undo-toast';
+  toast.innerHTML = `<span role="status">${label === 'Delete version' ? 'Version' : 'Image'} moved to Trash</span><button>Undo</button>`;
+  document.body.appendChild(toast);
+  const timer = setTimeout(() => toast.remove(), 45000), button = toast.querySelector('button');
+  button.onclick = async () => {
+    clearTimeout(timer); button.disabled = true;
+    try {
+      if (VIEW === 'project' && P?.id === pid) await savePlan();
+      await api('/api/restore_image', {token});
+      if (VIEW === 'project' && P?.id === pid) { P = await api('/api/projects/' + pid); render(); }
+      else if (['images','videos'].includes(VIEW)) refreshGallery(VIEW);
+      toast.querySelector('span').textContent = 'Image restored'; button.remove(); setTimeout(() => toast.remove(), 2500);
+    } catch (e) { toast.querySelector('span').textContent = e.message; button.disabled = false; }
+  };
+}
 function renderStudio() {
   const openDetails = new Set(renderStudio.pid === P.id ? $$('#v-project details[data-detail][open]').map(d => d.dataset.detail) : []);
-  if (renderStudio.pid !== P.id) STCONTROLS = false;
+  $('#st-action-hint')?.remove();
+  if (renderStudio.pid !== P.id) { STCONTROLS = false; STPROMPT = false; }
   renderStudio.pid = P.id;
   const pl = P.plan, n = pl.keyframes.length, busy = running() || studioSubmitting;
   const isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
@@ -1072,6 +1169,8 @@ function renderStudio() {
   const vers = onPic ? ((P.versions || {})[i] || []).slice().reverse() : [];
   if (STV && !vers.includes(STV)) STV = null;
   if (onPic && !made && vers.length && !STV) STV = vers[0];  // current picture deleted: show the newest older version
+  const position = onPic && vers.length ? `Version ${STV ? vers.indexOf(STV) + (made ? 2 : 1) : 1} of ${vers.length + (made ? 1 : 0)}` : `${isT2V ? 'Scene' : 'Picture'} ${i + 1} of ${n}`;
+  const browseHint = (vers.length || n > 1) ? 'Swipe ↔' : '';
   const src = STV ? file('keyframes/history/' + STV, 1) : kfSrc(i);
   const pRefs = P.references || (P.reference ? [P.reference] : []);
   const refOpts = r => `<option value="">${r ? '—' : 'No character picture'}</option>` + CHARS.map(c => `<option value="${esc(c)}" ${c === pRefs[r] ? 'selected' : ''}>${esc(c)}</option>`).join('');
@@ -1176,20 +1275,20 @@ function renderStudio() {
   $('#v-project').innerHTML = `<div class="studio" style="--ar:${ar}">
     <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2 id="st-title" title="Tap to rename" style="cursor:pointer">${esc(pl.title)} <span style="font-size:13px;color:var(--muted)">✎</span></h2>
       <div class="st-zoom" style="${onPic && (made || STV) ? '' : 'visibility:hidden'}"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div>
-      <div class="st-project-controls" id="st-project-controls"><button id="st-settings" aria-expanded="${PANEL}">Settings</button></div></div>
+      <span class="st-position">${esc(position)}</span><div class="st-project-controls" id="st-project-controls"><button id="st-settings" aria-expanded="${PANEL}">Settings</button></div></div>
     <div class="st-job" role="status">${busy ? `<div class="progress"><i class="spin"></i><span>${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">Stop</button></div>` : /^error/.test(P.status) ? `<div class="progress error">${esc(P.message)}</div>` : ''}</div>
     <div class="st-canvas">${canvas}${overlay}
       ${onPic && (made || STV) ? '<button class="st-fullscreen-close" id="st-fullscreen-close" aria-label="Close full screen">✕ Close</button>' : ''}
     </div>
     <div class="st-mobile-drawer" id="st-mobile-drawer">
-      <button class="st-controls-toggle" id="st-controls-toggle" aria-label="Show picture controls" aria-expanded="false" aria-controls="st-mobile-controls"><svg viewBox="0 0 56 20" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 16L28 4l23 12" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="st-controls-toggle" id="st-controls-toggle" aria-label="Show picture controls" aria-expanded="false" aria-controls="st-mobile-controls"><span class="st-tray-position" aria-hidden="true">${esc(position)}</span><span class="st-handle"><i></i><svg class="st-chevron" viewBox="0 0 32 14" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 10l12-7 12 7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="st-swipe-hint" aria-hidden="true">${browseHint}</span></button>
       <div class="st-drawer-content" id="st-mobile-controls">
     <div class="st-strip">${strip}</div>
     <div class="st-actions" id="st-actions">
       ${STV ? `<div class="st-ver" role="group" aria-label="Image version controls"><span class="st-version-label">${made ? 'Older version' : 'Current picture was deleted'}</span><button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
     </div>
     <div class="st-summary"><span>${esc({standard:'360p',sharp:'720p',high:'1080p','2k':'2K',ultra:'4K'}[P.quality] || '')} · ${esc(P.aspect || 'portrait')}</span><button id="ma-more" aria-expanded="${PANEL}">Settings</button></div>
-    ${promptBar}
+    ${promptBar ? `<div class="st-prompt-shell"><button class="st-prompt-toggle" id="st-prompt-toggle" aria-controls="st-prompt-content" aria-expanded="false"><span>${editing ? 'Edit image' : isT2V ? 'Scene prompt' : 'Image prompt'}</span><span class="st-prompt-preview">${esc(editing ? STEXT || 'Describe your changes…' : shownPrompt)}</span><svg class="st-chevron" viewBox="0 0 32 14" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 10l12-7 12 7" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div id="st-prompt-content">${promptBar}</div></div>` : ''}
       </div>
     </div>
     <div class="st-panel">
@@ -1233,7 +1332,11 @@ function renderStudio() {
   $('#st-mobile-drawer').addEventListener('keydown', e => {
     if (e.key === 'Escape' && PHONE.matches) { setStudioControls(false); $('#st-controls-toggle').focus(); }
   });
+  bindTrayDrag($('#st-controls-toggle'), $('#st-mobile-drawer'));
+  bindActionHints(toolbar);
+  if ($('#st-prompt-toggle')) $('#st-prompt-toggle').onclick = () => setStudioPrompt(!STPROMPT);
   setStudioControls(STCONTROLS);
+  setStudioPrompt(STPROMPT);
   if ($('#st-delpic')) $('#st-delpic').classList.add('image-delete');
   if ($('#st-editmode')) $('#st-editmode').setAttribute('aria-pressed', String(editing));
   $$('#v-project details[data-detail]').forEach(d => { if (openDetails.has(d.dataset.detail)) d.open = true; });
@@ -1293,7 +1396,7 @@ function renderStudio() {
   });
   on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
   const editImage = async () => {
-    await again(() => { STE = true; STEXT = ''; });
+    await again(() => { STE = true; STEXT = ''; STPROMPT = true; });
     $('#st-edit').focus();
   };
   on('#st-toedit', editImage);
@@ -1335,10 +1438,11 @@ function renderStudio() {
   on('#st-delpic', async () => {  // the picture shown: an older version, or the current one
     const version = !!STV, id = P.id, path = STV ? 'keyframes/history/' + STV : `keyframes/kf_${pad(i)}.png`;
     const label = version ? 'Delete version' : 'Delete image';
+    let undo;
     confirmRemoval({title:label + '?', label,
       description:`Move ${version ? 'this version' : 'this image'} to the Trash folder on your PC? Your project stays.${!version && vers.length ? ' The newest older version will take its place.' : ''}`,
-      remove:async () => { await savePlan(); await api('/api/delete', {files:[{project:id, path}]}); },
-      done:async () => { STV = null; P = await api('/api/projects/' + id); render(); }});
+      remove:async () => { await savePlan(); undo = await api('/api/delete', {files:[{project:id, path}], undo:true}); },
+      done:async () => { STV = null; P = await api('/api/projects/' + id); render(); offerImageUndo(undo?.undo, id, label); }});
   });
   on('#ma-share', async () => {  // the phone's share sheet (save to gallery, send...); a download where that isn't offered
     try {

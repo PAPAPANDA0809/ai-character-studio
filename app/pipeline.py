@@ -1,5 +1,6 @@
 """Project storage and the generation pipeline (plan -> keyframes -> clips -> stitched video + captions)."""
 import glob
+from functools import wraps
 import json
 import os
 import queue
@@ -117,6 +118,15 @@ def load(pid):
 
 
 _save_lock = threading.Lock()
+image_change_lock = threading.RLock()
+
+
+def image_transaction(fn):
+    @wraps(fn)
+    def locked(*args, **kwargs):
+        with image_change_lock:
+            return fn(*args, **kwargs)
+    return locked
 
 
 def replace_file(tmp, dest):
@@ -216,6 +226,7 @@ def delete_character(user, name):
     return True
 
 
+@image_transaction
 def delete_items(user, projects=(), files=()):
     """Delete whole projects and/or single files ({project, path}) owned by user. Returns how many were removed."""
     n = 0
@@ -296,6 +307,7 @@ def cancel(pid):
     return running or bool(dropped)
 
 
+@image_transaction
 def enqueue(pid, task, **kw):
     p = load(pid)
     p["status"] = "queued:" + task
@@ -627,6 +639,7 @@ def save_keyframe(p, i, data, info=None):
         p.setdefault("pic_info", {})[str(i)] = info
 
 
+@image_transaction
 def use_version(pid, index, name):
     """Make an older version the current picture (the current one becomes a version)."""
     p = load(pid)
