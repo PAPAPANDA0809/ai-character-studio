@@ -431,7 +431,8 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "seed": int(seed) if seed not in (None, "") else random.randint(1, 2**31 - 1),
         "plan": plan, "keyframe_seeds": {}, "status": "planned", "log": [],
         "reference": reference, "references": refs,
-        "image_engine": (image_engine if image_engine in comfy.REFERENCE_ENGINES else comfy.REFERENCE_ENGINES[0]) if reference else
+        "image_engine": "gpt-image" if image_engine == "gpt-image" and cloud.available() else
+                        (image_engine if image_engine in comfy.REFERENCE_ENGINES else comfy.REFERENCE_ENGINES[0]) if reference else
                         image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "qwen-image-21"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
         "clip_fps": {}, "mode": mode,
@@ -477,8 +478,10 @@ def engines():
         return {"id": key, "label": label, "installed": all(ready(f) for f in e["files"])}
     return {
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
-        "reference_engines": list(comfy.REFERENCE_ENGINES),
-        "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()],
+        "reference_engines": list(comfy.REFERENCE_ENGINES) + (["gpt-image"] if cloud.available() else []),
+        "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()] + ([{
+            "id": "gpt-image", "label": "GPT Image 2.5 (OpenAI, paid: ~$0.17 a picture, keeps character pictures well, "
+            "no NSFW)", "installed": True}] if cloud.available() else []),
         "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
         "t2v": [entry(k, e) for k, e in comfy.T2V_ENGINES.items()],
         "default_t2v": cfg.get("default_t2v_engine", "wan22-5b"),
@@ -512,7 +515,7 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
         p["mode"] = mode
         if mode == "video":  # image/t2v plans have no motions; animate needs one per transition
             fit_motions(p["plan"])
-    if image_engine in comfy.IMAGE_ENGINES:
+    if image_engine in comfy.IMAGE_ENGINES or (image_engine == "gpt-image" and cloud.available()):
         p["image_engine"] = image_engine
     if video_engine in comfy.VIDEO_ENGINES:
         p["video_engine"] = video_engine
@@ -717,8 +720,10 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
         log(p, f"keyframe {i + 1}/{n}: {'editing' if edit else 'generating'} with {use_label}")
         t = time.time()
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
-        if use == "gpt-image":  # cloud, pay-per-use: only when picked for this picture
-            data = cloud.gpt_image(cfg, keyframe_prompt(p, i), p.get("aspect", "portrait"), out_size)
+        if use == "gpt-image":  # cloud, pay-per-use: picked for the project or for this picture
+            ref_paths = [os.path.join(char_dir(user_of(p["id"])), r) for r in refs]
+            data = cloud.gpt_image(cfg, reference_prompt(p, i) if refs else keyframe_prompt(p, i),
+                                   p.get("aspect", "portrait"), out_size, ref_paths)
             save_keyframe(p, i, data, pic_info(p, i, "gpt-image"))
             p.setdefault("keyframe_engines", {})[key] = "gpt-image"
             p["keyframes_version"] = time.time()

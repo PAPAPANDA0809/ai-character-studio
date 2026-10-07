@@ -1023,7 +1023,7 @@ function renderStudio() {
   let acts = '';
   if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') : '') + act('st-regen', '↻', `${made ? 'New version' : 'Generate'} of ${word}${of_}`) +
     (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
-    (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT-image (~$0.17)') : '') +
+    (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.17)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
       act('st-delpic', '🗑', STV && made ? 'Delete this version' : `Delete ${word}`) : '');
   if (sel === 'clip') acts += act('st-reanim', '▶', `${clipMade(i) ? 'Re-animate' : 'Animate'} clip ${i + 1}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_clip${i + 1}.mp4`, 'Download clip') : '');
