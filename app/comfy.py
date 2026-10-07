@@ -138,6 +138,8 @@ IMAGE_ENGINES = {
     # only on a rented card ("rented" names the download that brings it, see cloudgpu)
     "ideogram4": {"label": "Ideogram 4.0 (best for text in pictures, non-commercial licence)", "files": [],
                   "rented": "ideogram"},
+    "flux2-dev": {"label": "FLUX.2 [dev] (rich light and detail, ~3 min, 48 GB+ card, non-commercial licence)", "files": [],
+                  "rented": "flux2"},
 }
 # Engines that can use the character picture as a reference
 REFERENCE_ENGINES = ("qwen-image-21",)
@@ -238,6 +240,8 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None)
         return flux_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)
     if engine == "z-image":
         return zimage_workflow(cfg, prompt, width, height, seed, prefix)
+    if engine == "flux2-dev":
+        return flux2_workflow(prompt, width, height, seed, prefix)
     if engine == "ideogram4":
         return ideogram4_workflow(prompt, width, height, seed, prefix)
     if engine in ("flux2-klein-4b", "flux2-klein-9b"):
@@ -690,6 +694,35 @@ def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_
             wf[key] = {"class_type": "LoadImage", "inputs": {"image": name}}
             wf["6"]["inputs"][slot] = [key, 0]
     return wf
+
+
+# FLUX.2 [dev] (Black Forest Labs, 32B, fp8 35.5 GB + 18 GB Mistral text encoder): only on rented 48 GB+ cards. 50 steps:
+# ComfyUI's template uses 20, which looked flat next to Qwen-Image 2.1; 50 with a long prompt gave rich light and skin
+# (7 Oct, L40S: 179 s at 1088x1920, Qwen 46 s). Weights: non-commercial licence.
+FLUX2 = {"unet": "flux2_dev_fp8mixed.safetensors", "text_encoder": "mistral_3_small_flux2_fp8.safetensors",
+         "vae": "flux2-vae.safetensors", "steps": 50, "guidance": 4.0}
+
+
+def flux2_workflow(prompt, width, height, seed, prefix):
+    """FLUX.2 [dev] text-to-image (ComfyUI's image_flux2_fp8 template without its reference pictures)."""
+    c = FLUX2
+    w, h = (width + 15) // 16 * 16, (height + 15) // 16 * 16
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": c["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": c["text_encoder"], "type": "flux2", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": c["vae"]}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "5": {"class_type": "FluxGuidance", "inputs": {"conditioning": ["4", 0], "guidance": c["guidance"]}},
+        "6": {"class_type": "BasicGuider", "inputs": {"model": ["1", 0], "conditioning": ["5", 0]}},
+        "7": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "8": {"class_type": "Flux2Scheduler", "inputs": {"steps": c["steps"], "width": w, "height": h}},
+        "9": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "10": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
+        "11": {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": ["9", 0], "guider": ["6", 0], "sampler": ["7", 0],
+                                                                 "sigmas": ["8", 0], "latent_image": ["10", 0]}},
+        "12": {"class_type": "VAEDecode", "inputs": {"samples": ["11", 0], "vae": ["3", 0]}},
+        "13": {"class_type": "SaveImage", "inputs": {"images": ["12", 0], "filename_prefix": prefix}},
+    }
 
 
 def ideogram4_workflow(prompt, width, height, seed, prefix):

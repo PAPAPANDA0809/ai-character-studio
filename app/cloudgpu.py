@@ -36,7 +36,10 @@ H3_FULL = "minimax_h3_fl2va_int8_convrot.safetensors"           # 34 GB: 80 GB+ 
 H3_PRUNED = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"  # 21 GB slimmed H3: fits a 32 GB RTX 5090
 # H3's reference-to-video model (Video only with a character picture), same size as the card's main H3 model
 H3_REF = {H3_FULL: "minimax_h3_ref2va_int8_convrot.safetensors", H3_PRUNED: "minimax_h3_ref2va_pruned_int8_convrot.safetensors"}
-DISK_GB = {"h3": 180, "h3lite": 150, "ltx25": 160}  # models with the full-quality extras, plus ComfyUI
+# container disk per video engine: Qwen (int8 + bf16), Ideogram, the video models (H3 with its reference model) and
+# ComfyUI; FLUX2_DISK more on 48 GB+ cards, which also get FLUX.2 [dev]
+DISK_GB = {"h3": 210, "h3lite": 170, "ltx25": 150}
+FLUX2_MIN_MEM, FLUX2_DISK = 48, 60
 
 
 def h3_plan(card):
@@ -84,7 +87,7 @@ lock = threading.Lock()
 state = {"status": "off", "message": "", "pod": None, "key": "", "price": 0.0, "gpu": "",
          "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "h3_unet": "", "h3_short": 768,
          "where": "",
-         "extras": {"video": False, "qwen_hq": False, "ideogram": False}}
+         "extras": {"video": False, "qwen_hq": False, "ideogram": False, "flux2": False}}
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 relay = [None]     # the local relay server
 _opts = [0.0, []]  # options() cache: when, list
@@ -139,7 +142,7 @@ def _card_facts(s):
     card = next((c for c in CATALOG if c["label"] == s.get("gpu")), None)
     if not card:
         return {}
-    return {"mem": card["mem"], "speed": card["speed"],
+    return {"mem": card["mem"], "speed": card["speed"], "flux2": card["mem"] >= FLUX2_MIN_MEM,
             "h3_max": h3_max_seconds(card["mem"]) if s.get("video") == "h3" else None}
 
 
@@ -317,6 +320,7 @@ def _wait_agent(minutes):
 def _start(card, cloud):
     c = cfg()
     key = secrets.token_urlsafe(24)
+    disk = lambda v: DISK_GB[v] + (FLUX2_DISK if card["mem"] >= FLUX2_MIN_MEM else 0)
     plan = h3_plan(card)
     video = "h3" if plan else "ltx25"
     h3_unet, h3_short = plan or ("", 768)
@@ -327,7 +331,7 @@ def _start(card, cloud):
             for attempt in range(2):
                 dcs = h3_stock().get(card["id"], [])
                 if dcs:
-                    pod, why = _create(c, card["id"], cloud, key, DISK_GB["h3" if h3_unet == H3_FULL else "h3lite"], dcs)
+                    pod, why = _create(c, card["id"], cloud, key, disk("h3" if h3_unet == H3_FULL else "h3lite"), dcs)
                 if pod or not dcs or state["status"] != "starting":
                     break
                 _h3_stock[0] = 0  # RunPod's stock list was stale: read it again and try once more
@@ -335,7 +339,7 @@ def _start(card, cloud):
             if not pod:  # none free where H3 may run: rent it anywhere, videos use LTX-2.5
                 video, note = "ltx25", " (no free one where MiniMax H3 is allowed, so videos use LTX-2.5)"
         if not pod and state["status"] == "starting":
-            pod, why = _create(c, card["id"], cloud, key, DISK_GB[video])
+            pod, why = _create(c, card["id"], cloud, key, disk(video))
         if state["status"] != "starting":  # Stop was pressed while it was being rented
             if pod:
                 _run([RUNPODCTL, "pod", "delete", pod["id"]], timeout=60)
@@ -351,7 +355,7 @@ def _start(card, cloud):
         h3_unet = h3_unet if video == "h3" else ""
         _set(pod=pod["id"], key=key, price=float(price or 0), started=time.time(), last_used=time.time(), loras=[],
              video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where,
-             extras={"video": False, "qwen_hq": False, "ideogram": False},
+             extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False},
              message="Starting the machine" + note + "…")
         if not _wait_agent(8):  # good machines answer in under a minute
             return
@@ -360,7 +364,7 @@ def _start(card, cloud):
         # what this card installs: its video engine (and H3's text encoder), read by cloud_setup.sh
         with open(DOWNLOADER, "rb") as f:
             dl = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
-        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nDL_B64={dl}\n".encode(), 1)
+        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nFLUX2={int(card['mem'] >= FLUX2_MIN_MEM)}\nDL_B64={dl}\n".encode(), 1)
         for _ in range(24):  # just after boot the gateway can still answer 404 for a while
             try:
                 code, body = _call("POST", "/rm/setup", script)
@@ -537,7 +541,7 @@ def _delete(reason, error=False):
     cost = info()["cost"]
     _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[], video=None, h3_te="", h3_unet="",
          where="",
-         extras={"video": False, "qwen_hq": False, "ideogram": False},
+         extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False},
          message=f"{reason} (this session: about ${cost:.2f})")
 
 
@@ -575,7 +579,7 @@ def _check_extras():
         got = json.loads(body) if code == 200 else {}
     except (urllib.error.URLError, OSError, ValueError):
         return
-    extras = {k: bool(got.get(k)) for k in ("video", "qwen_hq", "ideogram")}
+    extras = {k: bool(got.get(k)) for k in ("video", "qwen_hq", "ideogram", "flux2")}
     if extras != state["extras"]:
         _set(extras=extras)
 

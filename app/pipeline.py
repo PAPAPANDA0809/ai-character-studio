@@ -26,7 +26,7 @@ os.makedirs(CHARACTERS, exist_ok=True)
 
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
-NATIVE_HD = ("qwen-image-21", "z-image", "ideogram4")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
+NATIVE_HD = ("qwen-image-21", "z-image", "ideogram4", "flux2-dev")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
 PERSON_WORDS = re.compile(r"(?i)\b(she|he|her|his|him|woman|women|man|men|girl|boy|lady|guy|person|people|model|"
                           r"wife|husband|mom|mum|dad|kid|child|baby|face|smil\w*)\b")
 CLOTHING_WORDS = re.compile(r"(?i)\b(wear\w*|outfit|cloth\w*|dress\w*|shirt|t-shirt|tee|top|blouse|jacket|coat|raincoat|"
@@ -464,7 +464,8 @@ def engines():
     def entry(key, e):
         if e.get("rented"):  # files only on the rented card
             on = cloudgpu.state["status"] == "ready" and cloudgpu.state["extras"].get(e["rented"])
-            return {"id": key, "label": e["label"], "installed": bool(on), "note": "with Fast GPU"}
+            need = "with a 48 GB+ Fast GPU" if e["rented"] == "flux2" else "with Fast GPU"
+            return {"id": key, "label": e["label"], "installed": bool(on), "note": need}
         label = e["label"]
         if key == "qwen-image-21" and cloudgpu.state["status"] == "ready":  # say where it runs and how
             label = "Qwen-Image 2.1 · " + ("full quality on Fast GPU" if cloudgpu.state["extras"].get("qwen_hq")
@@ -653,7 +654,7 @@ def use_version(pid, index, name):
 def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
     """Qwen-Image 2.1 pictures and edits run on the rented GPU while a fast-GPU session is ready; everything else here."""
     remote = cloudgpu.url()
-    if remote and (engine or p.get("image_engine")) == "ideogram4" and not edit and not refs_of(p):
+    if remote and (engine or p.get("image_engine")) in ("ideogram4", "flux2-dev") and not edit and not refs_of(p):
         log(p, f"using the rented {cloudgpu.info()['label']}")
         with cloudgpu.using():
             return _keyframes(p, indices, reseed, engine, edit, remote)
@@ -706,6 +707,9 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
         if use == "ideogram4" and not (remote and cloudgpu.state["extras"].get("ideogram")):
             raise RuntimeError("Ideogram 4.0 runs on a rented card: connect a Fast GPU and wait until Ideogram is "
                                "ready in its panel, or pick Qwen-Image 2.1")
+        if use == "flux2-dev" and not (remote and cloudgpu.state["extras"].get("flux2")):
+            raise RuntimeError("FLUX.2 [dev] runs on a rented 48 GB+ card (L40S, RTX 6000 Ada, A100, RTX PRO 6000...): "
+                               "connect one and wait until FLUX.2 is ready in its panel, or pick Qwen-Image 2.1")
         if use == "qwen-image-21" and remote and cloudgpu.state["extras"].get("qwen_hq"):
             use_label = "qwen-image-21 (full quality)"
         else:

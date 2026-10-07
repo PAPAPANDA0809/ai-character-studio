@@ -87,6 +87,11 @@ extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
     $I/diffusion_models/ideogram4_unconditional_int8_convrot.safetensors models/diffusion_models \
     $I/text_encoders/qwen3vl_8b_fp8_scaled.safetensors models/text_encoders \
     $I/vae/flux2-vae.safetensors models/vae
+  if [ "$FLUX2" = 1 ]; then  # FLUX.2 [dev] on 48 GB+ cards (54 GB)
+    F=$H/Comfy-Org/flux2-dev/resolve/main/split_files
+    extra flux2 $F/diffusion_models/flux2_dev_fp8mixed.safetensors models/diffusion_models \
+      $F/text_encoders/mistral_3_small_flux2_fp8.safetensors models/text_encoders
+  fi
 ) &
 
 st "installing Python packages"
