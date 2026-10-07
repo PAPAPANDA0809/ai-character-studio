@@ -235,7 +235,7 @@ body.auth-page { background:var(--bg); }
   .chips { flex-wrap:nowrap; gap:6px; }
   .chips .chip span.t { display:none; }
   .chips button.chip { min-height:44px; min-width:44px; padding:8px; }
-  main,main.wide,body.inproject main { margin:0; padding:22px 16px calc(104px + env(safe-area-inset-bottom)); }
+  main,main.wide,body.inproject main { margin:0; padding:22px 16px calc(60px + env(safe-area-inset-bottom)); }
   h1 { font-size:26px; }
   .page-heading { margin-bottom:20px; align-items:flex-start; }
   .page-heading .eyebrow { display:none; }
@@ -268,7 +268,7 @@ body.auth-page { background:var(--bg); }
   .pcard .pbtns button,.pick { width:36px; height:36px; }
   .pcard .pick { top:8px; left:8px; }
   body.inproject .app-header { display:none; }
-  body.inproject main.wide { padding:12px 12px calc(76px + env(safe-area-inset-bottom)); }
+  body.inproject main.wide { padding:12px 12px calc(60px + env(safe-area-inset-bottom)); }
   /* Let the phone page scroll so prompts and version controls cannot shrink the picture. */
   .studio,.studio:not(:has(.st-strip>*)) { height:auto; grid-template-columns:minmax(0,1fr); grid-template-areas:'top' 'job' 'canvas' 'strip' 'actions' 'prompt'; grid-template-rows:max-content 0 auto max-content max-content max-content; gap:10px; }
   .studio:has(.st-job:not(:empty)) { grid-template-rows:max-content max-content auto max-content max-content max-content; }
@@ -302,10 +302,17 @@ body.auth-page { background:var(--bg); }
   .studio.panel-open .st-panel { top:auto; left:0; right:0; bottom:0; width:auto; background:var(--panel); padding:16px 16px calc(28px + env(safe-area-inset-bottom)); max-height:85dvh; border-radius:18px 18px 0 0; }
   .st-panel .glass { padding:18px; }
   .st-pclose { position:sticky; top:0; z-index:2; background:var(--glass2); min-width:80px; }
-  body.inproject .bnav,.bnav { display:flex; position:fixed; left:0; right:0; bottom:0; border-radius:0; padding:6px 10px calc(6px + env(safe-area-inset-bottom)); background:var(--panel); border:0; border-top:1px solid var(--line); box-shadow:none; backdrop-filter:none; }
-  .bnav button { min-height:50px; padding:4px 10px; font-size:12px; border-radius:10px; }
-  .bnav button.on { background:#142b44; }
-  .bnav button svg { width:20px; height:20px; }
+  body.inproject .bnav,.bnav { display:flex; flex-direction:column; position:fixed; left:0; right:0; bottom:0; border-radius:0; padding:0 0 env(safe-area-inset-bottom); background:var(--panel); border:0; border-top:1px solid var(--line); box-shadow:none; backdrop-filter:none; }
+  .bnav .bnav-toggle { flex:none; width:100%; min-height:44px; height:44px; padding:0; border:0; border-radius:0; background:#41464f; color:#e2e6ed; justify-content:center; }
+  .bnav .bnav-toggle:hover { background:#505762; }
+  .bnav .bnav-toggle svg { width:56px; height:20px; transition:transform .22s ease; }
+  .bnav.open .bnav-toggle svg { transform:rotate(180deg); }
+  .bnav-menu { display:grid; grid-template-rows:0fr; transition:grid-template-rows .22s ease; }
+  .bnav.open .bnav-menu { grid-template-rows:1fr; }
+  .bnav-items { display:flex; min-height:0; overflow:hidden; }
+  .bnav .bnav-items button { min-height:50px; margin:6px 10px; padding:4px 10px; border-radius:10px; justify-content:center; }
+  .bnav .bnav-items button.on { background:#142b44; }
+  .bnav .bnav-items button svg { width:26px; height:26px; }
   body.immersive .bnav { display:none; }
 }
 @media(max-height:620px) {

@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(84,223,255,.7); color:var(--mint); background:rgba(84,223,255,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-9">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-10">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -411,10 +411,21 @@ ICON.library = ICON.images;
 const svgIcon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${ICON[k]}</svg>`;
 const TABS = [['create', 'Create'], ['library', 'Library'], ['projects', 'Projects']];
 let LIBRARY_VIEW = 'images';
-$('#bnav').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8">${ICON[k]}</svg>${l}</button>`).join('');
+$('#bnav').innerHTML = `<button class="bnav-toggle" id="bnav-toggle" aria-label="Open main navigation" aria-expanded="false" aria-controls="bnav-menu"><svg viewBox="0 0 56 20" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 16L28 4l23 12" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="bnav-menu" id="bnav-menu" inert aria-hidden="true"><div class="bnav-items">${TABS.map(([k, l]) => `<button data-view="${k}" title="${l}" aria-label="${l}">${svgIcon(k)}</button>`).join('')}</div></div>`;
+function setMobileMenu(open) {
+  $('#bnav').classList.toggle('open', open);
+  $('#bnav-toggle').setAttribute('aria-expanded', String(open));
+  $('#bnav-toggle').setAttribute('aria-label', open ? 'Close main navigation' : 'Open main navigation');
+  $('#bnav-menu').inert = !open;
+  $('#bnav-menu').setAttribute('aria-hidden', String(!open));
+}
+$('#bnav-toggle').onclick = () => setMobileMenu(!$('#bnav').classList.contains('open'));
+$('#bnav').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { setMobileMenu(false); $('#bnav-toggle').focus(); }
+});
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}" title="${l}" aria-label="${l}">${svgIcon(k)}${l}</button>`).join('');
 async function goView(v) {
-  try { if (VIEW === 'project' && dirty) await savePlan(); show(v === 'library' ? LIBRARY_VIEW : v); }
+  try { if (VIEW === 'project' && dirty) await savePlan(); show(v === 'library' ? LIBRARY_VIEW : v); setMobileMenu(false); }
   catch (e) { alert("Couldn't save your changes: " + e.message); }
 }
 $$('[data-view]').forEach(b => b.onclick = () => goView(b.dataset.view));
