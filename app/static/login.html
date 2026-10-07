@@ -6,7 +6,7 @@
 <title>Reelmint · Sign in</title>
 <link rel="icon" href="/static/reelmint-32.png">
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#101614">
+<meta name="theme-color" content="#060911">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"><!-- fonts never hold up the page -->
 <style>
   :root { --bg:#07090d; --line:rgba(255,255,255,.09); --text:#eef1f6; --muted:#8b93a3; --mint:#2ef2b5; --err:#ff6b8a;
@@ -15,21 +15,21 @@
   body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
          background:var(--bg); color:var(--text); font:15px/1.45 Inter,system-ui,sans-serif; }
   body::before { content:""; position:fixed; inset:-20vmax; z-index:-1;
-    background:radial-gradient(40vmax 30vmax at 15% 10%,rgba(46,242,181,.16),transparent 60%),
+    background:radial-gradient(40vmax 30vmax at 15% 10%,rgba(84,223,255,.16),transparent 60%),
                radial-gradient(40vmax 30vmax at 90% 80%,rgba(138,92,255,.18),transparent 60%); }
   .card { width:100%; max-width:360px; padding:28px 24px; border-radius:22px; background:rgba(255,255,255,.045);
           border:1px solid var(--line); backdrop-filter:blur(14px); text-align:center; }
-  img { width:72px; height:72px; border-radius:20px; box-shadow:0 0 40px rgba(46,242,181,.35); }
+  img { width:72px; height:72px; border-radius:20px; box-shadow:0 0 40px rgba(84,223,255,.35); }
   h1 { font:700 28px 'Space Grotesk',Inter,sans-serif; margin:14px 0 4px; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
   p { color:var(--muted); margin:0 0 20px; font-size:14px; }
   input { width:100%; margin-bottom:12px; background:rgba(0,0,0,.35); color:var(--text); border:1px solid var(--line);
           border-radius:12px; padding:13px 14px; font:inherit; outline:none; }
-  input:focus { border-color:rgba(46,242,181,.6); box-shadow:0 0 0 3px rgba(46,242,181,.12); }
+  input:focus { border-color:rgba(84,223,255,.6); box-shadow:0 0 0 3px rgba(84,223,255,.12); }
   button { width:100%; padding:14px; border:0; border-radius:14px; background:var(--grad); color:#041014;
-           font:600 16px Inter,sans-serif; cursor:pointer; box-shadow:0 6px 24px rgba(46,242,181,.25); }
+           font:600 16px Inter,sans-serif; cursor:pointer; box-shadow:0 6px 24px rgba(84,223,255,.25); }
   #err { color:var(--err); min-height:20px; font-size:13px; margin-top:10px; }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-6">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-7">
 </head>
 <body class="auth-page">
   <form class="card" id="f">
