@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-2">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-3">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -412,7 +412,7 @@ const svgIcon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 const TABS = [['create', 'Create'], ['library', 'Library'], ['projects', 'Projects']];
 let LIBRARY_VIEW = 'images';
 $('#bnav').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8">${ICON[k]}</svg>${l}</button>`).join('');
-$('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}">${svgIcon(k)}${l}</button>`).join('');
+$('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}" title="${l}" aria-label="${l}">${svgIcon(k)}${l}</button>`).join('');
 async function goView(v) {
   try { if (VIEW === 'project' && dirty) await savePlan(); show(v === 'library' ? LIBRARY_VIEW : v); }
   catch (e) { alert("Couldn't save your changes: " + e.message); }
@@ -445,6 +445,7 @@ function setPanel(on) {
   const st = $('.studio');
   if (st) st.classList.toggle('panel-open', on);
   if ($('#ma-more')) $('#ma-more').setAttribute('aria-expanded', String(on));
+  if ($('#st-settings')) $('#st-settings').setAttribute('aria-expanded', String(on));
   if (NAVPOP) return;
   if (on) history.pushState({overlay: 'panel'}, '', location.href);
   else if (history.state && history.state.overlay === 'panel') overlayBack();
@@ -803,13 +804,13 @@ async function renameProject(id, title) {  // true when renamed
     if (t === null || !t.trim() || t.trim() === title) return false;
     try { await api(`/api/projects/${id}/rename`, {title: t}); return true; } catch (e) { alert(e.message); return false; }
 }
-async function deleteProject(id, title) {  // to the PC's trash folder, then back to the list
+function confirmRemoval({title, description, label, remove, done}) {
   const modal = $('#project-delete-confirm'), trigger = document.activeElement;
   modal.innerHTML = `<div class="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-project-title" aria-describedby="delete-project-description">
-    <h2 id="delete-project-title">Delete project?</h2>
-    <p id="delete-project-description">Move <strong>${esc(title)}</strong> and all its pictures and videos to the Trash folder on your PC?</p>
+    <h2 id="delete-project-title">${esc(title)}</h2>
+    <p id="delete-project-description">${description}</p>
     <p id="project-delete-error" role="alert"></p>
-    <div class="delete-dialog-actions"><button id="cancel-project-delete">Cancel</button><button id="confirm-project-delete" class="project-delete">Delete project</button></div>
+    <div class="delete-dialog-actions"><button id="cancel-project-delete">Cancel</button><button id="confirm-project-delete" class="project-delete">${esc(label)}</button></div>
   </div>`;
   const cancel = $('#cancel-project-delete'), confirmDelete = $('#confirm-project-delete');
   const close = () => { modal.classList.remove('on'); if (trigger?.isConnected) trigger.focus({preventScroll:true}); };
@@ -823,13 +824,18 @@ async function deleteProject(id, title) {  // to the PC's trash folder, then bac
   confirmDelete.onclick = async () => {
     cancel.disabled = confirmDelete.disabled = true;
     try {
-      await api('/api/delete', {projects:[id]}); close();
-      await Promise.resolve(); await backDone; show('projects');
+      await remove(); close();
+      await Promise.resolve(); await backDone; await done();
     } catch (e) {
       $('#project-delete-error').textContent = e.message;
       cancel.disabled = confirmDelete.disabled = false;
     }
   };
+}
+function deleteProject(id, title) {  // to the PC's trash folder, then back to the list
+  confirmRemoval({title:'Delete project?',
+    description:`Move <strong>${esc(title)}</strong> and all its pictures and videos to the Trash folder on your PC?`,
+    label:'Delete project', remove:() => api('/api/delete', {projects:[id]}), done:() => show('projects')});
 }
 async function openProject(id) { dirty = false; STI = 0; STK = 'kf'; STV = null; STE = null; STEXT = ''; if (!ENG) await refreshEngines(); P = await api('/api/projects/' + id); show('project');
   navTo('#project/' + encodeURIComponent(id)); render(); poll(); }
@@ -1036,8 +1042,8 @@ function renderStudio() {
     (j < n - 1 ? thv(clipSrc(j), `data-pick="clip:${j}" title="Clip ${j + 1}: keyframe ${j + 1} → ${j + 2}"`, sel === 'clip' && j === i, `▶ ${j + 1}`, clipMade(j)) : '')).join('');
   if (isT2V) strip = `<div class="lbl">Scenes</div>` + pl.keyframes.map((_, j) => thv(clipSrc(j), `data-pick="kf:${j}"`, sel === 'kf' && j === i, j + 1, clipMade(j))).join('');
   if (!isImg && P.final_version) strip += `<div class="lbl">Final</div>` + thv(finalSrc(), 'data-pick="final:0"', sel === 'final', '★', true);
-  if (vers.length) strip += `<div class="lbl">Versions</div>${made ? th(kfSrc(i), 'data-stv=""', !STV, 'now') : ''}` +
-    vers.map(v => th(file('keyframes/history/' + v, 1), `data-stv="${esc(v)}"`, v === STV, '')).join('');
+  if (vers.length) strip += `<div class="lbl">Versions</div>${made ? th(kfSrc(i), 'data-stv="" aria-label="Current image" title="Current image"', !STV, 'now') : ''}` +
+    vers.map((v,j) => th(file('keyframes/history/' + v, 1), `data-stv="${esc(v)}" aria-label="Older version ${j+1}" title="Older version ${j+1}"`, v === STV, '')).join('');
 
   // middle: the selected picture (zoomable) or video
   const canvas = sel === 'final' ? vid(finalSrc())
@@ -1080,7 +1086,7 @@ function renderStudio() {
     (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
     (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.05)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
-      act('st-delpic', '🗑', STV && made ? 'Delete this version' : `Delete ${word}`) : '');
+      act('st-delpic', '🗑', STV ? 'Delete version' : 'Delete image') : '');
   if (onPic && (made || STV)) acts += act('st-fullscreen', '⛶', 'Full screen');
   if (sel === 'clip') acts += act('st-reanim', '▶', `${clipMade(i) ? 'Re-animate' : 'Animate'} clip ${i + 1}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_clip${i + 1}.mp4`, 'Download clip') : '');
   if (isT2V && sel === 'kf') acts += act('st-rescene', '↻', `${clipMade(i) ? 'Regenerate' : 'Generate'} scene${of_}`) + (clipMade(i) ? dl(clipSrc(i), `${P.id}_scene${i + 1}.mp4`, 'Download scene') : '');
@@ -1122,7 +1128,8 @@ function renderStudio() {
 
   $('#v-project').innerHTML = `<div class="studio" style="--ar:${ar}">
     <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2 id="st-title" title="Tap to rename" style="cursor:pointer">${esc(pl.title)} <span style="font-size:13px;color:var(--muted)">✎</span></h2>
-      <div class="st-zoom" style="${onPic && (made || STV) ? '' : 'visibility:hidden'}"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div></div>
+      <div class="st-zoom" style="${onPic && (made || STV) ? '' : 'visibility:hidden'}"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div>
+      <div class="st-project-controls" id="st-project-controls"><button id="st-settings" aria-expanded="${PANEL}">Settings</button></div></div>
     <div class="st-job" role="status">${busy ? `<div class="progress"><i class="spin"></i><span>${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">Stop</button></div>` : /^error/.test(P.status) ? `<div class="progress error">${esc(P.message)}</div>` : ''}</div>
     <div class="st-strip">${strip}</div>
     <div class="st-canvas">${canvas}${overlay}
@@ -1159,7 +1166,10 @@ function renderStudio() {
   const toolbar = $('#st-actions');
   ['#st-regen','#st-editmode','#st-vid','#st-reanim','#st-rescene'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
   const download = $('.st-panel a[download]'); if (download) toolbar.appendChild(download);
-  ['#st-fullscreen','#st-delproj'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
+  ['#st-fullscreen','#st-delpic'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
+  if ($('#st-delpic')) $('#st-delpic').classList.add('image-delete');
+  $('#st-project-controls').appendChild($('#st-delproj'));
+  $('#st-delproj').style.width = '';
   if ($('#st-regen')) $('#st-regen').setAttribute('aria-pressed', String(!editing));
   if ($('#st-editmode')) $('#st-editmode').setAttribute('aria-pressed', String(editing));
   $$('#v-project details[data-detail]').forEach(d => { if (openDetails.has(d.dataset.detail)) d.open = true; });
@@ -1193,6 +1203,7 @@ function renderStudio() {
   on('#st-toedit', () => { STE = true; render(); $('#st-edit').focus(); });
   if (PANEL) $('.studio').classList.add('panel-open');  // stays open while the page is redrawn
   on('#ma-more', () => setPanel(true));
+  on('#st-settings', () => setPanel(!PANEL));
   on('#studio-add-reference', () => $('#ref-file').click());
   on('#st-pclose', () => setPanel(false));
   on('#st-back', () => setPanel(false));
@@ -1226,12 +1237,12 @@ function renderStudio() {
   on('#btn-save', () => { dirty = true; savePlan().then(render).catch(e => alert(e.message)); });
   on('#btn-copy', () => navigator.clipboard?.writeText($('#f-caption').value + '\n\n' + $('#f-tags').value).then(() => $('#btn-copy').textContent = '✓ Copied'));
   on('#st-delpic', async () => {  // the picture shown: an older version, or the current one
-    const older = !!STV && made, path = STV ? 'keyframes/history/' + STV : `keyframes/kf_${pad(i)}.png`;
-    const what = older ? 'this older version' : !made ? 'this version' : `${word} ${i + 1}` + (vers.length ? ' (its newest older version takes its place)' : '');
-    if (!confirm(`Delete ${what}? It's moved to the Trash folder on the PC.`)) return;
-    await savePlan();
-    try { await api('/api/delete', {files: [{project: P.id, path}]}); } catch (e) { return alert(e.message); }
-    STV = null; P = await api('/api/projects/' + P.id); render();
+    const version = !!STV, id = P.id, path = STV ? 'keyframes/history/' + STV : `keyframes/kf_${pad(i)}.png`;
+    const label = version ? 'Delete version' : 'Delete image';
+    confirmRemoval({title:label + '?', label,
+      description:`Move ${version ? 'this version' : 'this image'} to the Trash folder on your PC? Your project stays.${!version && vers.length ? ' The newest older version will take its place.' : ''}`,
+      remove:async () => { await savePlan(); await api('/api/delete', {files:[{project:id, path}]}); },
+      done:async () => { STV = null; P = await api('/api/projects/' + id); render(); }});
   });
   on('#ma-share', async () => {  // the phone's share sheet (save to gallery, send...); a download where that isn't offered
     try {
