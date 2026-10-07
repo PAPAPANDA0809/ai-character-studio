@@ -1009,7 +1009,12 @@ $('#lb').onclick = e => { if (e.target.id === 'lb') { $('#lb').classList.remove(
 function collectPlan() {
   const pl = structuredClone(P.plan), val = (sel, old) => $(sel) ? $(sel).value : old;  // the studio shows one picture's fields
   pl.title = val('#f-title', pl.title); pl.character = val('#f-character', pl.character); pl.setting = val('#f-setting', pl.setting);
-  pl.keyframes.forEach((k, i) => { k.image_prompt = val('#kp' + i, k.image_prompt); k.subtitle = val('#ks' + i, k.subtitle); });
+  pl.keyframes.forEach((k, i) => {
+    const prompt = $('#kp' + i);
+    // Viewing the saved prompt must not overwrite a newer plan when another setting is saved.
+    if (prompt && (prompt.value !== prompt.dataset.originalPrompt || prompt.dataset.usePrompt === 'true')) k.image_prompt = prompt.value;
+    k.subtitle = val('#ks' + i, k.subtitle);
+  });
   pl.motions = pl.motions.map((m, i) => val('#mo' + i, m));
   pl.caption = val('#f-caption', pl.caption);
   pl.hashtags = $('#f-tags') ? $('#f-tags').value.split(/\s+/).filter(Boolean) : pl.hashtags;
@@ -1025,7 +1030,7 @@ function render() {  // every project type opens in the studio layout
 /* ---------- studio: every project, laid out like an image editor ---------- */
 // What's shown: STK = 'kf' (a picture / keyframe / scene), 'clip' (the motion from keyframe STI to STI+1) or 'final';
 // STI = its index, STV = an older version being looked at (null = current), STE = the prompt bar edits the picture
-// (null = the default: edit on phones, like Grok's "Edit image" bar; new version on computers),
+// (null = the default: show the saved image prompt; true = explicitly editing),
 // STEXT = the edit instruction being typed (survives refreshes)
 let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '', studioSubmitting = false;
 function renderStudio() {
@@ -1079,9 +1084,9 @@ function renderStudio() {
     : busy && /^queued/.test(P.status) && sel !== 'final' ? `<div class="st-over"><div class="gen dim">Queued</div></div>` : '';
 
   // bottom: the prompt of what's selected; an older version shows the prompt it was made from (when it was saved)
-  const editing = onPic && made && !STV && (STE === null ? true : STE);
+  const editing = onPic && made && !STV && STE === true;
   const shown = onPic ? (STV ? (P.version_info || {})[STV] : (P.pic_info || {})[i]) : null;
-  const shownPrompt = STV && shown ? shown.prompt : k.image_prompt;
+  const shownPrompt = shown?.prompt ?? k.image_prompt ?? '';
   const note = !onPic ? '' : STV
     ? (!shown ? "This version was made before prompts were saved with pictures, so today's prompt is shown."
       : shown.edit ? `This version was an edit, “${esc(shown.edit)}”, of a picture made from the prompt below.`
@@ -1097,7 +1102,7 @@ function renderStudio() {
       ${editing ? `<div class="st-cur" id="st-curp" title="Tap to change the prompt instead">${esc(shownPrompt)}</div>`
         : onPic && made && !STV ? '<div class="st-cur st-tog" id="st-toedit">✎ Edit the picture instead</div>' : ''}
       <div class="st-row">
-        <textarea id="kp${i}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
+        <textarea id="kp${i}" data-original-prompt="${esc(shownPrompt)}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
         ${onPic ? `<textarea id="st-edit" rows="1" placeholder="Edit image, e.g. make her hair red" style="${editing ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
         <button class="st-send" id="st-send" aria-label="${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}><span class="send-label">${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}</span><span class="send-icon" aria-hidden="true">↑</span></button></div></div>`;
 
@@ -1222,6 +1227,12 @@ function renderStudio() {
       }
     } finally { studioSubmitting = false; }
   };
+  const useDisplayedPrompt = () => {
+    const prompt = $('#kp' + i);
+    if (prompt && prompt.value !== P.plan.keyframes[i].image_prompt) {
+      prompt.dataset.usePrompt = 'true'; dirty = true;
+    }
+  };
   const send = async () => {
     if (busy || studioSubmitting) return;
     if (sel === 'clip') return run('animate', {only: i})();
@@ -1229,10 +1240,10 @@ function renderStudio() {
     if (editing) {
       const t = $('#st-edit').value.trim();
       if (!t) return $('#st-edit').focus();
-      STV = null; STEXT = ''; return run('keyframes', {indices: [i], reseed: true, edit: t})();
+      return run('keyframes', {indices: [i], reseed: true, edit: t}, () => { STV = null; STE = false; STEXT = ''; })();
     }
-    if (STV && shown) dirty = true;  // the older version's prompt (as shown) becomes the picture's prompt
-    STV = null; return run('keyframes', {indices: [i], reseed: made})();
+    useDisplayedPrompt();
+    return run('keyframes', {indices: [i], reseed: made}, () => { STV = null; STE = false; })();
   };
   if ($('#st-send')) $('#st-send').onclick = send;
   bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
@@ -1240,11 +1251,15 @@ function renderStudio() {
   const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
   on('#st-regen', async () => {
     if (busy || studioSubmitting) return;
-    if (STV && shown) dirty = true;  // regenerate from the selected version's displayed prompt
-    await run('keyframes', {indices:[i], reseed:true}, () => { STV = null; })();
+    useDisplayedPrompt();
+    await run('keyframes', {indices:[i], reseed:true}, () => { STV = null; STE = false; })();
   });
   on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
-  on('#st-toedit', () => { STE = true; render(); $('#st-edit').focus(); });
+  const editImage = async () => {
+    await again(() => { STE = true; STEXT = ''; });
+    $('#st-edit').focus();
+  };
+  on('#st-toedit', editImage);
   if (PANEL) $('.studio').classList.add('panel-open');  // stays open while the page is redrawn
   on('#ma-more', () => setPanel(true));
   on('#st-settings', () => setPanel(!PANEL));
@@ -1256,8 +1271,8 @@ function renderStudio() {
   on('#st-reanim', send);
   on('#st-rescene', send);
   on('#m-new', () => { STE = false; render(); });
-  on('#m-edit', () => { STE = true; render(); $('#st-edit').focus(); });
-  on('#st-editmode', async () => { await again(() => { STE = true; }); $('#st-edit').focus(); });
+  on('#m-edit', editImage);
+  on('#st-editmode', editImage);
   on('#st-all', run('keyframes'));
   on('#st-anim', run('animate'));
   on('#st-t2v', run('t2v'));
@@ -1265,10 +1280,10 @@ function renderStudio() {
   on('#st-gpt', async () => { if (confirm('Redo this picture with GPT Image 2.5? Costs about $0.05 at 1080p (up to $0.10 at 4K) on your OpenAI account.'))
     await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
   on('#st-vid', () => videoBox(async (motion, opts) => { setPanel(false); await run('animate_image', {index: i, motion, ...opts})(); }));
-  $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; }));
-  $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; }));
-  on('#st-cur', () => again(() => { STV = null; }));
-  on('#st-use', async () => { await savePlan(); P = await api(`/api/projects/${P.id}/use_version`, {index: i, name: STV}); STV = null; render(); });
+  $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; STE = false; }));
+  $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; STE = false; }));
+  on('#st-cur', () => again(() => { STV = null; STE = false; }));
+  on('#st-use', async () => { await savePlan(); P = await api(`/api/projects/${P.id}/use_version`, {index: i, name: STV}); STV = null; STE = false; render(); });
   const resize = async delta => {
     const pl2 = collectPlan();
     if (delta > 0) pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});
