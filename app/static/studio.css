@@ -46,10 +46,9 @@ h3 { color:var(--muted); font-size:12px; letter-spacing:.6px; }
 .quiet { background:none; border-color:transparent; color:var(--muted); }
 .settings-trigger { display:none; }
 .create-grid { grid-template-columns:minmax(0,1fr) 310px; gap:24px; max-width:1320px; }
-.create-main { min-width:0; display:flex; flex-direction:column; gap:24px; }
-.create-main .recent-projects { margin-top:0; }
-.create-main .mfeed { grid-template-columns:repeat(2,minmax(0,1fr)); }
-.create-composer { padding:24px; }
+.create-composer { padding:24px; min-width:0; }
+#create-references { margin-top:16px; }
+#create-references .chars { padding-top:8px; }
 .create-settings { padding:22px; }
 .desktop-settings-title { margin:0 0 20px; }
 .msheet-bar { display:none; }
@@ -79,7 +78,7 @@ details[open]>summary::before { content:'⌄'; }
 .seg button svg { width:20px; height:20px; }
 .chars { gap:8px; }
 .char.on .pic,.st-th.on { box-shadow:none; }
-.recent-projects { margin-top:32px; }
+.recent-projects { margin-top:32px; max-width:1320px; }
 .section-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:12px; }
 .section-heading h2 { margin:0; }
 .mfeed { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; padding:0; }

@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261007-5">
+<link rel="stylesheet" href="/static/studio.css?v=20261007-6">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -319,7 +319,6 @@
     <div class="msheet-back" id="m-back"></div>
     <div class="page-heading"><div><p class="eyebrow">Your creative workspace</p><h1>Create something new</h1><p>Describe your idea. Bring it to life.</p></div><button id="open-create-settings" class="settings-trigger">Settings</button></div>
     <div class="create-grid">
-      <div class="create-main">
       <div class="glass pad create-composer">
         <div class="creation-summary" id="create-summary"></div>
         <label for="idea" class="prompt-label">What would you like to create?</label>
@@ -333,11 +332,15 @@
           <button id="clear-enh" class="quiet" hidden>Use original prompt</button>
         </div>
         <div class="composer-footer"><button id="add-create-reference">Add reference</button><button class="primary" id="btn-plan">Generate images</button></div>
+        <details id="create-references" open><summary>Reference pictures <span id="reference-count"></span></summary>
+          <p class="field-note">Up to 3: main subject, then outfit, product or place.</p>
+          <div class="chars" id="chars"></div>
+          <div id="chars-hint" class="field-note">This engine cannot use reference pictures. <a href="#" id="use-kontext">Choose a supported engine</a></div>
+          <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        </details>
         <div id="create-ref-preview" class="selected-references"></div>
         <p class="engine-status" id="create-engine-status" aria-live="polite">Checking engine…</p>
         <div id="plan-msg" class="progress" style="display:none" role="status"><i class="spin"></i><span>Planning your project…</span></div>
-      </div>
-      <section class="recent-projects"><div class="section-heading"><h2>Recent projects</h2><button class="quiet" data-view="projects">View all</button></div><div class="mfeed" id="m-feed"></div></section>
       </div>
       <div class="glass pad create-settings">
         <div class="msheet-bar"><h2>Settings</h2><button id="m-done">Done</button></div>
@@ -363,12 +366,6 @@
         <label for="style-sel">Visual style</label>
         <select id="style-sel"></select>
         <input id="style" value="cinematic photo, soft natural light, shallow depth of field" placeholder="Type your own style" style="margin-top:8px;display:none">
-        <details id="create-references"><summary>Reference pictures <span id="reference-count"></span></summary>
-          <p class="field-note">Up to 3: main subject, then outfit, product or place.</p>
-          <div class="chars" id="chars"></div>
-          <div id="chars-hint" class="field-note">This engine cannot use reference pictures. <a href="#" id="use-kontext">Choose a supported engine</a></div>
-          <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-        </details>
         <details id="create-advanced"><summary>Advanced settings</summary>
         <div id="img-eng-wrap"><label for="img-eng">Image engine</label><select id="img-eng"></select><p id="create-engine-note" class="field-note"></p></div>
         <div id="lora-wrap" style="display:none"><label>Trained character</label><select id="lora-sel"></select>
@@ -380,6 +377,7 @@
         </details>
       </div>
     </div>
+    <section class="recent-projects"><div class="section-heading"><h2>Recent projects</h2><button class="quiet" data-view="projects">View all</button></div><div class="mfeed" id="m-feed"></div></section>
   </section>
 
   <!-- PROJECTS -->
@@ -755,7 +753,7 @@ async function refreshFeed() {
 const openSheet = on => { $('#v-create').classList.toggle('sheet', on); $('#open-create-settings').setAttribute('aria-expanded', String(on)); };
 $('#open-create-settings').onclick = () => openSheet(true);
 $('#m-done').onclick = $('#m-back').onclick = () => openSheet(false);
-$('#add-create-reference').onclick = () => { $('#create-references').open = true; if (isPhone()) openSheet(true); $('#create-references').scrollIntoView({block:'nearest', behavior:'smooth'}); };
+$('#add-create-reference').onclick = () => { $('#create-references').open = true; $('#create-references').scrollIntoView({block:'nearest', behavior:'smooth'}); };
 PHONE.addEventListener('change', () => { if (!isPhone()) { openSheet(false); if (PANEL) setPanel(false); } });
 
 /* ---------- projects ---------- */
