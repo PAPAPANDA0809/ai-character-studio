@@ -204,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         try:
             # public
-            if m := re.fullmatch(r"/static/([\w\-.]+\.(?:png|json|svg|ico))", path):
+            if m := re.fullmatch(r"/static/([\w\-.]+\.(?:png|json|svg|ico|css))", path):
                 return self.send_file(os.path.join(STATIC, m.group(1)))
             if path == "/login":
                 return self.send_file(os.path.join(STATIC, "login.html"))

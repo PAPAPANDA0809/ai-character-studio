@@ -7,7 +7,7 @@
 <link rel="icon" href="/static/reelmint-32.png">
 <link rel="apple-touch-icon" href="/static/reelmint-192.png">
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#07090d">
+<meta name="theme-color" content="#101614">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"><!-- fonts never hold up the page -->
 <style>
@@ -294,48 +294,57 @@
   }
   nav.tabs button.on { border-color:rgba(46,242,181,.7); color:var(--mint); background:rgba(46,242,181,.08); }
 </style>
+<link rel="stylesheet" href="/static/studio.css?v=20261007">
 </head>
 <body>
-<header>
-  <img src="/static/reelmint-192.png" alt="">
-  <span class="brand">Reelmint</span>
+<aside class="app-sidebar">
+  <a class="brand-home" href="#" aria-label="Reelmint home"><img src="/static/reelmint-192.png" alt=""><span class="brand">reelmint</span></a>
+  <nav class="tabs" id="tabs" aria-label="Main navigation"></nav>
+  <div class="sidebar-foot"><span class="status-dot" id="sidebar-dot"></span><span id="sidebar-status">Checking local engine…</span></div>
+</aside>
+<header class="app-header">
+  <a class="brand-home mobile-brand" href="#" aria-label="Reelmint home"><img src="/static/reelmint-192.png" alt=""><span class="brand">reelmint</span></a>
+  <div class="app-heading" id="app-heading">Create</div>
   <div class="chips">
     <span class="chip"><i class="dot" id="d-comfy"></i><span class="t">Engine</span></span>
     <span class="chip"><i class="dot" id="d-llm"></i><span class="t" id="t-llm">Planner</span></span>
     <button class="chip" id="gpu-chip" style="cursor:pointer;color:var(--text)" title="Rent a fast GPU for Qwen-Image pictures"><i class="dot" id="d-gpu"></i><span class="t" id="t-gpu">Fast GPU</span></button>
-    <button class="chip" id="me-chip" style="cursor:pointer;color:var(--text)">👤 <span id="me-name"></span></button>
+    <button class="chip" id="me-chip" style="cursor:pointer;color:var(--text)" aria-label="Account and notifications">👤 <span id="me-name"></span></button>
   </div>
 </header>
-<nav class="tabs" id="tabs"></nav>
 
 <main>
   <!-- CREATE -->
   <section class="view" id="v-create">
     <div class="msheet-back" id="m-back"></div>
+    <div class="page-heading"><div><p class="eyebrow">Your creative workspace</p><h1>Create something new</h1><p>Describe your idea. Bring it to life.</p></div><button id="open-create-settings" class="settings-trigger">Settings</button></div>
     <div class="create-grid">
-      <div class="msheet-bar"><b>Settings</b><button id="m-done">Done</button></div>
-      <div class="glass pad">
-        <h2>What's the post?</h2>
-        <textarea id="idea" class="idea" placeholder="e.g. Our fox mascot opens a tiny coffee shop and serves its first customer"></textarea>
+      <div class="glass pad create-composer">
+        <div class="creation-summary" id="create-summary"></div>
+        <label for="idea" class="prompt-label">What would you like to create?</label>
+        <textarea id="idea" class="idea" rows="5" placeholder="A quiet coffee shop at golden hour, warm light on the table…"></textarea>
         <div class="enh">
           <div class="row" style="justify-content:space-between;margin:14px 0 6px">
-            <span style="font-size:12px;color:var(--muted)">✨ Improved prompt <span id="enh-by"></span></span>
-            <button id="btn-enh" class="enh-btn">✨ Improve</button>
+            <span style="font-size:12px;color:var(--muted)">AI prompt assistant <span id="enh-by"></span></span>
+            <button id="btn-enh" class="enh-btn">Improve prompt</button>
           </div>
-          <textarea id="idea2" rows="5" placeholder="Tap Improve and AI rewrites your idea into a richer, more visual prompt. Edit it freely; if it's filled in, Plan scenes uses this instead of the box above."></textarea>
+          <textarea id="idea2" rows="4" aria-label="Improved prompt" hidden></textarea>
+          <button id="clear-enh" class="quiet" hidden>Use original prompt</button>
         </div>
+        <div class="composer-footer"><button id="add-create-reference">Add reference</button><button class="primary" id="btn-plan">Generate images</button></div>
+        <div id="create-ref-preview" class="selected-references"></div>
+        <p class="engine-status" id="create-engine-status" aria-live="polite">Checking engine…</p>
+        <div id="plan-msg" class="progress" style="display:none" role="status"><i class="spin"></i><span>Planning your project…</span></div>
+      </div>
+      <div class="glass pad create-settings">
+        <div class="msheet-bar"><h2>Settings</h2><button id="m-done">Done</button></div>
+        <h2 class="desktop-settings-title">Settings</h2>
         <label>Make</label>
         <div class="seg" id="mode-seg">
           <button data-mode="video"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7"><rect x="3" y="5" width="7" height="14" rx="2"/><path d="M14 8l7-3v14l-7-3z"/></svg>Images + video</button>
           <button data-mode="t2v"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10l6-3v10l-6-3z"/></svg>Video only</button>
           <button data-mode="images"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-5-5-9 10"/></svg>Images only</button>
         </div>
-        <label>Character pictures <span style="font-weight:400;color:var(--muted)">· up to 3, in order: 1 = main subject, 2 and 3 = extra (outfit, product, place…)</span></label>
-        <div class="chars" id="chars"></div>
-        <div id="chars-hint" style="font-size:12px;color:var(--muted);margin-top:6px">Character pictures work with the <b>Qwen-Image 2.1</b> image engine. <a href="#" id="use-kontext">Switch to it</a></div>
-        <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-      </div>
-      <div class="glass pad">
         <div class="grid2">
           <div><label style="margin-top:0" id="nkf-label">Keyframes</label>
             <div class="stepper"><button data-step="-1">−</button><input id="nkf" type="number" value="1" min="1" max="12"><button data-step="1">+</button></div></div>
@@ -348,45 +357,41 @@
         <p id="q-hint" style="color:var(--muted);font-size:12px;margin:6px 0 0">Per picture with Qwen-Image 2.1: 720p ~30 s · 1080p ~1.5 min · 2K and 4K a few minutes (~4 min with a character picture)</p>
         <div id="vres-wrap"><label>Video resolution</label>
         <div class="seg small" id="vres-seg" style="grid-template-columns:1fr 1fr"><button data-v="480p">480p</button><button data-v="720p">720p · ~2-3× slower</button></div></div>
-        <label>Visual style</label>
+        <label for="style-sel">Visual style</label>
         <select id="style-sel"></select>
         <input id="style" value="cinematic photo, soft natural light, shallow depth of field" placeholder="Type your own style" style="margin-top:8px;display:none">
-        <div id="img-eng-wrap"><label>Image engine</label><select id="img-eng"></select></div>
+        <details id="create-references"><summary>Reference pictures <span id="reference-count"></span></summary>
+          <p class="field-note">Up to 3: main subject, then outfit, product or place.</p>
+          <div class="chars" id="chars"></div>
+          <div id="chars-hint" class="field-note">This engine cannot use reference pictures. <a href="#" id="use-kontext">Choose a supported engine</a></div>
+          <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        </details>
+        <details id="create-advanced"><summary>Advanced settings</summary>
+        <div id="img-eng-wrap"><label for="img-eng">Image engine</label><select id="img-eng"></select><p id="create-engine-note" class="field-note"></p></div>
         <div id="lora-wrap" style="display:none"><label>Trained character</label><select id="lora-sel"></select>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">Keeps the trained character in every picture; its trigger word is added to the prompt for you.</div></div>
         <div id="vid-eng-wrap"><label>Video engine</label><select id="vid-eng"></select></div>
         <div id="t2v-eng-wrap"><label>Text-to-video engine</label><select id="t2v-eng"></select></div>
         <details><summary>Describe the character in words (optional)</summary>
           <textarea id="character" rows="2" placeholder="e.g. a small orange fox with a teal scarf and round glasses" style="margin-top:8px"></textarea></details>
+        </details>
       </div>
     </div>
-    <button class="primary big" id="btn-plan" style="margin-top:16px">✦ Plan scenes</button>
-    <div id="plan-msg" class="progress" style="display:none"><i class="spin"></i><span>Planning scenes with the local AI…</span></div>
-    <!-- phones: a feed of recent creations and a "Type to imagine" bar, like Grok Imagine -->
-    <div class="mfeed" id="m-feed"></div>
-    <div class="mcomp" id="m-comp">
-      <button class="mref" id="m-enh" title="Improve the prompt with AI"><svg viewBox="0 0 24 24" fill="none" stroke="url(#neon)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <defs><linearGradient id="neon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2ef2b5"/><stop offset=".55" stop-color="#3ad7ff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient></defs>
-        <path d="M10 3.5l1.6 4.4a3 3 0 0 0 1.8 1.8L17.8 11.3l-4.4 1.6a3 3 0 0 0-1.8 1.8L10 19.1l-1.6-4.4a3 3 0 0 0-1.8-1.8L2.2 11.3l4.4-1.6a3 3 0 0 0 1.8-1.8z"/>
-        <path d="M18.5 2.5v4M16.5 4.5h4M19 16v3M17.5 17.5h3"/></svg></button>
-      <textarea id="m-idea" rows="1" placeholder="What's the post?"></textarea>
-      <button class="st-send" id="m-send" title="Make it">↑</button>
-      <button class="mset" id="m-set" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
-    </div>
+    <section class="recent-projects"><div class="section-heading"><h2>Recent projects</h2><button class="quiet" data-view="projects">View all</button></div><div class="mfeed" id="m-feed"></div></section>
   </section>
 
   <!-- PROJECTS -->
-  <section class="view" id="v-projects"><h2>Projects</h2><div class="selbar" data-for="projects"></div><div class="plist" id="plist"></div></section>
+  <section class="view" id="v-projects"><div class="page-heading"><div><h1>Projects</h1><p>Pick up where you left off.</p></div><label class="search-box" for="project-search"><span class="sr-only">Search projects</span><input id="project-search" type="search" placeholder="Search projects…"></label></div><div class="selbar" data-for="projects"></div><div class="plist" id="plist"></div></section>
 
   <!-- PROJECT EDITOR -->
   <section class="view" id="v-project"></section>
 
   <!-- GALLERIES -->
-  <section class="view" id="v-images"><h2>Images</h2><div class="selbar" data-for="images"></div><div class="gal" id="gal-images"></div></section>
-  <section class="view" id="v-videos"><h2>Videos</h2><div class="selbar" data-for="videos"></div><div class="gal" id="gal-videos"></div></section>
+  <section class="view" id="v-images"><div class="page-heading"><div><h1>Library</h1><p>Your images and videos, together.</p></div></div><div class="library-filters"><button data-library="images" class="on" aria-pressed="true">Images</button><button data-library="videos" aria-pressed="false">Videos</button></div><div class="selbar" data-for="images"></div><div class="gal" id="gal-images"></div></section>
+  <section class="view" id="v-videos"><div class="page-heading"><div><h1>Library</h1><p>Your images and videos, together.</p></div></div><div class="library-filters"><button data-library="images" aria-pressed="false">Images</button><button data-library="videos" class="on" aria-pressed="true">Videos</button></div><div class="selbar" data-for="videos"></div><div class="gal" id="gal-videos"></div></section>
 </main>
 
-<nav class="bnav" id="bnav"></nav>
+<nav class="bnav" id="bnav" aria-label="Main navigation"></nav>
 <div class="lb" id="lb"></div>
 <div class="lb" id="acct"></div>
 <div class="lb" id="gpubox"></div>
@@ -401,10 +406,20 @@ const ICON = {
   images: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-5-5-9 10"/>',
   videos: '<rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10l6-3v10l-6-3z"/>'
 };
-const TABS = [['create', 'Create'], ['projects', 'Projects'], ['images', 'Images'], ['videos', 'Videos']];
+ICON.library = ICON.images;
+const svgIcon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${ICON[k]}</svg>`;
+const TABS = [['create', 'Create'], ['library', 'Library'], ['projects', 'Projects']];
+let LIBRARY_VIEW = 'images';
 $('#bnav').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8">${ICON[k]}</svg>${l}</button>`).join('');
-$('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}">${l}</button>`).join('');
-$$('[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
+$('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-view="${k}">${svgIcon(k)}${l}</button>`).join('');
+async function goView(v) {
+  try { if (VIEW === 'project' && dirty) await savePlan(); show(v === 'library' ? LIBRARY_VIEW : v); }
+  catch (e) { alert("Couldn't save your changes: " + e.message); }
+}
+$$('[data-view]').forEach(b => b.onclick = () => goView(b.dataset.view));
+$$('[data-library]').forEach(b => b.onclick = () => goView(b.dataset.library));
+$$('.brand-home').forEach(a => a.onclick = e => { e.preventDefault(); goView('create'); });
+const routeView = h => h === 'library' ? LIBRARY_VIEW : h.startsWith('library/') ? (h.endsWith('videos') ? 'videos' : 'images') : ['projects', 'images', 'videos'].includes(h) ? h : 'create';
 
 /* ---------- Back button: every place and every open panel is a step; Back undoes the last one ---------- */
 // Full-screen picture, settings sheet, previews and the account / GPU panels are watched (class changes); the
@@ -428,6 +443,7 @@ function setPanel(on) {
   PANEL = on;
   const st = $('.studio');
   if (st) st.classList.toggle('panel-open', on);
+  if ($('#ma-more')) $('#ma-more').setAttribute('aria-expanded', String(on));
   if (NAVPOP) return;
   if (on) history.pushState({overlay: 'panel'}, '', location.href);
   else if (history.state && history.state.overlay === 'panel') overlayBack();
@@ -460,7 +476,7 @@ window.addEventListener('popstate', async e => {
     if (overlayOnly) return;
     const h = decodeURIComponent(location.hash.slice(1));
     if (h.startsWith('project/')) { if (VIEW !== 'project' || !P || P.id !== h.slice(8)) await openProject(h.slice(8)); }
-    else { const v = ['projects', 'images', 'videos'].includes(h) ? h : 'create'; if (VIEW !== v) show(v); }
+    else { const v = routeView(h); if (VIEW !== v) show(v); }
   } catch (err) { show('projects'); }
   finally { NAVPOP = false; if (backResolve) { backResolve(); backResolve = null; } }
 });
@@ -468,10 +484,12 @@ window.addEventListener('popstate', async e => {
 function show(v) {
   VIEW = v; SEL.on = false; SEL.keys.clear(); document.body.classList.remove('selecting');
   // the address remembers the tab (and the open project, set in openProject) so a refresh comes back here
-  if (v !== 'project') navTo(v === 'create' ? location.pathname : '#' + v);
+  if (v === 'images' || v === 'videos') LIBRARY_VIEW = v;
+  if (v !== 'project') navTo(v === 'create' ? location.pathname : v === 'images' || v === 'videos' ? '#library/' + v : '#' + v);
   if (v !== 'project') { document.querySelector('main').classList.remove('wide'); PANEL = false; }
   $$('.view').forEach(e => e.classList.toggle('on', e.id === 'v-' + v));
-  $$('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects')));
+  $$('[data-view]').forEach(b => { const on = b.dataset.view === v || (v === 'project' && b.dataset.view === 'projects') || (['images', 'videos'].includes(v) && b.dataset.view === 'library'); b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  $('#app-heading').textContent = v === 'project' ? 'Projects / Studio' : ['images', 'videos'].includes(v) ? 'Library' : v === 'projects' ? 'Projects' : 'Create';
   document.body.classList.toggle('inproject', v === 'project');
   document.body.classList.remove('immersive');
   if (v === 'create') { delete $('#m-feed').dataset.scrolled; refreshFeed(); }
@@ -497,13 +515,15 @@ const PHONE = matchMedia('(max-width: 820px)');
 const small = u => u + '&w=480', big = u => PHONE.matches ? u + '&w=1440' : u;
 const fmtDate = t => new Date(t * 1000).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
 
+let LAST_STATUS = null;
 async function refreshStatus() {
   try {
     const s = await api('/api/status');
+    LAST_STATUS = s; updateEngineStatus();
     $('#d-comfy').className = 'dot ' + (s.comfy ? 'on' : 'off');
     $('#d-llm').className = 'dot ' + (s.ollama === false ? 'off' : 'on');
     $('#t-llm').textContent = s.llm.split(':').slice(1).join(':') || 'Planner';
-  } catch (e) { $('#d-comfy').className = 'dot off'; }
+  } catch (e) { LAST_STATUS = {comfy: false}; $('#d-comfy').className = 'dot off'; updateEngineStatus(); }
 }
 
 /* ---------- create form ---------- */
@@ -555,6 +575,7 @@ function syncCreate() {
   $('#t2v-eng-wrap').style.display = m === 't2v' ? '' : 'none';
   $('#img-eng-wrap').style.display = m === 't2v' ? 'none' : '';
   renderLora();
+  syncCreationSummary();
 }
 $$('#mode-seg button').forEach(b => b.onclick = () => { NEW.mode = b.dataset.mode; syncCreate(); });
 $$('#aspect-seg button').forEach(b => b.onclick = () => { NEW.aspect = b.dataset.aspect; syncCreate(); });
@@ -563,7 +584,7 @@ $$('#vres-seg button').forEach(b => b.onclick = () => { NEW.vres = b.dataset.v; 
 $$('[data-step]').forEach(b => b.onclick = () => { $('#nkf').value = +$('#nkf').value + +b.dataset.step; syncCreate(); });
 $('#nkf').oninput = syncCreate;
 
-const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label)}${e.installed ? '' : ' · ' + (e.note || 'downloading')}</option>`).join('');
+const engOptions = (list, sel) => list.map(e => `<option value="${e.id}" title="${esc(e.label + (e.note ? ' · ' + e.note : ''))}" ${e.id === sel ? 'selected' : ''} ${e.installed ? '' : 'disabled'}>${esc(e.label.split(' (')[0])}${e.installed ? '' : ' · ' + (e.note || 'downloading')}</option>`).join('');
 async function refreshEngines() {
   ENG = await api('/api/engines');
   $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
@@ -571,6 +592,7 @@ async function refreshEngines() {
   if (CHARS) renderChars();
   $('#vid-eng').innerHTML = engOptions(ENG.video, $('#vid-eng').value || ENG.default_video);
   $('#t2v-eng').innerHTML = engOptions(ENG.t2v, $('#t2v-eng').value || ENG.default_t2v);
+  syncCreate();
 }
 
 // trained characters (LoRAs) made for one image engine; not-yet-downloaded ones are listed but disabled
@@ -585,7 +607,7 @@ function renderLora() {
   $('#lora-sel').innerHTML = loraOptions(eng, keep);
 }
 // image engines that can use a character picture (the server's list; Qwen-Image 2.1 before it loads)
-const refEngines = () => (ENG && ENG.reference_engines) || ['qwen-image-21'];
+const refEngines = () => [...new Set([...(ENG?.reference_engines || ['qwen-image-21']), 'gpt-image'])];
 // the one "Switch to it" picks: the first installed of them
 const bestRefEngine = () => refEngines()
   .find(id => (ENG?.image || []).some(e => e.id === id && e.installed)) || refEngines()[0];
@@ -622,6 +644,7 @@ function renderChars() {
     refreshChars();
   });
   $('#char-up').onclick = () => $('#ref-file').click();
+  syncCreationSummary();
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
 $('#img-eng').onchange = () => { renderChars(); renderLora(); syncCreate(); };
@@ -633,7 +656,12 @@ $('#ref-file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   const r = await fetch('/api/characters?name=' + encodeURIComponent(f.name), {method: 'POST', body: f});
   const j = await r.json(); if (j.error) return alert(j.error);
-  if (!NEW.refs.includes(j.name) && NEW.refs.length < 3) NEW.refs.push(j.name);
+  if (VIEW === 'project') {
+    await savePlan();
+    const refs = P.references || (P.reference ? [P.reference] : []);
+    if (!refs.includes(j.name) && refs.length < 3) P = await api(`/api/projects/${P.id}/reference`, {references:[...refs,j.name]});
+    else if (refs.length >= 3) alert('Reference uploaded. Remove one of the three selected references before adding it.');
+  } else if (!NEW.refs.includes(j.name) && NEW.refs.length < 3) NEW.refs.push(j.name);
   await refreshChars(); e.target.value = '';
   if (VIEW === 'project') render();
 };
@@ -654,14 +682,41 @@ $('#idea').addEventListener('blur', () => { const r = detectAsk($('#idea').value
 $('#btn-enh').onclick = async () => {
   const idea = $('#idea').value.trim();
   if (!idea) return $('#idea').focus();
-  const b = $('#btn-enh'); b.disabled = true; b.textContent = '✨ Thinking…';
+  const b = $('#btn-enh'); b.disabled = true; b.textContent = 'Improving…';
   try {
     const r = await api('/api/enhance', {idea, mode: NEW.mode, style: $('#style').value, character: $('#character').value, references: NEW.refs, keyframes: +$('#nkf').value});
-    $('#idea2').value = r.text; $('#enh-by').textContent = '· by ' + r.engine;
+    $('#idea2').value = r.text; $('#idea2').hidden = false; $('#clear-enh').hidden = false; $('#enh-by').textContent = '· by ' + r.engine;
   } catch (e) { alert(e.message); }
-  b.disabled = false; b.textContent = '✨ Improve';
+  b.disabled = false; b.textContent = 'Improve prompt';
 };
 
+const isPhone = () => PHONE.matches;
+function processingStatus(engine, editing = false) {
+  if (engine === 'gpt-image' && !editing) return 'Cloud image engine · paid per use';
+  if (GPU?.status === 'ready') return `${GPU.label} · ready`;
+  return LAST_STATUS ? `Local engine · ${LAST_STATUS.comfy ? 'ready' : 'offline'}` : 'Checking engine…';
+}
+function updateEngineStatus() {
+  $('#sidebar-status').textContent = LAST_STATUS ? `Local engine ${LAST_STATUS.comfy ? 'ready' : 'offline'}` : 'Checking engine…';
+  $('#sidebar-dot').classList.toggle('on', !!LAST_STATUS?.comfy);
+  $('#create-engine-status').textContent = processingStatus(NEW.mode === 't2v' ? $('#t2v-eng').value : $('#img-eng').value);
+  if ($('#studio-engine-status')) $('#studio-engine-status').textContent = processingStatus(P?.image_engine, $('#st-edit') && $('#st-edit').style.display !== 'none');
+}
+function syncCreationSummary() {
+  const format = {portrait: '9:16', landscape: '16:9', square: '1:1'}[NEW.aspect];
+  const quality = {standard:'360p', sharp:'720p', high:'1080p', '2k':'2K', ultra:'4K'}[NEW.quality] || '1080p';
+  const style = $('#style-sel').selectedOptions[0]?.textContent || 'Custom style';
+  $('#create-summary').innerHTML = [format, quality, style].map(t => `<span>${esc(t)}</span>`).join('');
+  $('#btn-plan').textContent = NEW.mode === 'images' ? 'Generate images' : NEW.mode === 't2v' ? 'Generate video scenes' : 'Generate keyframes';
+  $('#reference-count').textContent = NEW.refs.length ? `(${NEW.refs.length})` : '';
+  $('#create-ref-preview').innerHTML = NEW.refs.map(c => `<button type="button" data-clear-ref="${esc(c)}" title="Remove reference ${esc(c)}"><img src="/characters/${encodeURIComponent(c)}" alt="${esc(c)}"><span>Remove</span></button>`).join('');
+  $$('#create-ref-preview [data-clear-ref]').forEach(b => b.onclick = () => { NEW.refs = NEW.refs.filter(c => c !== b.dataset.clearRef); renderChars(); });
+  const engine = ENG?.image.find(e => e.id === $('#img-eng').value);
+  $('#create-engine-note').textContent = engine?.label || '';
+  updateEngineStatus();
+}
+$('#style').addEventListener('change', syncCreationSummary);
+$('#clear-enh').onclick = () => { $('#idea2').value = ''; $('#idea2').hidden = true; $('#clear-enh').hidden = true; $('#enh-by').textContent = ''; $('#idea').focus(); };
 $('#btn-plan').onclick = async () => {
   detectAsk($('#idea').value);
   const idea = $('#idea2').value.trim() || $('#idea').value.trim();
@@ -671,80 +726,39 @@ $('#btn-plan').onclick = async () => {
     P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, references: NEW.refs,
       mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value, lora: $('#lora-sel').value,
       keyframes: +$('#nkf').value, aspect: NEW.aspect, quality: NEW.quality || (NEW.mode === 'images' ? 'sharp' : 'standard'), video_res: NEW.vres});
-    dirty = false; show('project'); render();
+    dirty = false; STE = null; STEXT = ''; STK = 'kf'; STI = 0; STV = null;
+    show('project'); navTo('#project/' + encodeURIComponent(P.id)); render();
+    await api(`/api/projects/${P.id}/${P.mode === 't2v' ? 't2v' : 'keyframes'}`, {});
+    poll();
   } catch (e) { alert(e.message); }
-  $('#btn-plan').disabled = false; $('#plan-msg').style.display = 'none';
+  finally { $('#btn-plan').disabled = false; $('#plan-msg').style.display = 'none'; }
 };
 
-/* ---------- phones: the Imagine feed and the "Type to imagine" bar ---------- */
-const isPhone = () => matchMedia('(max-width:820px)').matches;
 let feedTimer = null;
 async function refreshFeed() {
   clearTimeout(feedTimer);
-  if (!isPhone() || VIEW !== 'create') return;
+  if (VIEW !== 'create') return;
   let list;
   try { list = await api('/api/projects'); } catch (e) { feedTimer = setTimeout(refreshFeed, 8000); return; }
-  const recent = list.slice(0, 12);  // newest first
-  const busy = p => /^(queued|running)/.test(p.status || '');
-  $('#m-feed').innerHTML = recent.length ? recent.map(p => {
-    const pics = p.present.map((ok, j) => ok
-      ? `<img loading="lazy" src="${small(fileOf(p.id, `keyframes/kf_${pad(j)}.png`, Math.floor(p.keyframes_version || 0)))}" data-open="${p.id}:${j}" alt="">`
-      : `<div class="fph" data-open="${p.id}:${j}">${busy(p) ? '<i class="spin"></i>' : 'not made yet'}</div>`).join('');
-    return `<div class="fgrp"><div class="fchip" data-open="${p.id}:0"><span>${esc(p.prompt || p.title)}</span></div>
-      <div class="fgrid">${pics}</div>
-      ${p.mode === 'images' && !busy(p) && p.present.some(Boolean) ? `<button class="fmore" data-more="${p.id}">✦ Generate more</button>` : ''}
-      ${busy(p) ? `<div style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px">${esc(p.message || 'Queued…')}</div>` : ''}</div>`;
-  }).join('') : '<div class="empty">Type what you want to see below.</div>';
-  $$('#m-feed [data-open]').forEach(el => el.onclick = async () => {
-    const [id, j] = el.dataset.open.split(':');
-    await openProject(id); STI = +j; render();
-  });
-  $$('#m-feed [data-more]').forEach(b => b.onclick = async () => {  // one more picture from the same prompt
-    b.disabled = true;
-    try {
-      const q = await api('/api/projects/' + b.dataset.more), pl2 = structuredClone(q.plan);
-      pl2.keyframes.push({image_prompt: pl2.keyframes[pl2.keyframes.length - 1].image_prompt, subtitle: ''});
-      await api(`/api/projects/${q.id}/plan`, {plan: pl2});
-      await api(`/api/projects/${q.id}/keyframes`, {indices: [pl2.keyframes.length - 1], reseed: true});
-    } catch (e) { alert(e.message); }
-    refreshFeed();
-  });
-  if (!$('#m-feed').dataset.scrolled) { $('#m-feed').dataset.scrolled = 1; window.scrollTo(0, 0); }
-  if (recent.some(busy)) feedTimer = setTimeout(refreshFeed, 4000);
+  if (VIEW !== 'create') return;
+  const recent = list.slice(0, 4);
+  $('#m-feed').innerHTML = recent.length ? recent.map(p => `<button class="recent-card" data-open="${p.id}" type="button">
+    <div class="recent-thumbnail">${p.present.some(Boolean) ? `<img src="${small(fileOf(p.id, `keyframes/kf_${pad(p.present.findIndex(Boolean))}.png`, Math.floor(p.keyframes_version || 0)))}" alt="" loading="lazy">` : '<span>Preview pending</span>'}</div>
+    <strong>${esc(p.title)}</strong><span>${esc(/^(queued|running)/.test(p.status) ? p.message || 'Working…' : fmtDate(p.created))}</span></button>`).join('') : '<div class="empty">Your recent projects will appear here.</div>';
+  $$('#m-feed [data-open]').forEach(b => b.onclick = () => openProject(b.dataset.open));
+  if (recent.some(p => /^(queued|running)/.test(p.status))) feedTimer = setTimeout(refreshFeed, 4000);
 }
-const openSheet = on => $('#v-create').classList.toggle('sheet', on);
-$('#m-set').onclick = () => openSheet(true);
+const openSheet = on => { $('#v-create').classList.toggle('sheet', on); $('#open-create-settings').setAttribute('aria-expanded', String(on)); };
+$('#open-create-settings').onclick = () => openSheet(true);
 $('#m-done').onclick = $('#m-back').onclick = () => openSheet(false);
-$('#m-idea').oninput = e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(140, e.target.scrollHeight) + 'px'; };
-$('#m-enh').onclick = async () => {  // the desktop's Improve, in place: the box gets the richer prompt to edit or send
-  const box = $('#m-idea'), idea = box.value.trim(), b = $('#m-enh');
-  if (!idea) return box.focus();
-  b.disabled = true;
-  try {
-    const r = await api('/api/enhance', {idea, mode: NEW.mode, style: $('#style').value, character: $('#character').value, references: NEW.refs, keyframes: +$('#nkf').value});
-    box.value = r.text; box.oninput({target: box});
-  } catch (e) { alert(e.message); }
-  b.disabled = false;
-};
-$('#m-send').onclick = async () => {  // one tap: plan the post with the sheet's settings, then start making it
-  const idea = $('#m-idea').value.trim();
-  if (!idea) return $('#m-idea').focus();
-  $('#m-send').disabled = true;
-  try {
-    const p = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, references: NEW.refs,
-      mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value, lora: $('#lora-sel').value,
-      keyframes: +$('#nkf').value, aspect: NEW.aspect, quality: NEW.quality || (NEW.mode === 'images' ? 'sharp' : 'standard'), video_res: NEW.vres});
-    await api(`/api/projects/${p.id}/${p.mode === 't2v' ? 't2v' : 'keyframes'}`, {});
-    $('#m-idea').value = ''; $('#m-idea').style.height = '';
-    delete $('#m-feed').dataset.scrolled;
-  } catch (e) { alert(e.message); }
-  $('#m-send').disabled = false;
-  refreshFeed();
-};
+$('#add-create-reference').onclick = () => { $('#create-references').open = true; if (isPhone()) openSheet(true); $('#create-references').scrollIntoView({block:'nearest', behavior:'smooth'}); };
+PHONE.addEventListener('change', () => { if (!isPhone()) { openSheet(false); if (PANEL) setPanel(false); } });
 
 /* ---------- projects ---------- */
 async function refreshProjects() {
-  const list = await api('/api/projects');
+  const all = await api('/api/projects');
+  const query = $('#project-search').value.trim().toLocaleLowerCase();
+  const list = all.filter(p => p.title.toLocaleLowerCase().includes(query));
   const card = p => {
     const st = p.status || '', cls = /^(queued|running)/.test(st) ? 'run' : /^(error|stopped|interrupted)/.test(st) ? 'err' : '';
     const time = new Date(p.created * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
@@ -764,7 +778,7 @@ async function refreshProjects() {
   list.filter(p => p.pinned).forEach(p => add('📌 Pinned', p));
   list.filter(p => !p.pinned).forEach(p => add(label(p.created), p));
   $('#plist').innerHTML = list.length ? groups.map(([name, ps]) => `<h3>${esc(name)} · ${ps.length}</h3><div class="pgrid">${ps.map(card).join('')}</div>`).join('')
-    : '<div class="empty">No projects yet. Create one!</div>';
+    : `<div class="empty">${query ? 'No projects match your search.' : 'No projects yet. Create one!'}</div>`;
   $$('.pcard').forEach(el => el.onclick = e => (e.target.closest('.pick') || SEL.on) ? togglePick(el) : openProject(el.dataset.id));
   $$('.pcard [data-ren]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
@@ -777,6 +791,7 @@ async function refreshProjects() {
   });
   renderSelbar('projects');
 }
+$('#project-search').oninput = () => refreshProjects();
 async function renameProject(id, title) {  // true when renamed
     const t = prompt('Project name', title);
     if (t === null || !t.trim() || t.trim() === title) return false;
@@ -955,6 +970,8 @@ function render() {  // every project type opens in the studio layout
 // STEXT = the edit instruction being typed (survives refreshes)
 let STI = 0, STK = 'kf', STV = null, STE = null, STEXT = '';
 function renderStudio() {
+  const openDetails = new Set(renderStudio.pid === P.id ? $$('#v-project details[data-detail][open]').map(d => d.dataset.detail) : []);
+  renderStudio.pid = P.id;
   const pl = P.plan, n = pl.keyframes.length, busy = running();
   const isImg = P.mode === 'images', isT2V = P.mode === 't2v', isVid = !isImg && !isT2V;
   const word = isImg ? 'picture' : isT2V ? 'scene' : 'keyframe', Word = word[0].toUpperCase() + word.slice(1);
@@ -995,26 +1012,26 @@ function renderStudio() {
 
   // middle: the selected picture (zoomable) or video
   const canvas = sel === 'final' ? vid(finalSrc())
-    : sel === 'clip' ? (clipMade(i) ? vid(clipSrc(i)) : empty(`Clip ${i + 1} isn't animated yet.<br>Describe the motion below and press ↑`))
-    : isT2V ? (clipMade(i) ? vid(clipSrc(i)) : empty('Not generated yet. Describe the scene below and press ↑'))
-    : made || STV ? `<img id="st-img" src="${big(src)}" alt="">` : empty('Not generated yet. Write the prompt below and press ↑');
+    : sel === 'clip' ? (clipMade(i) ? vid(clipSrc(i)) : empty(`Clip ${i + 1} isn't animated yet.<br>Describe the motion below and press Generate`))
+    : isT2V ? (clipMade(i) ? vid(clipSrc(i)) : empty('Not generated yet. Describe the scene below and press Generate'))
+    : made || STV ? `<img id="st-img" src="${big(src)}" alt="">` : empty('Not generated yet. Write the prompt below and press Generate');
   const working = busy && curKind === (sel === 'final' ? '-' : sel) && curIdx === i;
   const overlay = working ? `<div class="st-over"><div class="gen"><i class="spin"></i>${/editing/.test(P.message || '') ? 'Editing…' : sel === 'clip' ? 'Animating…' : 'Generating…'}</div></div>`
     : busy && /^queued/.test(P.status) && sel !== 'final' ? `<div class="st-over"><div class="gen dim">Queued</div></div>` : '';
 
   // bottom: the prompt of what's selected; an older version shows the prompt it was made from (when it was saved)
-  const editing = onPic && made && !STV && (STE === null ? isPhone() : STE);
+  const editing = onPic && made && !STV && (STE === null ? true : STE);
   const shown = onPic ? (STV ? (P.version_info || {})[STV] : (P.pic_info || {})[i]) : null;
   const shownPrompt = STV && shown ? shown.prompt : k.image_prompt;
   const note = !onPic ? '' : STV
     ? (!shown ? "This version was made before prompts were saved with pictures, so today's prompt is shown."
       : shown.edit ? `This version was an edit, “${esc(shown.edit)}”, of a picture made from the prompt below.`
-      : 'The prompt this version was made from. Press ↑ to make a new version from it.')
+      : 'The prompt this version was made from. Press Generate image to make a new version from it.')
     : shown && shown.edit ? `The current picture is an edit: “${esc(shown.edit)}”.` : '';
   const promptBar = sel === 'final' ? '' : sel === 'clip'
     ? `<div class="st-prompt"><div class="st-row"><textarea id="mo${i}" rows="1" placeholder="How it moves from keyframe ${i + 1} to ${i + 2}…">${esc(pl.motions[i] || '')}</textarea>
-        <button class="st-send" id="st-send" title="Animate this clip (Enter)" ${dis}>↑</button></div></div>`
-    : `<div class="st-prompt">
+        <button class="st-send" id="st-send" title="Animate this clip (Enter)" ${dis}>Animate clip</button></div></div>`
+    : `<div class="st-prompt"><label class="prompt-label" for="${editing ? 'st-edit' : 'kp' + i}">${editing ? 'Describe your changes' : isT2V ? 'Scene prompt' : 'Image prompt'}</label>
       ${note ? `<div class="st-note">${note}</div>` : ''}
       ${onPic && made && !STV ? `<div class="st-modes"><button id="m-new" class="${editing ? '' : 'on'}" title="Draw the picture again from its prompt">New version</button>
         <button id="m-edit" class="${editing ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this ${word}</button></div>` : ''}
@@ -1023,14 +1040,14 @@ function renderStudio() {
       <div class="st-row">
         <textarea id="kp${i}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
         ${onPic ? `<textarea id="st-edit" rows="1" placeholder="Edit image, e.g. make her hair red" style="${editing ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
-        <button class="st-send" id="st-send" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}>↑</button></div></div>`;
+        <button class="st-send" id="st-send" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}>${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}</button></div></div>`;
 
   // right: actions for what's selected, the whole project, then settings
   const act = (id, icon, label, off) => `<button class="st-act" id="${id}" ${busy || off ? 'disabled' : ''}><span>${icon}</span>${label}</button>`;
   const dl = (href, name, label) => `<a href="${href}" download="${esc(name)}"><button class="st-act"><span>⤓</span>${label}</button></a>`;
   const of_ = n > 1 ? ` ${i + 1}` : '';
   let acts = '';
-  if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') : '') + act('st-regen', '↻', `${made ? 'New version' : 'Generate'} of ${word}${of_}`) +
+  if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') : '') + act('st-regen', '↻', made ? 'New version' : `Generate ${word}${of_}`) +
     (made ? act('st-editmode', '✎', `Edit this ${word}`) : '') +
     (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.05)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
@@ -1049,69 +1066,78 @@ function renderStudio() {
     <button id="btn-del" style="flex:1" ${busy || n <= mn ? 'disabled' : ''}>− Last ${word}</button></div>`;
 
   const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('');
-  const settings = `<div class="glass">
-      ${!isT2V ? `<label>Picture resolution</label><select id="f-quality" ${dis}>${opt([['standard', '360p · fast'], ['sharp', '720p · sharp'], ['high', '1080p'], ['2k', '2K (1440p)'], ['ultra', '4K · slowest']], P.quality || 'standard')}</select>
-        <label>Image engine</label><select id="f-img-eng" ${dis}>${ENG ? engOptions(ENG.image, P.image_engine || ENG.default_image) : ''}</select>
-        ${lorasFor(P.image_engine).length ? `<label>Trained character</label><select id="f-lora" ${dis}>${loraOptions(P.image_engine, P.lora || '')}</select>` : ''}
-        <label>Character pictures <span style="font-weight:400">· 1 = main, 2–3 extra</span></label>
-        ${[0, 1, 2].map(r => `<select class="f-ref" style="${r ? 'margin-top:6px' : ''}${r && !pRefs[r - 1] ? ';display:none' : ''}" ${busy || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts(r)}</select>`).join('')}
-        ${!refEngines().includes(P.image_engine) && !P.reference ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Only with Qwen-Image 2.1</div>` : ''}` : ''}
-      ${!isImg ? `<label>Video resolution</label><select id="f-vres" ${dis}>${opt([['480p', '480p'], ['720p', '720p · ~2-3× slower']], P.video_res || '480p')}</select>
-        <label>Clip length with MiniMax H3 <b id="f-vsecs-v">${P.video_seconds || 5} s</b></label>
-        <input type="range" id="f-vsecs" min="5" max="15" step="1" value="${P.video_seconds || 5}" ${dis} style="width:100%;accent-color:var(--mint)">
-        <p class="vd-note">${GPU && GPU.status === 'ready' && GPU.video === 'h3' ? `About ${h3Minutes(P.video_res || '480p', P.video_seconds || 5)} min a clip on the ${esc(GPU.label)} (up to ${(GPU.h3_max || {})[P.video_res || '480p']} s here)` : 'Other video engines make 5 s clips'}</p>` : ''}
-      ${isT2V ? `<label>Text-to-video engine</label><select id="f-t2v-eng" ${dis}>${ENG ? engOptions(ENG.t2v, P.t2v_engine || ENG.default_t2v) : ''}</select>`
-        : `<label>Video engine${isImg ? ' (for ▶ Make video)' : ''}</label><select id="f-vid-eng" ${dis}>${ENG ? engOptions(ENG.video, P.video_engine || ENG.default_video) : ''}</select>`}
-      <label>Visual style</label><select id="f-style-sel" ${dis}>${styleOptions(P.style || '')}</select>
-      <input id="f-style" value="${esc(P.style || '')}" placeholder="Type your own style" style="margin-top:8px" ${dis}>
-      <label>Make</label><select id="f-mode" ${dis}>${opt([['images', 'Images only'], ['video', 'Images + video'], ['t2v', 'Video only']], P.mode || 'video')}</select>
-    </div>`;
+  const settings = `<div class="glass studio-settings">
+    <h2>Settings</h2><label>Format</label><div class="setting-value">${{portrait:'Portrait 9:16',landscape:'Landscape 16:9',square:'Square 1:1'}[P.aspect] || 'Portrait 9:16'}</div>
+    ${!isT2V ? `<label for="f-quality">Quality</label><select id="f-quality" ${dis}>${opt([['standard','360p · fast'],['sharp','720p'],['high','1080p'],['2k','2K'],['ultra','4K']],P.quality || 'standard')}</select>` : ''}
+    <label for="f-style-sel">Style</label><select id="f-style-sel" ${dis}>${styleOptions(P.style || '')}</select>
+    <input id="f-style" value="${esc(P.style || '')}" placeholder="Custom style" style="margin-top:8px" ${dis}>
+    ${!isT2V ? `<details data-detail="references" ${pRefs.length ? 'open' : ''}><summary>Reference pictures${pRefs.length ? ` (${pRefs.length})` : ''}</summary>
+      <div class="reference-preview">${pRefs.map(c => `<img src="/characters/${encodeURIComponent(c)}" alt="${esc(c)}">`).join('')}</div>
+      ${[0,1,2].map(r=>`<select class="f-ref" aria-label="Reference picture ${r+1}" style="${r ? 'margin-top:6px' : ''}${r && !pRefs[r-1] ? ';display:none' : ''}" ${busy || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts(r)}</select>`).join('')}
+      <button id="studio-add-reference" ${busy ? 'disabled' : ''}>Upload reference</button>
+      ${!refEngines().includes(P.image_engine) && !P.reference ? '<p class="field-note">Choose a reference-compatible image engine under Advanced.</p>' : ''}
+    </details>` : ''}
+    <details data-detail="advanced"><summary>Advanced settings</summary>
+      ${!isT2V ? `<label for="f-img-eng">Image engine</label><select id="f-img-eng" ${dis}>${ENG ? engOptions(ENG.image,P.image_engine || ENG.default_image) : ''}</select>
+        <p class="field-note">${esc(ENG?.image.find(e=>e.id===P.image_engine)?.label || '')}</p>
+        ${lorasFor(P.image_engine).length ? `<label for="f-lora">Trained character</label><select id="f-lora" ${dis}>${loraOptions(P.image_engine,P.lora || '')}</select>` : ''}` : ''}
+      ${!isImg ? `<label for="f-vres">Video resolution</label><select id="f-vres" ${dis}>${opt([['480p','480p'],['720p','720p · slower']],P.video_res || '480p')}</select>
+        <label for="f-vsecs">Clip length <b id="f-vsecs-v">${P.video_seconds || 5} s</b></label><input type="range" id="f-vsecs" min="5" max="15" step="1" value="${P.video_seconds || 5}" ${dis}>
+        <p class="field-note">${GPU?.status==='ready' && GPU.video==='h3' ? `About ${h3Minutes(P.video_res || '480p',P.video_seconds || 5)} min a clip on ${esc(GPU.label)}` : 'Other video engines make 5 s clips'}</p>` : ''}
+      ${isT2V ? `<label for="f-t2v-eng">Text-to-video engine</label><select id="f-t2v-eng" ${dis}>${ENG ? engOptions(ENG.t2v,P.t2v_engine || ENG.default_t2v) : ''}</select>` : `<label for="f-vid-eng">Video engine</label><select id="f-vid-eng" ${dis}>${ENG ? engOptions(ENG.video,P.video_engine || ENG.default_video) : ''}</select>`}
+      <label for="f-mode">Make</label><select id="f-mode" ${dis}>${opt([['images','Images only'],['video','Images + video'],['t2v','Video only']],P.mode || 'video')}</select>
+    </details>
+    <p class="engine-status" id="studio-engine-status">${esc(processingStatus(P.image_engine,editing))}</p>
+  </div>`;
 
   $('#v-project').innerHTML = `<div class="studio" style="--ar:${ar}">
     <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2 id="st-title" title="Tap to rename" style="cursor:pointer">${esc(pl.title)} <span style="font-size:13px;color:var(--muted)">✎</span></h2>
       <div class="st-zoom" style="${onPic && (made || STV) ? '' : 'visibility:hidden'}"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div></div>
+    <div class="st-job" role="status">${busy ? `<div class="progress"><i class="spin"></i><span>${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">Stop</button></div>` : /^error/.test(P.status) ? `<div class="progress error">${esc(P.message)}</div>` : ''}</div>
     <div class="st-strip">${strip}</div>
     <div class="st-canvas">${canvas}${overlay}
       ${STV ? `<div class="st-ver">${made ? 'Older version' : 'Current picture was deleted'}<button class="primary" id="st-use" ${dis}>Use this one</button>${made ? '<button id="st-cur">Back to current</button>' : ''}</div>` : ''}
     </div>
-    <div class="st-mact">
-      ${isImg && made ? '<button id="ma-vid">▶ Video</button>' : isVid && P.keyframes_version ? '<button id="ma-anim">▶ Animate</button>' : ''}
-      <div class="grp">
-        ${onPic && (made || STV) ? `<a href="${src}" download="${esc(P.id)}_${i + 1}.png"><button title="Download">⤓</button></a><button id="ma-share" title="Share">↗</button>` : ''}
-        <button id="ma-more" title="More">⋮</button></div>
-    </div>
+    <div class="st-actions" id="st-actions"></div>
+    <div class="st-summary"><span>${esc({standard:'360p',sharp:'720p',high:'1080p','2k':'2K',ultra:'4K'}[P.quality] || '')} · ${esc(P.aspect || 'portrait')}</span><button id="ma-more" aria-expanded="${PANEL}">Settings</button></div>
     ${promptBar}
     <div class="st-panel">
       <button class="st-pclose" id="st-pclose">Done</button>
-      ${busy ? `<div class="progress"><i class="spin"></i><span style="flex:1">${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">■ Stop</button></div>`
-        : /^error/.test(P.status) ? `<div class="progress" style="border-color:var(--err)">⚠ ${esc(P.message)}</div>` : ''}
-      ${acts}
+      ${settings}
+      <details class="glass project-tools" data-detail="tools"><summary>Project tools</summary>${acts}
+        ${onPic && made ? '<button class="st-act" id="ma-share">Share / save to phone</button>' : ''}
+        <button id="st-delproj" class="del" style="width:100%" ${dis}>Delete project</button>
+      </details>
       ${clipV ? `<div class="glass"><label>Video of picture ${i + 1}</label><video src="${file(`clips/img_${pad(i)}.mp4`, clipV)}#t=0.1" controls loop playsinline style="width:100%;border-radius:10px"></video>
         <a href="${file(`clips/img_${pad(i)}.mp4`, clipV)}" download><button style="margin-top:8px;width:100%">⤓ Save video</button></a></div>` : ''}
-      ${settings}
-      <details class="glass"><summary>Title, on-screen text, character and setting</summary>
+      <details class="glass" data-detail="text"><summary>Title, on-screen text, character and setting</summary>
         <label>Title</label><input id="f-title" value="${esc(pl.title)}">
         <label>On-screen text (${word} ${i + 1})</label><input id="ks${i}" value="${esc(k.subtitle)}">
         <label>Character (added to every prompt)</label><textarea id="f-character" rows="2">${esc(pl.character)}</textarea>
         <label>Setting</label><textarea id="f-setting" rows="2">${esc(pl.setting)}</textarea>
         <button id="btn-save" style="margin-top:10px;width:100%">Save</button>
       </details>
-      <details class="glass"><summary>Caption &amp; hashtags</summary>
+      <details class="glass" data-detail="caption"><summary>Caption &amp; hashtags</summary>
         <textarea id="f-caption" rows="3">${esc(pl.caption)}</textarea>
         <label>Hashtags</label><input id="f-tags" value="${esc((pl.hashtags || []).join(' '))}">
         <button id="btn-copy" style="margin-top:10px;width:100%">⧉ Copy caption</button>
       </details>
-      <details class="glass"><summary>Log</summary><div class="log" id="log" style="padding:8px 0 0">${esc((P.log || []).join('\n'))}</div></details>
-      <button id="st-delproj" class="del" style="width:100%" ${dis}>🗑 Delete project</button>
+      <details class="glass" data-detail="log"><summary>Log</summary><div class="log" id="log" style="padding:8px 0 0">${esc((P.log || []).join('\n'))}</div></details>
     </div></div><div class="msheet-back" id="st-back"></div>`;
 
+  const toolbar = $('#st-actions');
+  ['#st-regen','#st-editmode','#st-vid','#st-reanim','#st-rescene'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
+  const download = $('.st-panel a[download]'); if (download) toolbar.appendChild(download);
+  if ($('#st-regen')) $('#st-regen').setAttribute('aria-pressed', String(!editing));
+  if ($('#st-editmode')) $('#st-editmode').setAttribute('aria-pressed', String(editing));
+  $$('#v-project details[data-detail]').forEach(d => { if (openDetails.has(d.dataset.detail)) d.open = true; });
   $$('#v-project input, #v-project textarea').forEach(el => el.oninput = () => dirty = true);
   if ($('#st-edit')) $('#st-edit').oninput = e => { STEXT = e.target.value; };  // not part of the plan: kept here, not saved
   const bar = [$('#kp' + i), $('#mo' + i), $('#st-edit')].filter(Boolean);
   const fit = ta => { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; };
   bar.forEach(ta => { fit(ta); ta.addEventListener('input', () => fit(ta)); });
   const again = async fn => { await savePlan(); fn && fn(); render(); };  // keep typed text when switching what's shown
-  $('#btn-back').onclick = () => show('projects');
+  $('#btn-back').textContent = 'Back'; $('#btn-back').onclick = () => goView('projects');
   $('#st-title').onclick = async () => { await savePlan(); if (await renameProject(P.id, pl.title)) { P = await api('/api/projects/' + P.id); render(); } };
   const run = (task, body) => async () => { await savePlan(); await api(`/api/projects/${P.id}/${task}`, body || {}); poll(); };
   const send = async () => {
@@ -1130,11 +1156,12 @@ function renderStudio() {
   bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
     if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); send(); } });
   const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
-  on('#st-regen', () => { STE = false; STV = null; run('keyframes', {indices: [i], reseed: made})(); });
+  on('#st-regen', async () => { await again(() => { STE = false; STV = null; }); $('#kp' + i).focus(); });
   on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
   on('#st-toedit', () => { STE = true; render(); $('#st-edit').focus(); });
   if (PANEL) $('.studio').classList.add('panel-open');  // stays open while the page is redrawn
   on('#ma-more', () => setPanel(true));
+  on('#studio-add-reference', () => $('#ref-file').click());
   on('#st-pclose', () => setPanel(false));
   on('#st-back', () => setPanel(false));
   on('#ma-vid', () => $('#st-vid').click());
@@ -1143,7 +1170,7 @@ function renderStudio() {
   on('#st-rescene', send);
   on('#m-new', () => { STE = false; render(); });
   on('#m-edit', () => { STE = true; render(); $('#st-edit').focus(); });
-  on('#st-editmode', () => { STE = true; render(); $('#st-edit').focus(); });
+  on('#st-editmode', async () => { await again(() => { STE = true; }); $('#st-edit').focus(); });
   on('#st-all', run('keyframes'));
   on('#st-anim', run('animate'));
   on('#st-t2v', run('t2v'));
@@ -1203,7 +1230,7 @@ function renderStudio() {
   });
   const z = makeZoom($('#st-img'));
   if (z) {
-    $('#st-img').onerror = () => { z.outerHTML = empty('Not generated yet. Write the prompt below and press ↑'); };
+    $('#st-img').onerror = () => { z.outerHTML = empty('Not generated yet. Write the prompt below and press Generate'); };
     z.addEventListener('zoom', e => $('#z-pct').textContent = Math.round(e.detail * 100) + '%');
     $('#z-in').onclick = () => z.zoomTo(z.scale() * 1.25);
     $('#z-out').onclick = () => z.zoomTo(z.scale() / 1.25);
@@ -1333,6 +1360,7 @@ async function refreshGpu() {
   clearTimeout(gpuTimer);
   try { GPU = await api('/api/cloud'); } catch (e) { gpuTimer = setTimeout(refreshGpu, 15000); return; }
   const s = GPU.status;
+  updateEngineStatus();
   $('#d-gpu').className = 'dot ' + (s === 'ready' ? 'on' : s === 'error' ? 'off' : '');
   $('#t-gpu').textContent = s === 'ready' ? `${GPU.label} · $${GPU.cost.toFixed(2)}` : s === 'starting' ? `${GPU.label} · starting…`
     : s === 'stopping' ? 'Stopping…' : 'Fast GPU';
@@ -1471,7 +1499,7 @@ loadMe().then(() => {
   const ready = Promise.all([refreshChars(), refreshEngines()]).catch(() => {});  // a project page lists both
   const h = decodeURIComponent(location.hash.slice(1));  // back to the tab or project open before the refresh
   if (h.startsWith('project/')) ready.then(() => openProject(h.slice(8))).catch(() => show('projects'));  // deleted meanwhile
-  else show(['projects', 'images', 'videos'].includes(h) ? h : 'create');
+  else show(routeView(h));
 });
 setInterval(refreshStatus, 6000);
 </script>
