@@ -4,6 +4,7 @@ import io
 import http.client
 import json
 import os
+import ssl
 from pathlib import Path
 import sys
 import tempfile
@@ -108,6 +109,16 @@ class KreaTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, expected) as caught:
                     krea.request('/jobs/id', 'private-secret')
                 self.assertNotIn('private-secret', str(caught.exception))
+
+    def test_https_checks_certificates_and_hostnames(self):
+        context = krea.tls_context()
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        with patch.object(krea.urllib.request, 'urlopen', return_value=io.BytesIO(b'{"items":[]}')) as connection:
+            self.assertEqual(krea.request('/jobs?limit=1', 'test-secret'), {'items': []})
+            configured = connection.call_args.kwargs['context']
+            self.assertEqual(configured.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(configured.check_hostname)
 
     def test_invalid_result_and_stop_after_submit_keep_request_single(self):
         krea.save_key('test-secret')

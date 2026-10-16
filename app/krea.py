@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import ssl
 import threading
 import time
 import urllib.error
@@ -76,12 +77,21 @@ def entries():
             for key, (_, label, price) in API_ENGINES.items()]
 
 
+def tls_context():
+    """Prefer the runtime's CA bundle over stale Windows certificate chains. Never disable verification."""
+    try:
+        import certifi
+    except ImportError:
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def request(path, key, payload=None):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(API + path, data=data,
                                  headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=45) as response:
+        with urllib.request.urlopen(req, timeout=45, context=tls_context()) as response:
             return json.load(response)
     except urllib.error.HTTPError as error:
         messages = {401: "Krea rejected the API key. Update it in Krea setup.",
@@ -128,7 +138,7 @@ def generate(engine, prompt, aspect, seed, out_size, should_stop=lambda: False):
     if url.scheme != "https" or url.username or url.password or url.hostname in ("localhost", "127.0.0.1", "::1"):
         raise RuntimeError("Krea returned an invalid image URL")
     # The API token is deliberately omitted from the separate asset download.
-    with urllib.request.urlopen(urls[0], timeout=90) as response:
+    with urllib.request.urlopen(urls[0], timeout=90, context=tls_context()) as response:
         data = response.read(50 * 1024 * 1024 + 1)
     if len(data) > 50 * 1024 * 1024:
         raise RuntimeError("Krea image was too large")
