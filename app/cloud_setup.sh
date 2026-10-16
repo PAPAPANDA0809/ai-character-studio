@@ -83,6 +83,10 @@ extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
   fi
   extra qwen_hq $Q/diffusion_models/qwen_image_2.1_bf16.safetensors models/diffusion_models \
     $Q/text_encoders/qwen3vl_8b_bf16.safetensors models/text_encoders
+  K=$H/Comfy-Org/Krea-2/resolve/main
+  extra krea2 $K/diffusion_models/krea2_turbo_fp8_scaled.safetensors models/diffusion_models \
+    $K/text_encoders/qwen3vl_4b_fp8_scaled.safetensors models/text_encoders \
+    $K/vae/qwen_image_vae.safetensors models/vae
   extra ideogram $I/diffusion_models/ideogram4_int8_convrot.safetensors models/diffusion_models \
     $I/diffusion_models/ideogram4_unconditional_int8_convrot.safetensors models/diffusion_models \
     $I/text_encoders/qwen3vl_8b_fp8_scaled.safetensors models/text_encoders \

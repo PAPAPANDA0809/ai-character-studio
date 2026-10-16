@@ -129,7 +129,11 @@ class Comfy:
 # Trimmed 3 Oct 2026 to the engines in use; the other models were removed from disk (bigger ones will run on
 # rented GPUs). Their workflow functions below still work if the files are downloaded again and re-listed.
 # "files" are checked against the models folders to mark what's installed.
+KREA2 = {"unet": "krea2_turbo_fp8_scaled.safetensors", "text_encoder": "qwen3vl_4b_fp8_scaled.safetensors",
+         "vae": "qwen_image_vae.safetensors"}
 IMAGE_ENGINES = {
+    "krea2-turbo": {"label": "Krea 2 Turbo · GPU", "files": ["diffusion_models/" + KREA2["unet"],
+                    "text_encoders/" + KREA2["text_encoder"], "vae/" + KREA2["vae"]]},
     "qwen-image-21": {"label": "Qwen-Image 2.1 (best quality, ~30 s, ~4 min with character picture, research licence)",
                       "files": ["diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
                                 "text_encoders/qwen3vl_8b_int8_convrot.safetensors", "vae/qwen_image_2.1_vae_bf16.safetensors"]},
@@ -230,6 +234,8 @@ def add_final_size(wf, width, height):
 
 def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None):
     c = cfg["image"]
+    if engine == "krea2-turbo":
+        return krea2_workflow(cfg, prompt, width, height, seed, prefix)
     if engine == "flux-schnell":
         return flux_workflow(cfg, prompt, width, height, seed, prefix, unet=c["schnell_unet"], steps=c["schnell_steps"])
     if engine == "sdxl-juggernaut":
@@ -294,6 +300,25 @@ def add_zimage_polish(cfg, wf, prompt, seed, denoise):
     })
     wf[save]["inputs"]["images"] = ["67", 0]
     return wf
+
+
+def krea2_workflow(cfg, prompt, width, height, seed, prefix):
+    """Official Krea 2 Turbo recipe: Euler/simple, 8 steps, CFG 1, zero negative conditioning."""
+    model = {**KREA2, **cfg.get("krea2", {})}
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": model["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": model["text_encoder"], "type": "krea2", "device": "default"}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "4": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["3", 0]}},
+        "5": {"class_type": "EmptyLatentImage", "inputs": {"width": (width + 7) // 8 * 8,
+                                                          "height": (height + 7) // 8 * 8, "batch_size": 1}},
+        "6": {"class_type": "KSampler", "inputs": {"model": ["1", 0], "positive": ["3", 0], "negative": ["4", 0],
+              "latent_image": ["5", 0], "seed": seed, "steps": 8, "cfg": 1.0,
+              "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0}},
+        "7": {"class_type": "VAELoader", "inputs": {"vae_name": model["vae"]}},
+        "8": {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["7", 0]}},
+        "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": prefix}},
+    }
 
 
 def zimage_workflow(cfg, prompt, width, height, seed, prefix):

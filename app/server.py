@@ -21,6 +21,7 @@ import comfy
 import llm
 import pipeline
 import imageundo
+import krea
 import push
 
 STATIC = os.path.join(pipeline.APP_DIR, "static")
@@ -241,6 +242,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(cloudgpu.info())
             if path == "/api/cloud/options":  # the cards to pick from, with RunPod's live stock and prices
                 return self.send_json(cloudgpu.options())
+            if path == "/api/krea":
+                return self.send_json({"api_ready": krea.available(), "gpu_ready": bool(cloudgpu.state["extras"].get("krea2")),
+                                       "cloud_ready": cloudgpu.state["status"] == "ready"})
             if path == "/api/engines":
                 return self.send_json(pipeline.engines())
             if path == "/api/users":
@@ -321,6 +325,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "you can't delete yourself"}, 400)
                 auth.delete_user(b.get("user"))
                 return self.send_json({"ok": True})
+            if path == "/api/krea/key":
+                if not auth.is_admin(u):
+                    return self.send_json({"error": "Only an administrator can update the shared Krea API key"}, 403)
+                origin = self.headers.get("Origin")
+                if origin and urllib.parse.urlsplit(origin).netloc != self.headers.get("Host"):
+                    return self.send_json({"error": "Open Krea setup from Reelmint to update the API key"}, 403)
+                krea.save_key(b.get("key"))
+                return self.send_json({"api_ready": krea.available()})
             if path == "/api/enhance":
                 text, engine = llm.enhance(pipeline.load_config()["llm"], b.get("idea", ""), b.get("mode", "video"),
                                            b.get("style", ""), b.get("character", ""),

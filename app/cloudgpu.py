@@ -38,7 +38,7 @@ H3_PRUNED = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"  # 21 GB slimmed 
 H3_REF = {H3_FULL: "minimax_h3_ref2va_int8_convrot.safetensors", H3_PRUNED: "minimax_h3_ref2va_pruned_int8_convrot.safetensors"}
 # container disk per video engine: Qwen (int8 + bf16), Ideogram, the video models (H3 with its reference model) and
 # ComfyUI; FLUX2_DISK more on 48 GB+ cards, which also get FLUX.2 [dev]
-DISK_GB = {"h3": 210, "h3lite": 170, "ltx25": 150}
+DISK_GB = {"h3": 230, "h3lite": 190, "ltx25": 170}
 FLUX2_MIN_MEM, FLUX2_DISK = 48, 60
 
 
@@ -89,7 +89,7 @@ _generation = [0]  # queued workers from an earlier rental must never alter a ne
 state = {"status": "off", "message": "", "pod": None, "key": "", "price": 0.0, "gpu": "",
          "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "h3_unet": "", "h3_short": 768,
          "where": "",
-         "extras": {"video": False, "qwen_hq": False, "ideogram": False, "flux2": False}}
+         "extras": {"video": False, "qwen_hq": False, "ideogram": False, "flux2": False, "krea2": False}}
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 relay = [None]     # the local relay server
 _opts = [0.0, []]  # options() cache: when, list
@@ -380,7 +380,7 @@ def _start_locked(card, cloud):
         h3_te = comfy_te(card) if video == "h3" else ""
         h3_unet = h3_unet if video == "h3" else ""
         _set(video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where,
-             extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False},
+             extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False, "krea2": False},
              message="Starting the machine" + note + "…")
         if not _wait_agent(8):  # good machines answer in under a minute
             return
@@ -582,7 +582,7 @@ def _delete_locked(reason, error=False):
     cost = info()["cost"]
     _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[], video=None, h3_te="", h3_unet="",
          where="",
-         extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False},
+         extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False, "krea2": False},
          message=f"{reason} (this session: about ${cost:.2f})")
 
 
@@ -620,7 +620,7 @@ def _check_extras():
         got = json.loads(body) if code == 200 else {}
     except (urllib.error.URLError, OSError, ValueError):
         return
-    extras = {k: bool(got.get(k)) for k in ("video", "qwen_hq", "ideogram", "flux2")}
+    extras = {k: bool(got.get(k)) for k in ("video", "qwen_hq", "ideogram", "flux2", "krea2")}
     if extras != state["extras"]:
         _set(extras=extras)
 

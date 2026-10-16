@@ -294,7 +294,7 @@
   }
   nav.tabs button.on { border-color:rgba(84,223,255,.7); color:var(--mint); background:rgba(84,223,255,.08); }
 </style>
-<link rel="stylesheet" href="/static/studio.css?v=20261008-1">
+<link rel="stylesheet" href="/static/studio.css?v=20261017-1">
 </head>
 <body>
 <aside class="app-sidebar">
@@ -367,7 +367,7 @@
         <select id="style-sel"></select>
         <input id="style" value="cinematic photo, soft natural light, shallow depth of field" placeholder="Type your own style" style="margin-top:8px;display:none">
         <details id="create-advanced"><summary>Advanced settings</summary>
-        <div id="img-eng-wrap"><label for="img-eng">Image engine</label><select id="img-eng"></select><p id="create-engine-note" class="field-note"></p></div>
+        <div id="img-eng-wrap"><label for="img-eng">Image engine</label><select id="img-eng"></select><p id="create-engine-note" class="field-note"></p><button type="button" class="krea-setup">Krea setup</button></div>
         <div id="lora-wrap" style="display:none"><label>Trained character</label><select id="lora-sel"></select>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">Keeps the trained character in every picture; its trigger word is added to the prompt for you.</div></div>
         <div id="vid-eng-wrap"><label>Video engine</label><select id="vid-eng"></select></div>
@@ -568,7 +568,7 @@ function syncCreate() {
   if (gpt && (NEW.quality || (m === 'images' ? 'sharp' : 'standard')) === 'standard') NEW.quality = 'high';  // GPT can't draw 360p
   const q = NEW.quality || (m === 'images' ? 'sharp' : 'standard');
   $$('#q-seg button').forEach(b => { b.classList.toggle('on', b.dataset.q === q); b.disabled = gpt && b.dataset.q === 'standard'; });
-  $('#q-hint').textContent = gpt ? GPT_HINT : QWEN_HINT;
+  $('#q-hint').textContent = $('#img-eng').value.startsWith('krea') ? (ENG?.image.find(e=>e.id===$('#img-eng').value)?.description || 'Krea 2 · text to image') : gpt ? GPT_HINT : QWEN_HINT;
   $$('#vres-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === NEW.vres));
   $('#vres-wrap').style.display = m === 'images' ? 'none' : '';
   $('#nkf-label').textContent = {images: 'Images', t2v: 'Scenes'}[m] || 'Keyframes';
@@ -699,7 +699,9 @@ $('#btn-enh').onclick = async () => {
 
 const isPhone = () => PHONE.matches;
 function processingStatus(engine, editing = false) {
+  if (engine?.startsWith('krea-api-') && !editing) return 'Krea API · paid per image';
   if (engine === 'gpt-image' && !editing) return 'Cloud image engine · paid per use';
+  if (engine === 'krea2-turbo' && !editing) return ENG?.image.find(e=>e.id===engine)?.label.includes('on Fast GPU') ? 'Krea 2 · Fast GPU ready' : 'Krea 2 · local GPU';
   if (GPU?.status === 'ready') return `${GPU.label} · ready`;
   return LAST_STATUS ? `Local engine · ${LAST_STATUS.comfy ? 'ready' : 'offline'}` : 'Checking engine…';
 }
@@ -719,7 +721,7 @@ function syncCreationSummary() {
   $('#create-ref-preview').innerHTML = NEW.refs.map(c => `<button type="button" data-clear-ref="${esc(c)}" title="Remove reference ${esc(c)}"><img src="/characters/${encodeURIComponent(c)}" alt="${esc(c)}"><span>Remove</span></button>`).join('');
   $$('#create-ref-preview [data-clear-ref]').forEach(b => b.onclick = () => { NEW.refs = NEW.refs.filter(c => c !== b.dataset.clearRef); renderChars(); });
   const engine = ENG?.image.find(e => e.id === $('#img-eng').value);
-  $('#create-engine-note').textContent = engine?.label || '';
+  $('#create-engine-note').textContent = engine?.description || engine?.label || '';
   updateEngineStatus();
 }
 $('#style').addEventListener('change', syncCreationSummary);
@@ -1261,7 +1263,7 @@ function renderStudio() {
     </details>` : ''}
     <details data-detail="advanced"><summary>Advanced settings</summary>
       ${!isT2V ? `<label for="f-img-eng">Image engine</label><select id="f-img-eng" ${dis}>${ENG ? engOptions(ENG.image,P.image_engine || ENG.default_image) : ''}</select>
-        <p class="field-note">${esc(ENG?.image.find(e=>e.id===P.image_engine)?.label || '')}</p>
+        <p class="field-note">${esc(ENG?.image.find(e=>e.id===P.image_engine)?.description || ENG?.image.find(e=>e.id===P.image_engine)?.label || '')}</p><button type="button" class="krea-setup">Krea setup</button>
         ${lorasFor(P.image_engine).length ? `<label for="f-lora">Trained character</label><select id="f-lora" ${dis}>${loraOptions(P.image_engine,P.lora || '')}</select>` : ''}` : ''}
       ${!isImg ? `<label for="f-vres">Video resolution</label><select id="f-vres" ${dis}>${opt([['480p','480p'],['720p','720p · slower']],P.video_res || '480p')}</select>
         <label for="f-vsecs">Clip length <b id="f-vsecs-v">${P.video_seconds || 5} s</b></label><input type="range" id="f-vsecs" min="5" max="15" step="1" value="${P.video_seconds || 5}" ${dis}>
@@ -1556,6 +1558,38 @@ async function renderPush() {
     try { await fn(); } catch (e) { alert(e.message); } renderPush(); }; };
   act('#pu-on', pushOn); act('#pu-off', pushOff); act('#pu-test', () => api('/api/push/test', {}));
 }
+async function openKreaSetup() {
+  const status = await api('/api/krea');
+  const dialog = document.createElement('dialog');
+  dialog.className = 'krea-dialog';
+  dialog.innerHTML = `<div class="row" style="justify-content:space-between"><h2>Krea setup</h2><button type="button" aria-label="Close Krea setup" id="krea-close">✕</button></div>
+    <h3>Krea API</h3><p>Generate on Krea's servers. No local GPU needed. ${status.api_ready ? 'An API key is saved.' : 'Add an API key to enable the API models.'}</p>
+    <p class="field-note">API credit is separate from a Krea subscription. Turbo $0.015 · Medium $0.03 · Large $0.06 per image. Outputs above native 1K are resized.</p>
+    <p><a href="https://www.krea.ai/settings/api-tokens" target="_blank" rel="noopener">Get a Krea API key ↗</a></p>
+    ${ME?.admin ? `<form id="krea-key-form"><label for="krea-key">${status.api_ready ? 'Replace' : 'Add'} API key</label><input id="krea-key" type="password" autocomplete="off" required minlength="8" maxlength="4096"><button class="primary" type="submit">Save API key</button></form>` : '<p>Ask an administrator to add the API key.</p>'}
+    <p id="krea-message" role="status"></p><h3>Krea 2 Turbo · GPU</h3>
+    <p>Text to image with the 8-step FP8 model. A 24 GB or larger GPU is recommended. ${status.gpu_ready && status.cloud_ready ? 'Ready on your Fast GPU.' : 'New Fast GPU sessions download the Krea models automatically in the background. An older session needs to be reconnected.'}</p>
+    <p class="field-note">For a local GPU, download the three models listed in the <a href="https://docs.comfy.org/tutorials/image/krea/krea-2" target="_blank" rel="noopener">official ComfyUI guide ↗</a>. Your 8 GB card will need substantial RAM offloading.</p>
+    <p class="field-note">Krea 2 generates from text here. Choose Qwen for character-reference pictures and image editing.</p>`;
+  document.body.appendChild(dialog); dialog.showModal();
+  dialog.querySelector('#krea-close').onclick = () => dialog.close();
+  dialog.addEventListener('close', () => dialog.remove());
+  const form = dialog.querySelector('form');
+  if (form) form.onsubmit = async event => {
+    event.preventDefault(); const button = form.querySelector('button'); button.disabled = true;
+    try {
+      await api('/api/krea/key', {key:dialog.querySelector('#krea-key').value});
+      dialog.querySelector('#krea-key').value = '';
+      dialog.querySelector('#krea-message').textContent = 'API key saved. Krea API models are now available.';
+      await refreshEngines(); if (VIEW === 'project') render();
+    } catch (error) { dialog.querySelector('#krea-message').textContent = error.message; }
+    button.disabled = false;
+  };
+}
+document.addEventListener('click', event => {
+  if (event.target.closest('.krea-setup')) openKreaSetup().catch(error=>alert(error.message));
+});
+
 async function openAccount() {
   const users = ME.admin ? await api('/api/users') : [];
   $('#acct').innerHTML = `<div class="glass pad" style="width:100%;max-width:420px;max-height:88vh;overflow:auto">
@@ -1682,6 +1716,7 @@ function gpuEngines(g) {  // what the connected card gives; the extras download 
   const x = g.extras || {}, mark = on => on ? '✅' : '<i class="spin" style="width:10px;height:10px;vertical-align:-1px"></i>';
   return `<br>${mark(x.video)} Videos: <b style="color:var(--text)">${esc(g.video_label || 'LTX-2.5')}</b> with sound${x.video ? '' : ' (downloading; a video asked for now waits for it)'}
     <br>${mark(x.qwen_hq)} Qwen-Image 2.1 full quality${x.qwen_hq ? '' : ' (downloading; standard quality until then)'}
+    <br>${mark(x.krea2)} Krea 2 Turbo${x.krea2 ? ' (pick it under Image engine)' : ' (not ready; see Krea setup)'}
     <br>${mark(x.ideogram)} Ideogram 4.0${x.ideogram ? ' (pick it under Image engine)' : ' (downloading)'}
     ${g.flux2 ? `<br>${mark(x.flux2)} FLUX.2 [dev]${x.flux2 ? ' (pick it under Image engine)' : ' (downloading, ~54 GB)'}` : ''}`;
 }

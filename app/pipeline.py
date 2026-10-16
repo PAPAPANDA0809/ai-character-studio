@@ -16,6 +16,7 @@ import cloud
 import cloudgpu
 import comfy
 import llm
+import krea
 import push
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +28,7 @@ os.makedirs(CHARACTERS, exist_ok=True)
 
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
-NATIVE_HD = ("qwen-image-21", "z-image", "ideogram4", "flux2-dev")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
+NATIVE_HD = ("qwen-image-21", "z-image", "ideogram4", "flux2-dev", "krea2-turbo")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
 PERSON_WORDS = re.compile(r"(?i)\b(she|he|her|his|him|woman|women|man|men|girl|boy|lady|guy|person|people|model|"
                           r"wife|husband|mom|mum|dad|kid|child|baby|face|smil\w*)\b")
 CLOTHING_WORDS = re.compile(r"(?i)\b(wear\w*|outfit|cloth\w*|dress\w*|shirt|t-shirt|tee|top|blouse|jacket|coat|raincoat|"
@@ -427,6 +428,10 @@ def refs_of(p):
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
                    image_engine=None, video_engine=None, mode="video", quality=None, video_res=None, lora=None):
     cfg = load_config()
+    if image_engine in krea.API_ENGINES or image_engine == "krea2-turbo":
+        krea.validate_prompt(". ".join(str(value or "") for value in (idea, style, character)))
+        if reference:
+            raise ValueError("Krea 2 generates from text. Remove reference pictures or choose Qwen-Image 2.1.")
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
     refs = clean_refs(user, reference)
@@ -445,7 +450,7 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "reference": reference, "references": refs,
         "image_engine": "gpt-image" if image_engine == "gpt-image" and cloud.available() else
                         (image_engine if image_engine in comfy.REFERENCE_ENGINES else comfy.REFERENCE_ENGINES[0]) if reference else
-                        image_engine if image_engine in comfy.IMAGE_ENGINES else cfg.get("default_image_engine", "qwen-image-21"),
+                        image_engine if image_engine in (*comfy.IMAGE_ENGINES, *krea.API_ENGINES) else cfg.get("default_image_engine", "qwen-image-21"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
         "clip_fps": {}, "mode": mode,
         "quality": quality if quality in QUALITIES else ("sharp" if mode == "images" else "standard"),
@@ -475,6 +480,12 @@ def engines():
         return bool(path) and time.time() - os.path.getmtime(path) > 90
 
     def entry(key, e):
+        if key == "krea2-turbo":
+            remote_ready = cloudgpu.state["status"] == "ready" and cloudgpu.state["extras"].get("krea2")
+            local_ready = all(ready(f) for f in e["files"])
+            return {"id": key, "label": e["label"] + (" · on Fast GPU" if remote_ready else ""),
+                    "installed": bool(remote_ready or local_ready), "note": "model download needed; open Krea setup",
+                    "description": "Text to image · 8 steps · 24 GB+ GPU recommended. Character references and edits use Qwen."}
         if e.get("rented"):  # files only on the rented card
             on = cloudgpu.state["status"] == "ready" and cloudgpu.state["extras"].get(e["rented"])
             need = "with a 48 GB+ Fast GPU" if e["rented"] == "flux2" else "with Fast GPU"
@@ -491,7 +502,7 @@ def engines():
     return {
         "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
         "reference_engines": list(comfy.REFERENCE_ENGINES) + (["gpt-image"] if cloud.available() else []),
-        "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()] + ([{
+        "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()] + krea.entries() + ([{
             "id": "gpt-image", "label": "GPT Image 2.5 (OpenAI, paid: ~$0.05 a picture at 1080p, keeps character "
             "pictures well, no NSFW)", "installed": True}] if cloud.available() else []),
         "video": [entry(k, e) for k, e in comfy.VIDEO_ENGINES.items()],
@@ -513,7 +524,7 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
     cfg = load_config()
     if lora is not None:  # "" = no LoRA; a LoRA is only kept for the engine it was trained for (checked below)
         p["lora"] = lora
-    if image_engine in comfy.IMAGE_ENGINES and image_engine not in comfy.REFERENCE_ENGINES:
+    if image_engine in (*comfy.IMAGE_ENGINES, *krea.API_ENGINES) and image_engine not in comfy.REFERENCE_ENGINES:
         p["reference"], p["references"] = "", []
     if quality in QUALITIES:
         p["quality"] = quality
@@ -527,7 +538,7 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
         p["mode"] = mode
         if mode == "video":  # image/t2v plans have no motions; animate needs one per transition
             fit_motions(p["plan"])
-    if image_engine in comfy.IMAGE_ENGINES or (image_engine == "gpt-image" and cloud.available()):
+    if image_engine in (*comfy.IMAGE_ENGINES, *krea.API_ENGINES) or (image_engine == "gpt-image" and cloud.available()):
         p["image_engine"] = image_engine
     if video_engine in comfy.VIDEO_ENGINES:
         p["video_engine"] = video_engine
@@ -669,7 +680,17 @@ def use_version(pid, index, name):
 
 def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
     """Qwen-Image 2.1 pictures and edits run on the rented GPU while a fast-GPU session is ready; everything else here."""
+    selected = engine or p.get("image_engine")
+    if selected in krea.API_ENGINES and not edit:
+        return _keyframes(p, indices, reseed, engine, edit)
     remote = cloudgpu.url()
+    if selected == "krea2-turbo" and not edit and not refs_of(p):
+        if remote:
+            if not cloudgpu.state["extras"].get("krea2"):
+                raise RuntimeError("Krea 2 is not ready on this Fast GPU. See Krea setup for model installation.")
+            with cloudgpu.using():
+                return _keyframes(p, indices, reseed, engine, edit, remote)
+        return _keyframes(p, indices, reseed, engine, edit)
     if remote and (engine or p.get("image_engine")) in ("ideogram4", "flux2-dev") and not edit and not refs_of(p):
         log(p, f"using the rented {cloudgpu.info()['label']}")
         with cloudgpu.using():
@@ -699,7 +720,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
     if remote and cloudgpu.state["extras"].get("qwen_hq"):  # the rented card has the full-quality (bf16) Qwen files
         cfg["qwen_image_21"] = {**cfg["qwen_image_21"], **cloudgpu.HQ_QWEN}
     c = None
-    if edit or (engine or p.get("image_engine")) != "gpt-image":
+    if edit or (engine or p.get("image_engine")) not in ("gpt-image", *krea.API_ENGINES):
         c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
         if not c.alive():
             raise RuntimeError("ComfyUI is not running at " + (remote or cfg["comfy_url"]))
@@ -724,8 +745,12 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             # one shared seed for the first pass helps keep the character consistent
             p["keyframe_seeds"][key] = random.randint(1, 2**31 - 1) if reseed else p["seed"]
         use = engine or p.get("image_engine")
-        if use != "gpt-image" and use not in comfy.IMAGE_ENGINES:  # older project made with a removed engine
+        if use not in ("gpt-image", *krea.API_ENGINES) and use not in comfy.IMAGE_ENGINES:  # older project made with a removed engine
             use = cfg.get("default_image_engine", "qwen-image-21")
+        if (use in krea.API_ENGINES or use == "krea2-turbo") and ref and not edit:
+            raise RuntimeError("Krea 2 generates from text. Remove reference pictures or choose Qwen-Image 2.1.")
+        if (use in krea.API_ENGINES or use == "krea2-turbo") and not edit:
+            krea.validate_prompt(". ".join((p.get("idea", ""), keyframe_prompt(p, i))))
         if ref and use != "gpt-image" and use not in comfy.REFERENCE_ENGINES:
             use = comfy.REFERENCE_ENGINES[0]
         if edit:  # only Qwen-Image 2.1 edits; the picture itself is the reference
@@ -743,6 +768,15 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
         log(p, f"keyframe {i + 1}/{n}: {'editing' if edit else 'generating'} with {use_label}")
         t = time.time()
         out_size = cfg["output_sizes"][q][p.get("aspect", "portrait")] if p.get("mode") == "images" else (w, h)
+        if use in krea.API_ENGINES:
+            data = krea.generate(use, keyframe_prompt(p, i), p.get("aspect", "portrait"),
+                                 p["keyframe_seeds"][key], out_size, lambda: p["id"] in cancelled)
+            check_cancel(p)
+            save_keyframe(p, i, data, pic_info(p, i, use))
+            p.setdefault("keyframe_engines", {})[key] = use
+            p["keyframes_version"] = time.time()
+            log(p, f"keyframe {i + 1}/{n}: done with {use} in {time.time() - t:.0f}s")
+            continue
         if use == "gpt-image":  # cloud, pay-per-use: picked for the project or for this picture
             data = gpt_keyframe(cfg, p, i, out_size)
             save_keyframe(p, i, data, pic_info(p, i, "gpt-image"))
@@ -790,7 +824,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             img = next(o["images"][0] for o in out.values() if o.get("images"))
             data = c.fetch(img)
         except Exception as e:
-            if p["id"] in cancelled or not cloud.available() or edit:
+            if p["id"] in cancelled or not cloud.available() or edit or use == "krea2-turbo":
                 raise
             # last resort: the local engine failed, so make this one picture with GPT-image
             log(p, f"keyframe {i + 1}/{n}: local engine failed ({str(e)[:80]}), using GPT-image instead")

@@ -405,3 +405,10 @@ body.auth-page { background:radial-gradient(ellipse at 0% 15%,#12375980,transpar
   .image-undo-toast { bottom:calc(65px + env(safe-area-inset-bottom)); }
 }
 @media(prefers-reduced-motion:reduce) { .st-chevron { transition:none; } }
+
+/* Krea setup keeps credentials out of shared page state and works on phones. */
+.krea-dialog { width:min(520px,calc(100% - 28px)); max-height:85dvh; overflow:auto; padding:22px; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:16px; }
+.krea-dialog::backdrop { background:#000b; }
+.krea-dialog h2 { margin:0; } .krea-dialog h3 { margin:22px 0 8px; }
+.krea-dialog p { line-height:1.5; } .krea-dialog form { display:grid; gap:10px; }
+.krea-dialog a { color:var(--cyan); } .krea-dialog input { min-width:0; }

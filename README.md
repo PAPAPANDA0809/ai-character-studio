@@ -26,6 +26,19 @@ N keyframes give N-1 clips of 5 s (81 frames at 16 fps).
 
 ## Models
 
+### Krea 2: GPU and hosted API
+
+Open **Advanced settings → Image engine → Krea setup** on Create or in a project's Settings.
+
+- **Krea 2 Turbo · GPU** uses native ComfyUI nodes, FP8 weights, Euler/simple sampling, 8 steps and CFG 1. New Fast GPU rentals download its three model files in the background after the video and full-quality Qwen files. It becomes selectable once those files are ready. Existing rentals created before this integration do not gain the new download automatically; reconnect when no jobs are running. A 24 GB+ GPU is recommended. The local 8 GB card needs substantial CPU/RAM offloading and is not the recommended target.
+- For local installation, run `python setup/download_models.py setup/krea2.txt` **from the repository root**. This downloads about 19 GB from the official Comfy-Org repository. Model paths are listed in `setup/krea2.txt`. Recent ComfyUI with `CLIPLoader` type `krea2` is required; no custom nodes are needed.
+- **Krea 2 Turbo / Medium / Large · API** run without ComfyUI or a rented GPU. An administrator can save a shared server API key in Krea setup, or set `KREA_API_KEY`. Keys are stored in the ignored `app/secrets.json` as `krea_api_key`; they are never returned to the browser. Saving a key enables the options but does not validate its balance or spend credit.
+- Listed base API prices are $0.015 / $0.03 / $0.06 per image (check [Krea pricing](https://www.krea.ai/app/api/pricing) for changes). API credit is separate from Krea subscriptions. The current API schema accepts native `1K`; higher Reelmint output sizes are resized, not native 2K/4K generations. Requests use the saved prompt with Krea prompt expansion disabled, track asynchronous jobs, and preserve the normal picture versions and downloads. An API failure never silently retries with a different paid provider.
+- These initial Krea options generate from text. Character-reference generation and image editing continue through Qwen. Local Qwen LoRAs are not interchangeable with Krea weights.
+- Stopping a hosted Krea request stops Reelmint waiting; a job already submitted may still complete and be billed by Krea. Check your Krea jobs before retrying a timed-out request.
+
+References: [Krea API specification](https://api.krea.ai/openapi.json), [official ComfyUI workflow](https://docs.comfy.org/tutorials/image/krea/krea-2), and [Krea model licence](https://www.krea.ai/krea-2-licensing).
+
 Trimmed on 3 Oct 2026 to the engines in use (about 138 GB of other models removed). Bigger models are meant to run on rented GPUs instead.
 
 | Engine | Files | Character picture | Licence |
