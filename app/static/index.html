@@ -324,6 +324,7 @@
         <div class="creation-summary" id="create-summary"></div>
         <label for="idea" class="prompt-label">What would you like to create?</label>
         <textarea id="idea" class="idea" rows="5" placeholder="A quiet coffee shop at golden hour, warm light on the table…"></textarea>
+        <div class="st-count-row" id="idea-pose-row" style="margin-top:10px" hidden><span>Pose</span><select id="idea-pose" aria-label="Pose" title="Adds a ready-made pose to your idea; you can still edit the words"><option value="">Choose a pose…</option></select></div>
         <div class="enh">
           <div class="row" style="justify-content:space-between;margin:14px 0 6px">
             <span style="font-size:12px;color:var(--muted)">AI prompt assistant <span id="enh-by"></span></span>
@@ -602,6 +603,19 @@ async function loadPoses() {
   return POSES;
 }
 const poseList = () => (POSES || []).flatMap(g => g.poses);
+const poseOptions = text => `<option value="">Choose a pose…</option>` + (POSES || []).map(g => `<optgroup label="${esc(g.label)}">${g.poses.map(o =>
+  `<option value="${esc(o.prompt)}" ${text.includes(o.prompt) ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</optgroup>`).join('');
+function applyPose(ta, pose) {  // swap the earlier pose text (if any) in the box for the chosen one; '' removes it
+  let t = ta.value;
+  for (const o of poseList()) t = t.split(', ' + o.prompt).join('').split(o.prompt).join('');
+  t = t.replace(/[\s,]+$/, '');
+  if (pose) t = (t ? t.replace(/[.]$/, '') + ', ' : '') + pose;
+  ta.value = t;
+  ta.dispatchEvent(new Event('input'));
+}
+$('#idea-pose').onchange = e => applyPose($('#idea'), e.target.value);
+$('#idea').addEventListener('input', () => { if (POSES) $('#idea-pose').value = (poseList().find(o => $('#idea').value.includes(o.prompt)) || {}).prompt || ''; });
+loadPoses().then(() => { if (POSES.length) { $('#idea-pose').innerHTML = poseOptions($('#idea').value); $('#idea-pose-row').hidden = false; } });
 async function refreshEngines() {
   ENG = await api('/api/engines');
   $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
@@ -1235,7 +1249,7 @@ function renderStudio() {
         <button id="m-edit" class="${editing ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this ${word}</button></div>` : ''}
       ${editing ? `<div class="st-cur" id="st-curp" title="Tap to change the prompt instead">${esc(shownPrompt)}</div>`
         : onPic && made && !STV ? '<div class="st-cur st-tog" id="st-toedit">✎ Edit the picture instead</div>' : ''}
-      ${onPic && !editing && POSES && POSES.length ? `<div class="st-count-row"><span>Pose</span><select id="st-pose" aria-label="Pose" title="Adds a ready-made pose to the prompt; you can still edit the words" ${dis}><option value="">Choose a pose…</option>${POSES.map(g => `<optgroup label="${esc(g.label)}">${g.poses.map(o => `<option value="${esc(o.prompt)}" ${shownPrompt.includes(o.prompt) ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>` : ''}
+      ${onPic && !editing && POSES && POSES.length ? `<div class="st-count-row"><span>Pose</span><select id="st-pose" aria-label="Pose" title="Adds a ready-made pose to the prompt; you can still edit the words" ${dis}>${poseOptions(shownPrompt)}</select></div>` : ''}
       ${onPic && !editing ? `<div class="st-count-row"><span>Pictures per press</span><div class="st-count" role="group" aria-label="Pictures per press" title="How many pictures one press of Generate makes, one after another">${BATCH_COUNTS.map(c => `<button type="button" data-count="${c}" class="${c === STN ? 'on' : ''}" aria-pressed="${c === STN}" ${dis}>${c}</button>`).join('')}</div></div>` : ''}
       <div class="st-row">
         <textarea id="kp${i}" data-original-prompt="${esc(shownPrompt)}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
@@ -1404,14 +1418,7 @@ function renderStudio() {
     useDisplayedPrompt();
     return run('keyframes', {indices: [i], reseed: made, count: STN}, () => { STV = null; STE = false; })();
   };
-  if ($('#st-pose')) $('#st-pose').onchange = e => {
-    const ta = $('#kp' + i); let t = ta.value;
-    for (const o of poseList()) t = t.split(', ' + o.prompt).join('').split(o.prompt).join('');  // drop the earlier pose
-    t = t.replace(/[\s,]+$/, '');
-    if (e.target.value) t = (t ? t.replace(/[.]$/, '') + ', ' : '') + e.target.value;
-    ta.value = t; dirty = true; fit(ta);
-    ta.dispatchEvent(new Event('input'));
-  };
+  if ($('#st-pose')) $('#st-pose').onchange = e => { applyPose($('#kp' + i), e.target.value); dirty = true; };
   $$('.st-count button').forEach(b => b.onclick = () => { STN = +b.dataset.count; localStorage.setItem('reelmint.batch', STN); render(); });
   if ($('#st-send')) $('#st-send').onclick = send;
   bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
