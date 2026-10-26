@@ -307,32 +307,64 @@ def cancel(pid):
     if dropped and not running:
         p = load(pid)
         p["status"] = "stopped:" + p["status"].split(":", 1)[-1]
+        p["batch"] = None
         log(p, "stopped by user")
     return running or bool(dropped)
 
 
+BATCH_COUNTS = (1, 2, 4, 8)  # how many pictures one click may queue
+
+
 @image_transaction
-def enqueue(pid, task, **kw):
+def enqueue(pid, task, count=1, **kw):
+    """count > 1 (pictures only) queues the same job that many times: each run after the first draws a fresh seed,
+    so one click yields several versions of the picture, made one after another."""
+    count = int(count) if task == "keyframes" else 1
+    if count not in BATCH_COUNTS:
+        raise ValueError(f"count must be one of {', '.join(map(str, BATCH_COUNTS))}")
     p = load(pid)
     p["status"] = "queued:" + task
+    p["batch"] = {"n": 1, "of": count} if count > 1 else None
     save(p)
-    jobs.put((pid, task, kw))
+    for k in range(count):
+        extra = {"reseed": True} if k else {}
+        jobs.put((pid, task, {**kw, **extra, "_batch": (k + 1, count)} if count > 1 else kw))
+
+
+def _more_queued(pid):
+    with jobs.mutex:
+        return any(j[0] == pid for j in jobs.queue)
+
+
+def _drop_queued(pid):
+    with jobs.mutex:
+        kept = [j for j in jobs.queue if j[0] != pid]
+        jobs.queue.clear()
+        jobs.queue.extend(kept)
 
 
 def worker():
     while True:
         pid, task, kw = jobs.get()
+        kw = dict(kw)
+        batch = kw.pop("_batch", None)
         current.update(pid=pid, task=task)
         try:
             p = load(pid)
             p["status"] = "running:" + task
+            p["batch"] = {"n": batch[0], "of": batch[1]} if batch else None
             save(p)
             {"keyframes": do_keyframes, "animate": do_animate, "stitch": restitch, "t2v": do_t2v,
              "animate_image": do_animate_image}[task](p, **kw)
             p = load(pid)
-            p["status"] = "done:" + task
-            log(p, f"{task} finished")
-            _announce(p, task, "done")
+            if batch and _more_queued(pid):  # more of this batch to come: stay "queued" so the studio keeps waiting
+                p["status"] = "queued:" + task
+                log(p, f"picture {batch[0]} of {batch[1]} finished")
+            else:
+                p["status"] = "done:" + task
+                p["batch"] = None
+                log(p, f"{task} finished" + (f" ({batch[1]} pictures)" if batch else ""))
+                _announce(p, task, "done")
         except Exception as e:
             if not isinstance(e, (Cancelled, comfy.Stopped)):
                 traceback.print_exc()
@@ -340,6 +372,9 @@ def worker():
                 p = load(pid)
             except Exception:  # project deleted while queued: nothing to report into, keep the worker alive
                 continue
+            if batch:  # the rest of the batch would stop or fail the same way
+                _drop_queued(pid)
+                p["batch"] = None
             if isinstance(e, (Cancelled, comfy.Stopped)) or pid in cancelled:
                 p["status"] = "stopped:" + task
                 log(p, "stopped by user")

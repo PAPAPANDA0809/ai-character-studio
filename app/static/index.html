@@ -515,6 +515,8 @@ async function api(path, body) {
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const running = () => P && /^(queued|running)/.test(P.status);
+const BATCH_COUNTS = [1, 2, 4, 8];
+let STN = +(localStorage.getItem('reelmint.batch') || 1); if (!BATCH_COUNTS.includes(STN)) STN = 1;  // pictures per click
 const pad = i => String(i).padStart(2, '0');
 const fileOf = (pid, rel, ver) => `/files/${pid}/${rel}?v=${ver || 0}`;
 const file = (rel, ver) => fileOf(P.id, rel, ver);
@@ -1206,7 +1208,7 @@ function renderStudio() {
     : made || STV ? `<img id="st-img" src="${big(src)}" alt="">` : empty('Not generated yet. Write the prompt below and press Generate');
   const working = busy && curKind === (sel === 'final' ? '-' : sel) && curIdx === i;
   const overlay = working ? `<div class="st-over"><div class="gen"><i class="spin"></i>${/editing/.test(P.message || '') ? 'Editing…' : sel === 'clip' ? 'Animating…' : 'Generating…'}</div></div>`
-    : busy && /^queued/.test(P.status) && sel !== 'final' ? `<div class="st-over"><div class="gen dim">Queued</div></div>` : '';
+    : busy && /^queued/.test(P.status) && sel !== 'final' ? `<div class="st-over"><div class="gen dim">${P.batch ? `Queued · ${P.batch.of - P.batch.n + 1} more` : 'Queued'}</div></div>` : '';
 
   // bottom: the prompt of what's selected; an older version shows the prompt it was made from (when it was saved)
   const editing = onPic && made && !STV && STE === true;
@@ -1226,10 +1228,11 @@ function renderStudio() {
         <button id="m-edit" class="${editing ? 'on' : ''}" title="Change this picture: Qwen-Image 2.1 keeps everything you don't mention">Edit this ${word}</button></div>` : ''}
       ${editing ? `<div class="st-cur" id="st-curp" title="Tap to change the prompt instead">${esc(shownPrompt)}</div>`
         : onPic && made && !STV ? '<div class="st-cur st-tog" id="st-toedit">✎ Edit the picture instead</div>' : ''}
+      ${onPic && !editing ? `<div class="st-count-row"><span>Pictures per press</span><div class="st-count" role="group" aria-label="Pictures per press" title="How many pictures one press of Generate makes, one after another">${BATCH_COUNTS.map(c => `<button type="button" data-count="${c}" class="${c === STN ? 'on' : ''}" aria-pressed="${c === STN}" ${dis}>${c}</button>`).join('')}</div></div>` : ''}
       <div class="st-row">
         <textarea id="kp${i}" data-original-prompt="${esc(shownPrompt)}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
         ${onPic ? `<textarea id="st-edit" rows="1" placeholder="Edit image, e.g. make her hair red" style="${editing ? '' : 'display:none'}">${esc(STEXT)}</textarea>` : ''}
-        <button class="st-send" id="st-send" aria-label="${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : 'Make a new version with this prompt'} (Enter)" ${dis}><span class="send-label">${editing ? 'Apply edit' : isT2V ? 'Generate scene' : 'Generate image'}</span><span class="send-icon" aria-hidden="true">↑</span></button></div></div>`;
+        <button class="st-send" id="st-send" aria-label="${editing ? 'Apply edit' : isT2V ? 'Generate scene' : STN > 1 ? `Generate ${STN} images` : 'Generate image'}" title="${editing ? 'Edit the picture' : isT2V ? 'Generate this scene' : STN > 1 ? `Make ${STN} new versions with this prompt, one after another` : 'Make a new version with this prompt'} (Enter)" ${dis}><span class="send-label">${editing ? 'Apply edit' : isT2V ? 'Generate scene' : STN > 1 ? `Generate ${STN} images` : 'Generate image'}</span><span class="send-icon" aria-hidden="true">↑</span></button></div></div>`;
 
   // right: actions for what's selected, the whole project, then settings
   const act = (id, icon, label, off) => `<button class="st-act" id="${id}" ${busy || off ? 'disabled' : ''}><span>${icon}</span>${label}</button>`;
@@ -1284,7 +1287,7 @@ function renderStudio() {
     <div class="st-top"><button id="btn-back" title="Back to projects">←</button><h2 id="st-title" title="Tap to rename" style="cursor:pointer">${esc(pl.title)} <span style="font-size:13px;color:var(--muted)">✎</span></h2>
       <div class="st-zoom" style="${onPic && (made || STV) ? '' : 'visibility:hidden'}"><button id="z-out" title="Zoom out">−</button><span id="z-pct" title="Reset zoom">100%</span><button id="z-in" title="Zoom in">+</button></div>
       <span class="st-position">${esc(position)}</span><div class="st-project-controls" id="st-project-controls"><button id="st-settings" aria-expanded="${PANEL}">Settings</button></div></div>
-    <div class="st-job" role="status">${busy ? `<div class="progress"><i class="spin"></i><span>${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">Stop</button></div>` : /^error/.test(P.status) ? `<div class="progress error">${esc(P.message)}</div>` : ''}</div>
+    <div class="st-job" role="status">${busy ? `<div class="progress"><i class="spin"></i><span>${P.batch ? `Picture ${P.batch.n} of ${P.batch.of} · ` : ''}${esc(P.message || 'Working…')}</span><button id="btn-stop" class="stop">Stop</button></div>` : /^error/.test(P.status) ? `<div class="progress error">${esc(P.message)}</div>` : ''}</div>
     <div class="st-canvas">${canvas}${overlay}
       ${onPic && (made || STV) ? '<button class="st-fullscreen-close" id="st-fullscreen-close" aria-label="Close full screen">✕ Close</button>' : ''}
     </div>
@@ -1391,8 +1394,9 @@ function renderStudio() {
       return run('keyframes', {indices: [i], reseed: true, edit: t}, () => { STV = null; STE = false; STEXT = ''; })();
     }
     useDisplayedPrompt();
-    return run('keyframes', {indices: [i], reseed: made}, () => { STV = null; STE = false; })();
+    return run('keyframes', {indices: [i], reseed: made, count: STN}, () => { STV = null; STE = false; })();
   };
+  $$('.st-count button').forEach(b => b.onclick = () => { STN = +b.dataset.count; localStorage.setItem('reelmint.batch', STN); render(); });
   if ($('#st-send')) $('#st-send').onclick = send;
   bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
     if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); send(); } });
@@ -1400,7 +1404,7 @@ function renderStudio() {
   on('#st-regen', async () => {
     if (busy || studioSubmitting) return;
     useDisplayedPrompt();
-    await run('keyframes', {indices:[i], reseed:true}, () => { STV = null; STE = false; })();
+    await run('keyframes', {indices:[i], reseed:true, count: STN}, () => { STV = null; STE = false; })();
   });
   on('#st-curp', () => { STE = false; render(); $('#kp' + i).focus(); });
   const editImage = async () => {
@@ -1510,7 +1514,7 @@ async function poll() {
   let fresh;
   try { fresh = await api('/api/projects/' + P.id); }
   catch (e) { pollTimer = setTimeout(poll, 5000); return; }  // app restarting or network blip: keep checking, don't freeze on "Generating…"
-  const key = x => JSON.stringify([x.status, x.log?.length, x.keyframes_version, x.clips_version, x.final_version]);
+  const key = x => JSON.stringify([x.status, x.log?.length, x.keyframes_version, x.clips_version, x.final_version, x.batch]);
   if (key(fresh) !== key(P)) {
     if (!dirty && VIEW === 'project') { P = fresh; render(); }
     else { P.status = fresh.status; P.log = fresh.log; P.message = fresh.message; }

@@ -344,3 +344,66 @@ class RegressionTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class BatchQueueTests(unittest.TestCase):
+    """One press queues 1, 2, 4 or 8 pictures; the project stays "queued" until the last one is done."""
+    restore_cloud, project = RegressionTests.restore_cloud, RegressionTests.project
+
+    def setUp(self):
+        RegressionTests.setUp(self)
+        with pipeline.jobs.mutex:
+            pipeline.jobs.queue.clear()
+        self.addCleanup(lambda: pipeline.jobs.queue.clear())
+
+    def test_count_queues_that_many_jobs_with_fresh_seeds_after_the_first(self):
+        p = self.project()
+        pipeline.enqueue(p["id"], "keyframes", count=4, indices=[0], reseed=False)
+        jobs = list(pipeline.jobs.queue)
+        self.assertEqual(len(jobs), 4)
+        self.assertFalse(jobs[0][2]["reseed"])
+        self.assertTrue(all(j[2]["reseed"] for j in jobs[1:]))
+        self.assertEqual([j[2]["_batch"] for j in jobs], [(1, 4), (2, 4), (3, 4), (4, 4)])
+        self.assertEqual(pipeline.load(p["id"])["batch"], {"n": 1, "of": 4})
+
+    def test_count_is_limited_to_the_offered_sizes_and_to_pictures(self):
+        p = self.project()
+        with self.assertRaises(ValueError):
+            pipeline.enqueue(p["id"], "keyframes", count=3)
+        pipeline.enqueue(p["id"], "animate", count=8)
+        self.assertEqual(len(pipeline.jobs.queue), 1)
+        self.assertIsNone(pipeline.load(p["id"])["batch"])
+
+    def run_queue_once(self):
+        """Run the worker for exactly one job."""
+        got = pipeline.jobs.get
+        def once(*a, **k):
+            once.calls += 1
+            if once.calls > 1:
+                raise StopIteration
+            return got()
+        once.calls = 0
+        with patch.object(pipeline.jobs, "get", once), self.assertRaises(StopIteration):
+            pipeline.worker()
+
+    def test_project_stays_queued_between_pictures_of_a_batch(self):
+        p = self.project()
+        pipeline.enqueue(p["id"], "keyframes", count=2, indices=[0])
+        with patch.object(pipeline, "do_keyframes", lambda p, **kw: None):
+            self.run_queue_once()
+            self.assertEqual(pipeline.load(p["id"])["status"], "queued:keyframes")
+            self.assertEqual(pipeline.load(p["id"])["batch"], {"n": 1, "of": 2})
+            self.run_queue_once()
+        done = pipeline.load(p["id"])
+        self.assertEqual(done["status"], "done:keyframes")
+        self.assertIsNone(done["batch"])
+
+    def test_a_failed_picture_drops_the_rest_of_its_batch(self):
+        p = self.project()
+        pipeline.enqueue(p["id"], "keyframes", count=8, indices=[0])
+        def boom(p, **kw):
+            raise RuntimeError("engine down")
+        with patch.object(pipeline, "do_keyframes", boom), patch.object(pipeline, "_announce"):
+            self.run_queue_once()
+        self.assertEqual(pipeline.load(p["id"])["status"], "error:keyframes")
+        self.assertTrue(pipeline.jobs.empty())

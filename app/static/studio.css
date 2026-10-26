@@ -167,6 +167,11 @@ details[open]>summary::before { content:'⌄'; }
 .st-row textarea { background:var(--bg); padding:12px; border:1px solid var(--line); border-radius:9px; min-height:76px; }
 .st-send { width:auto; height:auto; border-radius:9px; padding:12px 18px; font-size:14px; min-height:44px; }
 .send-icon { display:none; }
+.st-count-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; font-size:13px; color:var(--muted); }
+.st-count { display:flex; gap:0; flex:none; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--bg); }
+.st-count button { width:auto; min-width:40px; min-height:44px; padding:0 10px; border:0; border-radius:0; background:transparent; font-size:14px; color:var(--muted); }
+.st-count button + button { border-left:1px solid var(--line); }
+.st-count button.on { color:#b5efff; background:linear-gradient(135deg,#132f49,#211c39); }
 .st-note { white-space:normal; }
 .studio .st-panel { display:none; }
 .studio.panel-open .st-panel { display:flex; position:fixed; top:0; right:0; bottom:0; left:auto; width:340px; max-width:100%; max-height:100dvh; overflow:auto; padding:16px; gap:14px; z-index:61; background:var(--panel); border-left:1px solid var(--line); }
@@ -308,6 +313,8 @@ body.auth-page { background:var(--bg); }
   .st-prompt .prompt-label { font-size:13px; margin-bottom:8px; }
   .st-row { flex-direction:row; flex-wrap:nowrap; align-items:stretch; gap:8px; }
   .st-row textarea { min-width:0; width:100%; min-height:56px; max-height:100px; font-size:16px; }
+  .st-count-row { margin-bottom:8px; }
+  .st-count button { min-width:38px; min-height:38px; padding:0 8px; }
   .st-send { width:48px; flex:none; padding:8px; }
   .st-send .send-label { display:none; }
   .st-send .send-icon { display:block; font-size:24px; }

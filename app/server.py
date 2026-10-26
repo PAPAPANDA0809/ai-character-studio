@@ -387,7 +387,8 @@ class Handler(BaseHTTPRequestHandler):
             if action == "plan":
                 return self.send_json(pipeline.update_plan(pid, b["plan"]))
             if action == "keyframes":
-                pipeline.enqueue(pid, "keyframes", indices=b.get("indices"), reseed=bool(b.get("reseed")),
+                pipeline.enqueue(pid, "keyframes", count=int(b.get("count") or 1), indices=b.get("indices"),
+                                 reseed=bool(b.get("reseed")),
                                  engine="gpt-image" if b.get("engine") == "gpt-image" else None,
                                  edit=str(b.get("edit") or "").strip() or None)
                 return self.send_json({"ok": True})
