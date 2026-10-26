@@ -32,19 +32,82 @@ HQ_QWEN = {"unet": "qwen_image_2.1_bf16.safetensors", "text_encoder": "qwen3vl_8
 # The video engine a card gets: MiniMax H3 (the best open one, 80 GB+) or LTX-2.5. H3's licence excludes the US, the
 # EU, the UK and South Korea, so it is only rented in other data centres (else the card gets LTX-2.5).
 H3_EXCLUDED = ("US", "EU", "UK", "GB", "KR")  # data centre id prefixes / country codes
+H3_BF16 = "minimax_h3_fl2va_bf16.safetensors"                 # 62 GB full precision: 141 GB+ cards
 H3_FULL = "minimax_h3_fl2va_int8_convrot.safetensors"           # 34 GB: 80 GB+ cards
 H3_PRUNED = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"  # 21 GB slimmed H3: fits a 32 GB RTX 5090
 # H3's reference-to-video model (Video only with a character picture), same size as the card's main H3 model
-H3_REF = {H3_FULL: "minimax_h3_ref2va_int8_convrot.safetensors", H3_PRUNED: "minimax_h3_ref2va_pruned_int8_convrot.safetensors"}
-# container disk per video engine: Qwen (int8 + bf16), Ideogram, the video models (H3 with its reference model) and
-# ComfyUI; FLUX2_DISK more on 48 GB+ cards, which also get FLUX.2 [dev]
-DISK_GB = {"h3": 230, "h3lite": 190, "ltx25": 170}
+H3_REF = {H3_BF16: "minimax_h3_ref2va_bf16.safetensors", H3_FULL: "minimax_h3_ref2va_int8_convrot.safetensors",
+          H3_PRUNED: "minimax_h3_ref2va_pruned_int8_convrot.safetensors"}
 FLUX2_MIN_MEM, FLUX2_DISK = 48, 60
+# downloads that arrive after the card is ready, each switched on by /root/done_<name> on the pod
+EXTRAS = ("video", "qwen_hq", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")
+# file sizes in GB (Comfy-Org / comfyicu repos, 23 Oct 2026), for the container disk
+GB = {"krea2_turbo_bf16.safetensors": 24.48, "krea2_turbo_fp8_scaled.safetensors": 12.24,
+      "qwen3vl_4b_bf16.safetensors": 8.27, "moss_image_sft_bf16.safetensors": 9.47, "qwen3.5_9b_bf16.safetensors": 17.98,
+      "ltx-2.5-22b-distilled-transformer-bf16.safetensors": 39.13,
+      "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors": 20.03,
+      "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors": 24.46,
+      "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors": 14.32,
+      H3_BF16: 61.73, H3_FULL: 31.7, H3_PRUNED: 19.53, "qwen3vl_32b_minimax_h3_bf16.safetensors": 47.97,
+      "qwen3vl_32b_minimax_h3_int8_convrot.safetensors": 25.28, "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": 14.61}
+# always on the pod: Qwen-Image 2.1 int8 + bf16 + VAE, upscaler, Ideogram 4 (both models, encoder, VAE), Krea and
+# MOSS VAEs, the Krea identity / edit LoRAs, plus ComfyUI, packages and room to unpack
+BASE_GB = 16.1 + 29.58 + 0.07 + 28.05 + 0.47 + 1.8 + 40
+
+
+def pod_files(card):
+    """The highest-quality file of each model this card's memory holds (user 23 Oct 2026: "the max version for all
+    models on the rented pod"): bf16 when the file takes at most ~80 % of the card (pictures) or ~70 % (video, whose
+    frames need room), else the int8 / fp8 file used before. Qwen-Image 2.1 is bf16 on every card already
+    (HQ_QWEN) and Ideogram 4 has no bf16 release. Values are file names in the Comfy-Org repos."""
+    m = card["mem"]
+    return {
+        "KREA_UNET": "krea2_turbo_bf16.safetensors" if 24.48 <= 0.8 * m else "krea2_turbo_fp8_scaled.safetensors",
+        "KREA_TE": "qwen3vl_4b_bf16.safetensors",
+        "MOSS_UNET": "moss_image_sft_bf16.safetensors",
+        "MOSS_TE": "qwen3.5_9b_bf16.safetensors",
+        "LTX_UNET": "ltx-2.5-22b-distilled-transformer-bf16.safetensors" if 39.13 <= 0.7 * m else
+                    "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "LTX_TE": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors" if 24.46 <= 0.8 * m else
+                  "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+    }
+
+
+# what cloud_setup.sh downloads when it gets no file plan (its ${VAR:-default}s): a pod started by an older app
+POD_DEFAULT_FILES = {"KREA_UNET": "krea2_turbo_fp8_scaled.safetensors", "KREA_TE": "qwen3vl_4b_fp8_scaled.safetensors",
+                     "MOSS_UNET": "moss_image_sft_bf16.safetensors", "MOSS_TE": "qwen3.5_9b_bf16.safetensors",
+                     "LTX_UNET": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+                     "LTX_TE": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"}
+
+
+def files_on_pod():
+    """The rented card's model file names: its saved plan, else the setup script's defaults."""
+    return state.get("files") or POD_DEFAULT_FILES
+
+
+def disk_gb(card, video, h3_unet=""):
+    """Container disk for this card's files (10 % spare), FLUX.2 [dev] on 48 GB+ cards."""
+    f = pod_files(card)
+    total = BASE_GB + sum(GB[f[k]] for k in ("KREA_UNET", "KREA_TE", "MOSS_UNET", "MOSS_TE"))
+    if video == "h3":
+        total += 2 * GB[h3_unet] + GB[comfy_te(card)] + 5.41  # main + reference model, encoder, VAEs
+    else:
+        total += GB[f["LTX_UNET"]] + GB[f["LTX_TE"]] + 1.71
+    if card["mem"] >= FLUX2_MIN_MEM:
+        total += FLUX2_DISK
+    return int(total * 1.1) + 1
+
+
+def no_extras():
+    return {k: False for k in EXTRAS}
 
 
 def h3_plan(card):
     """(H3 model file, short edge in px) for this card, or None when it gets LTX-2.5. A 5090 was shown running H3
-    (864x480, 15 s in 8 min); the slimmed model keeps it on the card, at 480 px there and H3's native 768 on 48 GB."""
+    (864x480, 15 s in 8 min); the slimmed model keeps it on the card, at 480 px there and H3's native 768 on 48 GB.
+    Full precision only where it leaves at least the room for frames the int8 model has on an 80 GB card."""
+    if card["mem"] - GB[H3_BF16] >= 80 - GB[H3_FULL]:
+        return H3_BF16, 768
     if card["mem"] >= 80:
         return H3_FULL, 768
     if card["mem"] >= 48:
@@ -88,8 +151,8 @@ _lifecycle = threading.RLock()  # startup and deletion must finish before anothe
 _generation = [0]  # queued workers from an earlier rental must never alter a new one
 state = {"status": "off", "message": "", "pod": None, "key": "", "price": 0.0, "gpu": "",
          "started": 0.0, "last_used": 0.0, "loras": [], "video": None, "h3_te": "", "h3_unet": "", "h3_short": 768,
-         "where": "",
-         "extras": {"video": False, "qwen_hq": False, "ideogram": False, "flux2": False, "krea2": False}}
+         "where": "", "files": {},
+         "extras": no_extras()}
 active = [0]       # cloud jobs running right now (never idle-stopped meanwhile)
 relay = [None]     # the local relay server
 _opts = [0.0, []]  # options() cache: when, list
@@ -107,7 +170,7 @@ def _set(**kw):
     with lock:
         state.update(kw)
         keep = {k: state[k] for k in ("pod", "key", "price", "gpu", "started", "video", "h3_te", "h3_unet", "h3_short",
-                                      "where")}
+                                      "where", "files")}
         if state["pod"]:
             tmp = STATE_FILE + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
@@ -135,7 +198,7 @@ def info():
             "video_label": video_label(s["video"], s["h3_unet"]) if s["video"] else "",
             **_card_facts(s),
             "idle_stop_in": max(0, round(idle_left / 60)) if idle_left is not None else None,
-            "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": active[0]}
+            "max_hours": c["max_hours"], "idle_minutes": c["idle_minutes"], "busy": active[0], "balance": balance()}
 
 
 def card_video(card):
@@ -201,6 +264,32 @@ class using:
 def _run(args, timeout=120, data=None):
     r = subprocess.run(args, input=data, capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
     return r.returncode, (r.stdout or b"").decode("utf-8", "replace"), (r.stderr or b"").decode("utf-8", "replace")
+
+
+_balance = [0.0, None, False]  # when last read, dollars (None = not known yet), a read is running
+
+
+def balance():
+    """RunPod's account balance in dollars, for the Fast GPU button (user 23 Oct 2026). Read with `runpodctl user`
+    in the background at most once a minute, so the page's status poll never waits on RunPod; only the balance is
+    kept (the reply also has the account's email). None until the first read."""
+    with lock:
+        if time.time() - _balance[0] > 60 and not _balance[2]:
+            _balance[2] = True
+            threading.Thread(target=_read_balance, daemon=True).start()
+        return _balance[1]
+
+
+def _read_balance():
+    try:
+        code, out, _ = _run([RUNPODCTL, "user", "-o", "json"], timeout=30)
+        if code == 0:
+            _balance[1] = round(float(json.loads(out)["clientBalance"]), 2)
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        pass  # keep the last known value
+    finally:
+        with lock:
+            _balance[0], _balance[2] = time.time(), False
 
 
 def _call(method, path, data=None, timeout=60, headers=None):
@@ -340,7 +429,6 @@ def _start(card, cloud, generation=None):
 def _start_locked(card, cloud):
     c = cfg()
     key = secrets.token_urlsafe(24)
-    disk = lambda v: DISK_GB[v] + (FLUX2_DISK if card["mem"] >= FLUX2_MIN_MEM else 0)
     plan = h3_plan(card)
     video = "h3" if plan else "ltx25"
     h3_unet, h3_short = plan or ("", 768)
@@ -351,7 +439,7 @@ def _start_locked(card, cloud):
             for attempt in range(2):
                 dcs = h3_stock().get(card["id"], [])
                 if dcs:
-                    pod, why = _create(c, card["id"], cloud, key, disk("h3" if h3_unet == H3_FULL else "h3lite"), dcs)
+                    pod, why = _create(c, card["id"], cloud, key, disk_gb(card, "h3", h3_unet), dcs)
                 if pod or not dcs or state["status"] != "starting":
                     break
                 _h3_stock[0] = 0  # RunPod's stock list was stale: read it again and try once more
@@ -359,7 +447,7 @@ def _start_locked(card, cloud):
             if not pod:  # none free where H3 may run: rent it anywhere, videos use LTX-2.5
                 video, note = "ltx25", " (no free one where MiniMax H3 is allowed, so videos use LTX-2.5)"
         if not pod and state["status"] == "starting":
-            pod, why = _create(c, card["id"], cloud, key, disk(video))
+            pod, why = _create(c, card["id"], cloud, key, disk_gb(card, video, h3_unet))
         if not pod:
             if state["status"] != "starting":
                 return
@@ -379,9 +467,9 @@ def _start_locked(card, cloud):
             video, note = "ltx25", f" (it's in {where or 'an unknown place'}, where MiniMax H3 isn't allowed: videos use LTX-2.5)"
         h3_te = comfy_te(card) if video == "h3" else ""
         h3_unet = h3_unet if video == "h3" else ""
-        _set(video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where,
-             extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False, "krea2": False},
-             message="Starting the machine" + note + "…")
+        files = pod_files(card)
+        _set(video=video, h3_te=h3_te, h3_unet=h3_unet, h3_short=h3_short, where=where, files=files,
+             extras=no_extras(), message="Starting the machine" + note + "…")
         if not _wait_agent(8):  # good machines answer in under a minute
             return
         with open(SETUP, "rb") as f:
@@ -389,7 +477,9 @@ def _start_locked(card, cloud):
         # what this card installs: its video engine (and H3's text encoder), read by cloud_setup.sh
         with open(DOWNLOADER, "rb") as f:
             dl = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
-        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nFLUX2={int(card['mem'] >= FLUX2_MIN_MEM)}\nDL_B64={dl}\n".encode(), 1)
+        # + the card's file plan (pod_files: the best precision its memory holds)
+        plan_lines = "".join(f"{k}={v}\n" for k, v in files.items())
+        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nFLUX2={int(card['mem'] >= FLUX2_MIN_MEM)}\n{plan_lines}DL_B64={dl}\n".encode(), 1)
         for _ in range(24):  # just after boot the gateway can still answer 404 for a while
             if state["status"] != "starting":
                 return
@@ -490,12 +580,12 @@ def _send_lora(src, name):
 
 
 def _send_loras():
-    """Copy the Qwen-Image 2.1 trained characters to the pod (uploads are slow, so it runs beside the setup)."""
+    """Copy the Qwen-Image 2.1, Krea 2 and MOSS LoRAs to the pod (uploads are slow, so it runs beside the setup)."""
     c = json.load(open(os.path.join(APP_DIR, "config.json"), encoding="utf-8"))
     models = os.path.join(os.path.dirname(APP_DIR), "models", "loras")
     for l in c.get("loras", []):
         src = os.path.join(models, l["file"])
-        if l.get("engine") != "qwen-image-21" or not os.path.exists(src) or not state["pod"]:
+        if l.get("engine") not in ("qwen-image-21", "krea2-turbo", "moss-image") or not os.path.exists(src) or not state["pod"]:
             continue
         try:
             ok = _send_lora(src, l["file"])
@@ -581,8 +671,7 @@ def _delete_locked(reason, error=False):
         return _set(status="error", message=f"Couldn't delete pod {pod}: delete it on runpod.io (it is still billing)")
     cost = info()["cost"]
     _set(status="error" if error else "off", pod=None, key="", started=0.0, loras=[], video=None, h3_te="", h3_unet="",
-         where="",
-         extras={"video": False, "qwen_hq": False, "ideogram": False, "flux2": False, "krea2": False},
+         where="", files={}, extras=no_extras(),
          message=f"{reason} (this session: about ${cost:.2f})")
 
 
@@ -607,7 +696,10 @@ def _watch():
 
 
 def comfy_te(card):
-    """H3's text encoder for this card: the 16 GB 4-bit one on Blackwell (tested on an RTX PRO 6000), int8 elsewhere."""
+    """H3's text encoder for this card: full precision (48 GB) on 80 GB+ cards; below that the 16 GB 4-bit one on
+    Blackwell (tested on an RTX PRO 6000), int8 elsewhere."""
+    if card["mem"] >= 80:
+        return "qwen3vl_32b_minimax_h3_bf16.safetensors"
     return "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" if card.get("blackwell") else \
         "qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
 
@@ -620,7 +712,7 @@ def _check_extras():
         got = json.loads(body) if code == 200 else {}
     except (urllib.error.URLError, OSError, ValueError):
         return
-    extras = {k: bool(got.get(k)) for k in ("video", "qwen_hq", "ideogram", "flux2", "krea2")}
+    extras = {k: bool(got.get(k)) for k in EXTRAS}
     if extras != state["extras"]:
         _set(extras=extras)
 

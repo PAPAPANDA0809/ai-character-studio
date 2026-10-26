@@ -4,7 +4,11 @@ Local pipeline: post idea → scene plan (local LLM) → Flux keyframes → Wan 
 
 ## Launch
 
-Double-click `start_studio.bat`. It starts ComfyUI (if it isn't running) in its own window, starts the web app and opens http://127.0.0.1:7860.
+Double-click `start_studio.bat`. It starts ComfyUI (if it isn't running) in its own window, starts the web app through Windows Task Scheduler and opens http://127.0.0.1:7860.
+
+The **Reelmint Background Server** task runs independently of ChatGPT, starts at Windows sign-in, and restarts the web server if it exits. The task does not rent GPUs or submit generation jobs. The PC must remain on and awake for phone access. The web server does not launch ComfyUI automatically at sign-in; use `start_studio.bat` when local generation is needed.
+
+To install or refresh background startup, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File setup\enable_background.ps1` from the repository root. For troubleshooting, see `app/reelmint-supervisor.log` and `app/reelmint-server.log`. To turn it off, disable and end **Reelmint Background Server** in Windows Task Scheduler.
 
 1. Type a post idea (and optionally a fixed character description), pick keyframe count and format, press **Plan scenes**.
 2. Edit prompts, on-screen lines, motions and caption if you want, then **1. Generate keyframes**.

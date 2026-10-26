@@ -28,7 +28,10 @@ os.makedirs(CHARACTERS, exist_ok=True)
 
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
 QUALITIES = ("standard", "sharp", "high", "2k", "ultra")  # picture resolution: 360p, 720p, 1080p, 2K (1440p), 4K
-NATIVE_HD = ("qwen-image-21", "z-image", "ideogram4", "flux2-dev", "krea2-turbo")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
+# local engines that get the same minors check as Krea (krea.validate_prompt): MOSS has an adult LoRA, FLUX.3 takes
+# character pictures
+PROMPT_CHECKED = ("moss-image", "flux3-klein")
+NATIVE_HD = ("qwen-image-21", "z-image", "ideogram4", "flux2-dev", "krea2-turbo", "flux3-klein")  # draw 720p/1080p directly: the 4x upscaler made Z-Image look painted
 PERSON_WORDS = re.compile(r"(?i)\b(she|he|her|his|him|woman|women|man|men|girl|boy|lady|guy|person|people|model|"
                           r"wife|husband|mom|mum|dad|kid|child|baby|face|smil\w*)\b")
 CLOTHING_WORDS = re.compile(r"(?i)\b(wear\w*|outfit|cloth\w*|dress\w*|shirt|t-shirt|tee|top|blouse|jacket|coat|raincoat|"
@@ -430,8 +433,10 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
     cfg = load_config()
     if image_engine in krea.API_ENGINES or image_engine == "krea2-turbo":
         krea.validate_prompt(". ".join(str(value or "") for value in (idea, style, character)))
-        if reference:
+        if reference and image_engine != "krea2-turbo":  # the GPU Krea takes one character picture; the API none
             raise ValueError("Krea 2 generates from text. Remove reference pictures or choose Qwen-Image 2.1.")
+    if image_engine in PROMPT_CHECKED:
+        krea.validate_prompt(". ".join(str(value or "") for value in (idea, style, character)))
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
     refs = clean_refs(user, reference)
@@ -491,6 +496,8 @@ def engines():
             need = "with a 48 GB+ Fast GPU" if e["rented"] == "flux2" else "with Fast GPU"
             return {"id": key, "label": e["label"], "installed": bool(on), "note": need}
         label = e["label"]
+        if key == "moss-image" and cloudgpu.state["status"] == "ready" and cloudgpu.state["extras"].get("moss"):
+            label = "MOSS-Image · full quality on Fast GPU"
         if key == "qwen-image-21" and cloudgpu.state["status"] == "ready":  # say where it runs and how
             label = "Qwen-Image 2.1 · " + ("full quality on Fast GPU" if cloudgpu.state["extras"].get("qwen_hq")
                                            else "on Fast GPU (full quality in a few minutes)")
@@ -597,16 +604,17 @@ def keyframe_prompt(p, i):
     return ". ".join(s.strip().rstrip(".") for s in parts if s and s.strip())
 
 
-def reference_prompt(p, i):
+def reference_prompt(p, i, n=None):
     """Character-picture prompt: keep the subject from the reference (a person, animal, product or object) and let
-    the user's words decide clothing, pose and scene; an outfit named in the prompt replaces the reference outfit."""
+    the user's words decide clothing, pose and scene; an outfit named in the prompt replaces the reference outfit.
+    n = how many pictures the engine gets (Krea 2 takes only the first)."""
     pl = p["plan"]
     scene = ". ".join(s.strip().rstrip(".") for s in [pl["keyframes"][i]["image_prompt"], pl.get("setting", "")]
                       if s and s.strip())
     style = p.get("style", "").strip()
     # Image models read "face", "hair", "people" (even in "do not add people") as a request to draw a person, so
     # person and clothing words are only added when the user's own description is about a person / clothes.
-    n = len(refs_of(p))  # Qwen's encoder labels them "Picture 1", "Picture 2", ... in this order
+    n = n or len(refs_of(p))  # Qwen's encoder labels them "Picture 1", "Picture 2", ... in this order
     src = "picture 1" if n > 1 else "the reference image"
     keep = f"Keep the exact same subject from {src}, with its identity and details unchanged"
     if PERSON_WORDS.search(scene):
@@ -678,18 +686,46 @@ def use_version(pid, index, name):
     return p
 
 
+def krea_edits(remote):
+    """Krea 2 edits (General Edit V2 LoRA + the comfyui-krea2edit nodes) only run on a rented card that has them."""
+    return bool(remote and cloudgpu.state["extras"].get("krea2") and cloudgpu.state["extras"].get("krea2_edit"))
+
+
 def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
     """Qwen-Image 2.1 pictures and edits run on the rented GPU while a fast-GPU session is ready; everything else here."""
     selected = engine or p.get("image_engine")
     if selected in krea.API_ENGINES and not edit:
         return _keyframes(p, indices, reseed, engine, edit)
     remote = cloudgpu.url()
-    if selected == "krea2-turbo" and not edit and not refs_of(p):
+    if selected == "krea2-turbo" and edit and not krea_edits(remote):
+        log(p, "Krea 2 edits need a Fast GPU with the Krea edit files in; editing with Qwen-Image 2.1")
+    elif selected == "krea2-turbo":
+        refs = [] if edit else refs_of(p)  # an edit's reference is the picture itself
         if remote:
             if not cloudgpu.state["extras"].get("krea2"):
                 raise RuntimeError("Krea 2 is not ready on this Fast GPU. See Krea setup for model installation.")
+            if refs and not cloudgpu.state["extras"].get("krea2ref"):
+                raise RuntimeError("Krea 2 with a character picture is still downloading on this Fast GPU (a few "
+                                   "minutes after Krea 2); try again then, or remove the character picture")
+            lora = lora_entry(load_config(), p.get("lora", ""), "krea2-turbo")
+            if lora and not cloudgpu.has_lora(lora["file"]):  # this PC has no Krea 2 files to fall back on
+                raise RuntimeError(f'the LoRA "{lora["label"]}" is still uploading to the rented GPU; try again in a minute')
+            if len(refs) > 1:
+                log(p, "Krea 2 uses only the first character picture")
             with cloudgpu.using():
                 return _keyframes(p, indices, reseed, engine, edit, remote)
+        if refs:
+            raise RuntimeError("Krea 2 with a character picture runs on a rented card: connect a Fast GPU, "
+                               "or choose Qwen-Image 2.1")
+        return _keyframes(p, indices, reseed, engine, edit)
+    if selected == "moss-image" and not edit and remote and cloudgpu.state["extras"].get("moss"):
+        lora = lora_entry(load_config(), p.get("lora", ""), "moss-image")
+        if not lora or cloudgpu.has_lora(lora["file"]):  # else this PC, which has the LoRA and MOSS too
+            log(p, f"using the rented {cloudgpu.info()['label']}")
+            with cloudgpu.using():
+                return _keyframes(p, indices, reseed, engine, edit, remote)
+        log(p, f'the LoRA "{lora["label"]}" is still uploading to the rented GPU, so this runs on this PC')
+    if selected == "flux3-klein":  # this PC only, including its own edits and character pictures
         return _keyframes(p, indices, reseed, engine, edit)
     if remote and (engine or p.get("image_engine")) in ("ideogram4", "flux2-dev") and not edit and not refs_of(p):
         log(p, f"using the rented {cloudgpu.info()['label']}")
@@ -719,6 +755,10 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
     cfg = load_config()
     if remote and cloudgpu.state["extras"].get("qwen_hq"):  # the rented card has the full-quality (bf16) Qwen files
         cfg["qwen_image_21"] = {**cfg["qwen_image_21"], **cloudgpu.HQ_QWEN}
+    files = cloudgpu.files_on_pod() if remote else None
+    if files:  # the rented card's own files: the best precision its memory holds (cloudgpu.pod_files)
+        cfg["krea2"] = {**cfg.get("krea2", {}), "unet": files["KREA_UNET"], "text_encoder": files["KREA_TE"]}
+        cfg["moss_image"] = {**cfg.get("moss_image", {}), "unet": files["MOSS_UNET"], "text_encoder": files["MOSS_TE"]}
     c = None
     if edit or (engine or p.get("image_engine")) not in ("gpt-image", *krea.API_ENGINES):
         c = comfy.Comfy(remote or cfg["comfy_url"], lambda: p["id"] in cancelled, remote=bool(remote))
@@ -747,14 +787,20 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
         use = engine or p.get("image_engine")
         if use not in ("gpt-image", *krea.API_ENGINES) and use not in comfy.IMAGE_ENGINES:  # older project made with a removed engine
             use = cfg.get("default_image_engine", "qwen-image-21")
-        if (use in krea.API_ENGINES or use == "krea2-turbo") and ref and not edit:
+        if use in krea.API_ENGINES and ref and not edit:
             raise RuntimeError("Krea 2 generates from text. Remove reference pictures or choose Qwen-Image 2.1.")
-        if (use in krea.API_ENGINES or use == "krea2-turbo") and not edit:
+        if use == "krea2-turbo" and ref and not edit and not (remote and cloudgpu.state["extras"].get("krea2ref")):
+            raise RuntimeError("Krea 2 with a character picture runs on a rented card once its reference files are in")
+        if (use in krea.API_ENGINES or use == "krea2-turbo" or use in PROMPT_CHECKED) and not edit:
             krea.validate_prompt(". ".join((p.get("idea", ""), keyframe_prompt(p, i))))
         if ref and use != "gpt-image" and use not in comfy.REFERENCE_ENGINES:
             use = comfy.REFERENCE_ENGINES[0]
-        if edit:  # only Qwen-Image 2.1 edits; the picture itself is the reference
-            use = "qwen-image-21"
+        if edit:  # the picture itself is the reference: Krea 2 edits Krea projects on a card that has the edit files,
+            # Qwen-Image 2.1 everything else
+            use = ("krea2-turbo" if use == "krea2-turbo" and krea_edits(remote) else
+                   "flux3-klein" if use == "flux3-klein" else "qwen-image-21")
+            if use == "krea2-turbo" or use in PROMPT_CHECKED:
+                krea.validate_prompt(edit)
         if use == "ideogram4" and not (remote and cloudgpu.state["extras"].get("ideogram")):
             raise RuntimeError("Ideogram 4.0 runs on a rented card: connect a Fast GPU and wait until Ideogram is "
                                "ready in its panel, or pick Qwen-Image 2.1")
@@ -804,7 +850,8 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             # the instruction as typed: the trained character's trigger lead-in would read as a new picture request
             wf = comfy.reference_workflow(cfg, use, edit, [name], rw, rh, p["keyframe_seeds"][key], prefix, steps, edit=True)
         elif ref:
-            wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i), lora), ref_names, rw, rh,
+            wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i, 1 if use == "krea2-turbo" else None),
+                                                                 lora), ref_names, rw, rh,
                                           p["keyframe_seeds"][key], prefix, steps)
         else:
             wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,
@@ -863,7 +910,8 @@ def clip_engine(p, cfg, remote, key="video_engine", local_default="wan22-14b", e
     if remote:
         engine = cloudgpu.state["video"]
         if engine == "ltx25":
-            cfg["ltx25"] = {**cfg["ltx25"], **comfy.LTX25_POD}
+            files = cloudgpu.files_on_pod()
+            cfg["ltx25"] = {**cfg["ltx25"], **comfy.LTX25_POD, "unet": files["LTX_UNET"], "text_encoder": files["LTX_TE"]}
         return engine
     engines = comfy.VIDEO_ENGINES if engines is None else engines
     return p.get(key) if p.get(key) in engines else local_default

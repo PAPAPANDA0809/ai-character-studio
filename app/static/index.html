@@ -33,6 +33,7 @@
   .chip { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); padding:5px 10px; border-radius:99px; background:var(--glass); border:1px solid var(--line); white-space:nowrap; }
   .dot { width:7px; height:7px; border-radius:50%; background:#555; }
   .dot.on { background:var(--mint); box-shadow:0 0 10px var(--mint); } .dot.off { background:var(--err); }
+  .chip.low-balance { border-color:var(--err); } .chip.low-balance .t { color:var(--err) !important; }  /* RunPod < $5 */
   nav.tabs { display:flex; gap:6px; padding:12px 18px 0; max-width:1200px; margin:0 auto; }
   nav.tabs button { flex:none; }
   /* layout */
@@ -365,7 +366,7 @@
         <div class="seg small" id="vres-seg" style="grid-template-columns:1fr 1fr"><button data-v="480p">480p</button><button data-v="720p">720p · ~2-3× slower</button></div></div>
         <label for="style-sel">Visual style</label>
         <select id="style-sel"></select>
-        <input id="style" value="cinematic photo, soft natural light, shallow depth of field" placeholder="Type your own style" style="margin-top:8px;display:none">
+        <input id="style" value="" placeholder="Type your own style" style="margin-top:8px;display:none">
         <details id="create-advanced"><summary>Advanced settings</summary>
         <div id="img-eng-wrap"><label for="img-eng">Image engine</label><select id="img-eng"></select><p id="create-engine-note" class="field-note"></p><button type="button" class="krea-setup">Krea setup</button></div>
         <div id="lora-wrap" style="display:none"><label>Trained character</label><select id="lora-sel"></select>
@@ -608,11 +609,16 @@ function loraOptions(engine, sel) {
   return `<option value="">None</option>` + lorasFor(engine).map(l =>
     `<option value="${esc(l.file)}" ${l.file === sel ? 'selected' : ''} ${l.installed ? '' : 'disabled'}>${esc(l.label)}${l.installed ? '' : ' · not downloaded yet'}</option>`).join('');
 }
+// the LoRA picked per engine in this visit; until then the engine's default one (config "default": true), e.g.
+// "NSFW (MOSS)" for MOSS-Image (user 24 Oct 2026)
+const LORA_PICK = {};
 function renderLora() {
-  const eng = $('#img-eng').value, keep = $('#lora-sel').value;
+  const eng = $('#img-eng').value;
+  const pick = eng in LORA_PICK ? LORA_PICK[eng] : (lorasFor(eng).find(l => l.default && l.installed) || {}).file || '';
   $('#lora-wrap').style.display = lorasFor(eng).length && NEW.mode !== 't2v' ? '' : 'none';
-  $('#lora-sel').innerHTML = loraOptions(eng, keep);
+  $('#lora-sel').innerHTML = loraOptions(eng, pick);
 }
+$('#lora-sel').onchange = () => { LORA_PICK[$('#img-eng').value] = $('#lora-sel').value; };
 // image engines that can use a character picture (the server's list; Qwen-Image 2.1 before it loads)
 const refEngines = () => [...new Set([...(ENG?.reference_engines || ['qwen-image-21']), 'gpt-image'])];
 // the one "Switch to it" picks: the first installed of them
@@ -1631,8 +1637,11 @@ async function refreshGpu() {
   const s = GPU.status;
   updateEngineStatus();
   $('#d-gpu').className = 'dot ' + (s === 'ready' ? 'on' : s === 'error' ? 'off' : '');
-  $('#t-gpu').textContent = s === 'ready' ? `${GPU.label} · $${GPU.cost.toFixed(2)}` : s === 'starting' ? `${GPU.label} · starting…`
-    : s === 'stopping' ? 'Stopping…' : 'Fast GPU';
+  // RunPod balance (admins only): after the session cost while a card runs, else after "Fast GPU"
+  const bal = typeof GPU.balance === 'number' ? `$${GPU.balance.toFixed(2)} left` : '';
+  $('#t-gpu').textContent = s === 'ready' ? `${GPU.label} · $${GPU.cost.toFixed(2)}${bal ? ' · ' + bal : ''}`
+    : s === 'starting' ? `${GPU.label} · starting…` : s === 'stopping' ? 'Stopping…' : `Fast GPU${bal ? ' · ' + bal : ''}`;
+  $('#gpu-chip').classList.toggle('low-balance', typeof GPU.balance === 'number' && GPU.balance < 5);
   // redraw only when something shown changed: a redraw every 4 s replaced the buttons under a phone tap (Connect did
   // nothing) and jumped the list back to the top
   const key = JSON.stringify([s, GPU.message, GPU.minutes, GPU.cost, GPU.busy, GPU.idle_stop_in, (GPU.loras || []).length,
@@ -1714,9 +1723,12 @@ function videoBox(go) {  // Make video: the motion, and with an H3 card its size
 }
 function gpuEngines(g) {  // what the connected card gives; the extras download in the first minutes after it's ready
   const x = g.extras || {}, mark = on => on ? '✅' : '<i class="spin" style="width:10px;height:10px;vertical-align:-1px"></i>';
-  return `<br>${mark(x.video)} Videos: <b style="color:var(--text)">${esc(g.video_label || 'LTX-2.5')}</b> with sound${x.video ? '' : ' (downloading; a video asked for now waits for it)'}
+  return `<br>${mark(x.krea2)} Krea 2 Turbo${x.krea2 ? ' (pick it under Image engine)' : ' (downloading, ~18 GB)'}
+    <br>${mark(x.krea2ref)} Krea 2 with a character picture${x.krea2ref ? ' (first picture only; Identity Edit: personal use free, paid use needs its commercial licence)' : ' (downloading after Krea 2)'}
+    <br>${mark(x.krea2_edit)} Krea 2 edits${x.krea2_edit ? ' (edits of Krea 2 projects; removals work better on Qwen)' : ' (downloading; Qwen-Image 2.1 edits until then)'}
+    <br>${mark(x.moss)} MOSS-Image full quality${x.moss ? ' (pick it under Image engine)' : ' (downloading; this PC until then)'}
     <br>${mark(x.qwen_hq)} Qwen-Image 2.1 full quality${x.qwen_hq ? '' : ' (downloading; standard quality until then)'}
-    <br>${mark(x.krea2)} Krea 2 Turbo${x.krea2 ? ' (pick it under Image engine)' : ' (not ready; see Krea setup)'}
+    <br>${mark(x.video)} Videos: <b style="color:var(--text)">${esc(g.video_label || 'LTX-2.5')}</b> with sound${x.video ? '' : ' (downloading; a video asked for now waits for it)'}
     <br>${mark(x.ideogram)} Ideogram 4.0${x.ideogram ? ' (pick it under Image engine)' : ' (downloading)'}
     ${g.flux2 ? `<br>${mark(x.flux2)} FLUX.2 [dev]${x.flux2 ? ' (pick it under Image engine)' : ' (downloading, ~54 GB)'}` : ''}`;
 }

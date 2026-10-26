@@ -152,7 +152,7 @@ class KreaTests(unittest.TestCase):
             catalog = pipeline.engines()
             self.assertFalse(next(e for e in catalog['image'] if e['id'] == 'krea2-turbo')['installed'])
             self.assertFalse(next(e for e in catalog['image'] if e['id'] == 'krea-api-turbo')['installed'])
-            self.assertNotIn('krea2-turbo', catalog['reference_engines'])
+            self.assertIn('krea2-turbo', catalog['reference_engines'])  # one character picture, rented GPU only
             cloudgpu.state.update(status='ready', extras={**cloudgpu.state['extras'], 'krea2': True})
             self.assertTrue(next(e for e in pipeline.engines()['image'] if e['id'] == 'krea2-turbo')['installed'])
 
@@ -171,6 +171,115 @@ class KreaTests(unittest.TestCase):
             generate.assert_not_called()
         with patch.object(cloudgpu, 'url', return_value='http://rented'), patch.dict(cloudgpu.state, {'extras': {'krea2': True}}), patch.object(pipeline, '_keyframes') as generate:
             pipeline.do_keyframes(project)
+            self.assertEqual(generate.call_args.args[-1], 'http://rented')
+
+    def test_reference_workflow_uses_identity_edit_nodes_and_stacks_a_style_lora(self):
+        cfg = pipeline.load_config()
+        workflow = comfy.reference_workflow(cfg, 'krea2-turbo', 'Keep her. On a beach', ['ref.png', 'second.png'],
+                                            1088, 1920, 31, 'test/krea')
+        self.assertEqual(workflow['20']['inputs']['image'], 'ref.png')  # only the first picture
+        self.assertEqual(workflow['3']['class_type'], 'Krea2EditGroundedEncode')
+        self.assertEqual(workflow['3']['inputs']['image'], ['21', 0])
+        self.assertEqual(workflow['23']['inputs']['lora_name'], comfy.KREA2_REF_LORA)
+        self.assertEqual(workflow['24']['class_type'], 'Krea2EditModelPatch')
+        self.assertEqual(workflow['24']['inputs']['target_latent'], ['5', 0])
+        self.assertEqual(workflow['6']['inputs']['model'], ['24', 0])
+        latent = workflow['5']['inputs']
+        self.assertLessEqual(latent['width'] * latent['height'], 2_000_000)  # the LoRA's trained range
+        workflow = comfy.add_lora(workflow, 'style.safetensors', 0.8)  # style LoRA goes under the identity LoRA
+        self.assertEqual(workflow['45']['inputs']['model'], ['1', 0])
+        self.assertEqual(workflow['23']['inputs']['model'], ['45', 0])
+        for node in workflow.values():
+            for value in node['inputs'].values():
+                if isinstance(value, list):
+                    self.assertIn(value[0], workflow)
+
+    def test_moss_workflow_follows_the_template_and_takes_the_lora_before_the_skip(self):
+        cfg = pipeline.load_config()
+        workflow = comfy.image_workflow(cfg, 'moss-image', 'moss_xvstyle, a portrait', 1000, 1500, 3, 'test/moss')
+        self.assertEqual(workflow['2']['inputs']['type'], 'moss_image')
+        self.assertEqual((workflow['5']['inputs']['width'], workflow['5']['inputs']['height']), (1008, 1504))
+        self.assertEqual((workflow['7']['inputs']['steps'], workflow['7']['inputs']['cfg']), (25, 2.5))
+        self.assertNotIn('nsfw', workflow['4']['inputs']['text'])
+        lora = pipeline.lora_entry(cfg, 'moss_image_nsfw_uncensored_comfyui.safetensors', 'moss-image')
+        self.assertEqual((lora['trigger'], lora['strength']), ('moss_xvstyle', 0.7))
+        workflow = comfy.add_lora(workflow, lora['file'], lora['strength'])
+        self.assertEqual(workflow['6']['inputs']['model'], ['45', 0])
+        for node in workflow.values():
+            for value in node['inputs'].values():
+                if isinstance(value, list):
+                    self.assertIn(value[0], workflow)
+        self.assertIn('moss-image', pipeline.PROMPT_CHECKED)
+
+    def test_flux3_workflows_text_character_and_edit(self):
+        cfg = pipeline.load_config()
+        plain = comfy.image_workflow(cfg, 'flux3-klein', 'a fox', 1080, 1920, 5, 'test/flux3')
+        self.assertEqual(plain['2']['inputs']['type'], 'flux3')
+        self.assertEqual((plain['7']['inputs']['steps'], plain['7']['inputs']['cfg']), (16, 1.0))
+        self.assertNotIn('11', plain)
+        chars = comfy.reference_workflow(cfg, 'flux3-klein', 'Keep her. On a beach', ['a.png', 'b.png'],
+                                         832, 1472, 5, 'test/flux3')
+        refs = chars['11']['inputs']
+        self.assertEqual((refs['images.image0'], refs['images.image1']), (['20', 0], ['21', 0]))
+        self.assertEqual((refs['resolution'], refs['resolution.megapixels']), ('resize', 1.0))
+        self.assertEqual(chars['7']['inputs']['latent_image'], ['5', 0])  # a new picture at our size
+        edit = comfy.reference_workflow(cfg, 'flux3-klein', 'make the wall green', ['kf.png'], 832, 1472, 5,
+                                        'test/flux3', edit=True)
+        self.assertEqual(edit['7']['inputs']['latent_image'], ['11', 2])  # the edited picture's own shape
+        self.assertAlmostEqual(edit['11']['inputs']['resolution.megapixels'], 1.17)
+        for wf in (plain, chars, edit):
+            for node in wf.values():
+                for value in node['inputs'].values():
+                    if isinstance(value, list):
+                        self.assertIn(value[0], wf)
+        self.assertIn('flux3-klein', comfy.REFERENCE_ENGINES)
+        self.assertEqual(comfy.REFERENCE_ENGINES[0], 'qwen-image-21')  # still the fallback
+
+    def test_flux3_edits_stay_on_this_pc_with_a_rented_gpu(self):
+        project = {'id': 'andy--test', 'image_engine': 'flux3-klein', 'references': [], 'log': []}
+        with patch.object(pipeline, '_keyframes') as generate, patch.object(cloudgpu, 'url', return_value='http://rented'):
+            pipeline.do_keyframes(project, edit='make the wall green')
+            self.assertIsNone(generate.call_args.args[-1] if len(generate.call_args.args) > 5 else None)
+
+    def test_edit_workflow_uses_general_edit_aligned_at_output_detail(self):
+        workflow = comfy.reference_workflow(pipeline.load_config(), 'krea2-turbo', 'make the wall green', ['kf.png'],
+                                            832, 1472, 5, 'test/krea', edit=True)
+        self.assertEqual(workflow['23']['inputs']['lora_name'], comfy.KREA2_EDIT_LORA)
+        self.assertEqual(workflow['24']['inputs']['ref_boost'], 4.0)
+        self.assertEqual(workflow['24']['inputs']['ref_position'], 'aligned (trained)')
+        self.assertEqual(workflow['3']['inputs']['prompt'], 'make the wall green')
+        self.assertAlmostEqual(workflow['21']['inputs']['megapixels'], 1.22)
+
+    def test_krea_edits_run_on_krea_only_with_the_edit_files(self):
+        project = {'id': 'andy--test', 'image_engine': 'krea2-turbo', 'references': ['a.png'], 'log': []}
+        extras = {'krea2': True, 'krea2ref': True, 'krea2_edit': True}
+        with patch.object(pipeline, '_keyframes') as generate, patch.object(pipeline, 'log') as log, \
+             patch.object(cloudgpu, 'url', return_value='http://rented'), patch.object(cloudgpu, 'using'), \
+             patch.object(cloudgpu, 'info', return_value={'label': 'card'}):
+            with patch.dict(cloudgpu.state, {'extras': extras}):
+                pipeline.do_keyframes(project, edit='make the wall green')
+                self.assertTrue(pipeline.krea_edits('http://rented'))
+            self.assertEqual(generate.call_args.args[-1], 'http://rented')
+            self.assertFalse(any('Qwen' in str(c) for c in log.call_args_list))
+            with patch.dict(cloudgpu.state, {'extras': {**extras, 'krea2_edit': False}}):
+                pipeline.do_keyframes(project, edit='make the wall green')  # falls back to the Qwen edit
+                self.assertFalse(pipeline.krea_edits('http://rented'))
+            self.assertTrue(any('editing with Qwen' in str(c) for c in log.call_args_list))
+        self.assertFalse(pipeline.krea_edits(None))
+
+    def test_reference_routing_needs_the_rented_reference_files(self):
+        project = {'id': 'andy--test', 'image_engine': 'krea2-turbo', 'references': ['a.png'], 'log': []}
+        with patch.object(pipeline, '_keyframes') as generate, patch.object(pipeline, 'log'):
+            with patch.object(cloudgpu, 'url', return_value=None), self.assertRaisesRegex(RuntimeError, 'rented card'):
+                pipeline.do_keyframes(project)
+            with patch.object(cloudgpu, 'url', return_value='http://rented'), \
+                 patch.dict(cloudgpu.state, {'extras': {'krea2': True, 'krea2ref': False}}), \
+                 self.assertRaisesRegex(RuntimeError, 'still downloading'):
+                pipeline.do_keyframes(project)
+            generate.assert_not_called()
+            with patch.object(cloudgpu, 'url', return_value='http://rented'), \
+                 patch.dict(cloudgpu.state, {'extras': {'krea2': True, 'krea2ref': True}}), patch.object(cloudgpu, 'using'):
+                pipeline.do_keyframes(project)
             self.assertEqual(generate.call_args.args[-1], 'http://rented')
 
     def test_paid_keyframe_pipeline_preserves_versions_without_local_engine(self):

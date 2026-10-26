@@ -38,10 +38,14 @@
       <img class="ico" src="reelmint-192.png" alt="">
       <div><div class="name"><span class="dot"></span>Reelmint</div><div class="desc">Images and videos from a post idea</div></div>
     </a>
+    <a class="tile" href="https://desktop-h7p36q5.tail46ae30.ts.net:8444/" data-status="https://desktop-h7p36q5.tail46ae30.ts.net:8444/" data-fixed>
+      <div class="ico" style="background:linear-gradient(135deg,#1f9d63,#4cc38a)">🎛️</div>
+      <div><div class="name"><span class="dot"></span>Main Control</div><div class="desc">Status and Start/Stop for every app</div></div>
+    </a>
   </div>
 <script>
   // opened over https (e.g. a shared device): point the Reelmint tile at its https entrance
-  if (location.protocol === 'https:') document.querySelectorAll('[data-status]').forEach(a => {
+  if (location.protocol === 'https:') document.querySelectorAll('[data-status]:not([data-fixed])').forEach(a => {
     a.href = `https://${location.hostname}:8443/`; a.dataset.status = `https://${location.hostname}:8443/api/status`; });
   // light up a green dot when the studio is reachable
   document.querySelectorAll('[data-status]').forEach(async a => {

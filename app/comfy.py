@@ -131,12 +131,34 @@ class Comfy:
 # "files" are checked against the models folders to mark what's installed.
 KREA2 = {"unet": "krea2_turbo_fp8_scaled.safetensors", "text_encoder": "qwen3vl_4b_fp8_scaled.safetensors",
          "vae": "qwen_image_vae.safetensors"}
+# Krea 2 with a character picture: conradlocke/krea2-identity-edit (rank-128 copy of V2, rented GPU only). Licence: free
+# for personal use; selling outputs, client work or monetised posts need the author's commercial licence.
+KREA2_REF_LORA = "krea2_identity_edit_v2_r128.safetensors"
+KREA2_EDIT_LORA = "krea2_general_edit_v2_r128.safetensors"  # Krea 2 edits; same repo, licence and nodes
+# MOSS-Image SFT on this PC (native in ComfyUI from v0.42; Comfy-Org/MOSS-Image files, Apache-2.0). Settings from
+# ComfyUI's own "MOSS-Image: Text to Image" template: 25 steps, CFG 2.5, er_sde / simple, uncond skip at layer 22
+# for the first half; its negative without the "nsfw" word.
+MOSS = {"unet": "moss_image_sft_int8_convrot.safetensors", "text_encoder": "qwen3.5_9b_w4a8_gptq.safetensors",
+        "vae": "flux2-vae_small.safetensors", "steps": 25, "cfg": 2.5,
+        "negative": "worst quality, bad anatomy, watermark, jpeg artifact"}
+# FLUX.3 [klein] distilled on this PC (native in ComfyUI from v0.41; black-forest-labs/flux-3-image-klein-comfy,
+# gated: the user signs in and accepts the licence). FLUX Kommunity licence: free incl. commercial use under $5M
+# revenue. Settings from ComfyUI's "FLUX 3 Image Klein distilled" templates: 16 steps, CFG 1, euler / simple;
+# character pictures and edits through ReferenceMultiLatent.
+FLUX3 = {"unet": "flux3-image-klein-int8-convrot.safetensors", "text_encoder": "qwen3vl_4b_int8_convrot.safetensors",
+         "vae": "flux2-vae.safetensors", "steps": 16}
 IMAGE_ENGINES = {
     "krea2-turbo": {"label": "Krea 2 Turbo · GPU", "files": ["diffusion_models/" + KREA2["unet"],
                     "text_encoders/" + KREA2["text_encoder"], "vae/" + KREA2["vae"]]},
     "qwen-image-21": {"label": "Qwen-Image 2.1 (best quality, ~30 s, ~4 min with character picture, research licence)",
                       "files": ["diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
                                 "text_encoders/qwen3vl_8b_int8_convrot.safetensors", "vae/qwen_image_2.1_vae_bf16.safetensors"]},
+    "flux3-klein": {"label": "FLUX.3 [klein] (this PC, fast, character pictures + edits)",
+                    "files": ["diffusion_models/" + FLUX3["unet"], "text_encoders/" + FLUX3["text_encoder"],
+                              "vae/" + FLUX3["vae"]]},
+    "moss-image": {"label": "MOSS-Image (this PC, slow on 8 GB)",
+                   "files": ["diffusion_models/" + MOSS["unet"], "text_encoders/" + MOSS["text_encoder"],
+                             "vae/" + MOSS["vae"]]},
     "z-image": {"label": "Z-Image Turbo (excellent photoreal, ~45 s)",
                 "files": ["unet/z_image_turbo-Q8_0.gguf", "text_encoders/qwen_3_4b_fp8_mixed.safetensors"]},
     # only on a rented card ("rented" names the download that brings it, see cloudgpu)
@@ -146,7 +168,7 @@ IMAGE_ENGINES = {
                   "rented": "flux2"},
 }
 # Engines that can use the character picture as a reference
-REFERENCE_ENGINES = ("qwen-image-21",)
+REFERENCE_ENGINES = ("qwen-image-21", "krea2-turbo", "flux3-klein")  # Krea 2: one picture, rented GPU only
 
 LTX23_FILES = ["unet/ltx-2.3-22b-distilled-Q4_K_S.gguf", "checkpoints/ltx-2.3-22b-distilled_embeddings_connectors.safetensors",
                "vae/ltx-2.3-22b-distilled_video_vae.safetensors", "checkpoints/ltx-2.3-22b-distilled_audio_vae.safetensors",
@@ -236,6 +258,10 @@ def image_workflow(cfg, engine, prompt, width, height, seed, prefix, steps=None)
     c = cfg["image"]
     if engine == "krea2-turbo":
         return krea2_workflow(cfg, prompt, width, height, seed, prefix)
+    if engine == "moss-image":
+        return moss_workflow(cfg, prompt, width, height, seed, prefix, steps=steps)
+    if engine == "flux3-klein":
+        return flux3_workflow(cfg, prompt, width, height, seed, prefix)
     if engine == "flux-schnell":
         return flux_workflow(cfg, prompt, width, height, seed, prefix, unet=c["schnell_unet"], steps=c["schnell_steps"])
     if engine == "sdxl-juggernaut":
@@ -262,7 +288,12 @@ def reference_workflow(cfg, engine, prompt, ref_name, width, height, seed, prefi
     or a list; only Qwen-Image 2.1 takes several, the older engines use the first."""
     if engine == "qwen-image-21":
         return qwen_image21_workflow(cfg, prompt, width, height, seed, prefix, ref_name=ref_name, steps=steps, edit=edit)
+    if engine == "flux3-klein":
+        return flux3_workflow(cfg, prompt, width, height, seed, prefix,
+                              ref_names=[ref_name] if isinstance(ref_name, str) else list(ref_name), edit=edit)
     ref_name = ref_name if isinstance(ref_name, str) else ref_name[0]
+    if engine == "krea2-turbo":
+        return krea2_workflow(cfg, prompt, width, height, seed, prefix, ref_name=ref_name, edit=edit)
     if engine in ("flux2-klein-4b", "flux2-klein-9b"):
         return flux2_klein_workflow(cfg, engine, prompt, width, height, seed, prefix, ref_name=ref_name)
     return kontext_workflow(cfg, prompt, ref_name, width, height, seed, prefix, steps)
@@ -302,10 +333,19 @@ def add_zimage_polish(cfg, wf, prompt, seed, denoise):
     return wf
 
 
-def krea2_workflow(cfg, prompt, width, height, seed, prefix):
-    """Official Krea 2 Turbo recipe: Euler/simple, 8 steps, CFG 1, zero negative conditioning."""
+def krea2_workflow(cfg, prompt, width, height, seed, prefix, ref_name=None, edit=False):
+    """Official Krea 2 Turbo recipe: Euler/simple, 8 steps, CFG 1, zero negative conditioning.
+    With ref_name: the Identity Edit V2 LoRA and the comfyui-krea2edit nodes (rented GPU only) put the person from
+    the character picture into the new picture, with the model card's settings for one reference (ref_boost 2,
+    grounding 768 px, reference placed beside the canvas so the pose and framing are free). Trained for <= 2 MP.
+    edit=True: ref_name is the finished picture and prompt the instruction; General Edit V2 with the card's "most
+    edits" settings (ref_boost 4, reference aligned so everything not named stays put). Removals need Krea 2 Raw at
+    CFG 3 (not installed): Turbo tends to redraw the subject instead."""
     model = {**KREA2, **cfg.get("krea2", {})}
-    return {
+    if ref_name and width * height > 2_000_000:
+        s = (2_000_000 / (width * height)) ** 0.5
+        width, height = int(width * s) // 16 * 16, int(height * s) // 16 * 16
+    wf = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": model["unet"], "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": model["text_encoder"], "type": "krea2", "device": "default"}},
         "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
@@ -318,6 +358,83 @@ def krea2_workflow(cfg, prompt, width, height, seed, prefix):
         "7": {"class_type": "VAELoader", "inputs": {"vae_name": model["vae"]}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["7", 0]}},
         "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": prefix}},
+    }
+    if ref_name:
+        wf.update({
+            "20": {"class_type": "LoadImage", "inputs": {"image": ref_name}},
+            # a phone photo would be VAE-encoded at full size otherwise; an edited picture keeps the output's detail
+            "21": {"class_type": "ImageScaleToTotalPixels",
+                   "inputs": {"image": ["20", 0], "upscale_method": "lanczos", "resolution_steps": 16,
+                              "megapixels": round(width * height / 1e6, 2) if edit else 1.0}},
+            "22": {"class_type": "VAEEncode", "inputs": {"pixels": ["21", 0], "vae": ["7", 0]}},
+            "23": {"class_type": "LoraLoaderModelOnly",
+                   "inputs": {"model": ["1", 0], "lora_name": KREA2_EDIT_LORA if edit else KREA2_REF_LORA,
+                              "strength_model": 1.0}},
+            "24": {"class_type": "Krea2EditModelPatch",
+                   "inputs": {"model": ["23", 0], "source_latent": ["22", 0], "vae": ["7", 0], "source_image": ["21", 0],
+                              "target_latent": ["5", 0], "fit_mode": "fit", "ref_boost": 4.0 if edit else 2.0,
+                              "ref_position": "aligned (trained)" if edit else "beside (right of target)"}},
+        })
+        # the text encoder sees the picture while reading the prompt (both nodes are required, per the node pack)
+        wf["3"] = {"class_type": "Krea2EditGroundedEncode",
+                   "inputs": {"clip": ["2", 0], "prompt": prompt, "image": ["21", 0], "grounding_px": 768}}
+        wf["6"]["inputs"]["model"] = ["24", 0]
+    return wf
+
+
+def flux3_workflow(cfg, prompt, width, height, seed, prefix, ref_names=None, edit=False):
+    """FLUX.3 [klein] distilled, ComfyUI's template recipe (see FLUX3); the step count is fixed (step-distilled).
+    ref_names: character pictures (a new picture at our size) or, with edit=True, the picture being edited: then
+    the output takes that picture's shape at our pixel count, so the edit keeps its framing."""
+    f = {**FLUX3, **cfg.get("flux3", {})}
+    w, h = (width + 15) // 16 * 16, (height + 15) // 16 * 16
+    wf = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": f["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": f["text_encoder"], "type": "flux3", "device": "default"}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "4": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["3", 0]}},
+        "5": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
+        "7": {"class_type": "KSampler", "inputs": {"model": ["1", 0], "positive": ["3", 0], "negative": ["4", 0],
+              "latent_image": ["5", 0], "seed": seed, "steps": f["steps"], "cfg": 1.0,
+              "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0}},
+        "8": {"class_type": "VAELoader", "inputs": {"vae_name": f["vae"]}},
+        "9": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["8", 0]}},
+        "10": {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": prefix}},
+    }
+    if ref_names:
+        refs = {"positive": ["3", 0], "negative": ["4", 0], "vae": ["8", 0], "resolution": "resize",
+                # an edited picture keeps the output's detail; character pictures go in at ~1 MP like the template
+                "resolution.megapixels": round(w * h / (1024 * 1024), 2) if edit else 1.0}
+        for i, name in enumerate(ref_names):
+            wf[str(20 + i)] = {"class_type": "LoadImage", "inputs": {"image": name}}
+            refs[f"images.image{i}"] = [str(20 + i), 0]
+        wf["11"] = {"class_type": "ReferenceMultiLatent", "inputs": refs}
+        wf["7"]["inputs"].update(positive=["11", 0], negative=["11", 1])
+        if edit:
+            wf["7"]["inputs"]["latent_image"] = ["11", 2]
+            del wf["5"]
+    return wf
+
+
+def moss_workflow(cfg, prompt, width, height, seed, prefix, steps=None):
+    """MOSS-Image SFT, ComfyUI's template recipe (see MOSS). A LoRA goes between the loader and the uncond skip."""
+    m = {**MOSS, **cfg.get("moss_image", {})}
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["text_encoder"], "type": "moss_image", "device": "default"}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": m["negative"], "clip": ["2", 0]}},
+        "5": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": (width + 15) // 16 * 16,
+                                                               "height": (height + 15) // 16 * 16, "batch_size": 1}},
+        "6": {"class_type": "SkipLayerGuidanceDiTSimple",
+              "inputs": {"model": ["1", 0], "double_layers": "", "single_layers": "22", "start_percent": 0.0,
+                         "end_percent": 0.5}},
+        "7": {"class_type": "KSampler", "inputs": {"model": ["6", 0], "positive": ["3", 0], "negative": ["4", 0],
+              "latent_image": ["5", 0], "seed": seed, "steps": steps or m["steps"], "cfg": m["cfg"],
+              "sampler_name": "er_sde", "scheduler": "simple", "denoise": 1.0}},
+        "8": {"class_type": "VAELoader", "inputs": {"vae_name": m["vae"]}},
+        "9": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["8", 0]}},
+        "10": {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": prefix}},
     }
 
 

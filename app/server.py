@@ -238,8 +238,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(pipeline.list_characters(u))
             if m := re.fullmatch(r"/api/gallery/(images|videos)", path):
                 return self.send_json(pipeline.gallery(m.group(1), u))
-            if path == "/api/cloud":
-                return self.send_json(cloudgpu.info())
+            if path == "/api/cloud":  # the RunPod balance only for admins, who rent and pay for the card
+                g = cloudgpu.info()
+                return self.send_json(g if auth.is_admin(u) else {k: v for k, v in g.items() if k != "balance"})
             if path == "/api/cloud/options":  # the cards to pick from, with RunPod's live stock and prices
                 return self.send_json(cloudgpu.options())
             if path == "/api/krea":

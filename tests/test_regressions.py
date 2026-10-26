@@ -250,6 +250,97 @@ class RegressionTests(unittest.TestCase):
         git = subprocess.run(["git", "check-ignore", *paths], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(git.returncode, 1, git.stdout + git.stderr)
 
+    def test_krea_loras_are_sent_to_the_pod(self):
+        cfg = {"loras": [{"file": "q.safetensors", "engine": "qwen-image-21"},
+                         {"file": "k.safetensors", "engine": "krea2-turbo"},
+                         {"file": "z.safetensors", "engine": "z-image"}]}
+        cloudgpu.state.update(pod="lora-pod", loras=[])
+        with patch.object(cloudgpu.json, "load", return_value=cfg), patch("builtins.open"), \
+             patch.object(cloudgpu.os.path, "exists", return_value=True), \
+             patch.object(cloudgpu, "_send_lora", return_value=True) as send:
+            cloudgpu._send_loras()
+        self.assertEqual([c.args[1] for c in send.call_args_list], ["q.safetensors", "k.safetensors"])
+        self.assertEqual(cloudgpu.state["loras"], ["q.safetensors", "k.safetensors"])
+
+    def test_pod_files_take_the_best_precision_each_card_holds(self):
+        card = {c["label"]: c for c in cloudgpu.CATALOG}
+        f4090, f5090, f80, f141 = (cloudgpu.pod_files(card[k]) for k in ("RTX 4090", "RTX 5090", "A100 80 GB", "H200"))
+        self.assertEqual(f4090["KREA_UNET"], "krea2_turbo_fp8_scaled.safetensors")  # 24.5 GB bf16 needs 32 GB
+        self.assertEqual(f5090["KREA_UNET"], "krea2_turbo_bf16.safetensors")
+        self.assertTrue(all(f["MOSS_UNET"].endswith("bf16.safetensors") for f in (f4090, f141)))
+        self.assertIn("int8", f5090["LTX_UNET"])
+        self.assertIn("bf16", f80["LTX_UNET"])
+        self.assertIn("int8", f4090["LTX_TE"])
+        self.assertIn("bf16", f5090["LTX_TE"])
+        self.assertEqual(cloudgpu.h3_plan(card["H200"])[0], cloudgpu.H3_BF16)
+        self.assertEqual(cloudgpu.h3_plan(card["RTX PRO 6000"])[0], cloudgpu.H3_FULL)  # 96 GB: frames need room
+        self.assertEqual(cloudgpu.h3_plan(card["RTX 5090"])[0], cloudgpu.H3_PRUNED)
+        self.assertIn(cloudgpu.H3_BF16, cloudgpu.H3_REF)
+        self.assertIn("bf16", cloudgpu.comfy_te(card["H100"]))
+        for c in cloudgpu.CATALOG:  # every planned file has a size, and the disk is never below the old fixed sizes
+            plan = cloudgpu.h3_plan(c)
+            gb = cloudgpu.disk_gb(c, "h3", plan[0]) if plan else cloudgpu.disk_gb(c, "ltx25")
+            self.assertGreaterEqual(gb, 170, c["label"])
+            self.assertLess(gb, 600, c["label"])
+
+    def test_balance_is_read_in_the_background_and_keeps_only_the_number(self):
+        reply = json.dumps({"clientBalance": 2.8295, "email": "someone@example.com", "spendLimit": 80})
+        self.run.return_value = (0, reply, "")
+        with patch.object(cloudgpu, "_balance", [0.0, None, False]), self.immediate():
+            self.assertEqual(cloudgpu.balance(), 2.83)  # the immediate thread already read it
+            self.assertNotIn("someone@example.com", json.dumps(cloudgpu.info()))
+            self.run.return_value = (1, "", "network down")
+            cloudgpu._balance[0] = 0.0
+            self.assertEqual(cloudgpu.balance(), 2.83)  # a failed read keeps the last value
+            self.run.reset_mock()
+            cloudgpu.balance()
+            self.run.assert_not_called()  # read at most once a minute
+
+    def test_pod_without_a_saved_plan_uses_the_setup_scripts_defaults(self):
+        script = (ROOT / "app" / "cloud_setup.sh").read_text(encoding="utf-8")
+        for var, name in cloudgpu.POD_DEFAULT_FILES.items():  # the fallback names are the script's ${VAR:-default}s
+            self.assertIn("${%s:-%s}" % (var, name), script)
+        cloudgpu.state["files"] = {}
+        self.assertEqual(cloudgpu.files_on_pod(), cloudgpu.POD_DEFAULT_FILES)
+        plan = cloudgpu.pod_files(cloudgpu.CATALOG[1])
+        cloudgpu.state["files"] = plan
+        self.assertEqual(cloudgpu.files_on_pod(), plan)
+
+    def test_moss_runs_on_the_pod_once_it_has_moss_and_its_lora(self):
+        p = self.project("moss-image")
+        p["lora"] = "m.safetensors"
+        cfg = {"loras": [{"file": "m.safetensors", "label": "Fixture", "engine": "moss-image"}]}
+        with patch.object(cloudgpu, "url", return_value="http://pod.fixture"), \
+             patch.object(pipeline, "load_config", return_value=cfg), \
+             patch.object(cloudgpu, "using"), patch.object(cloudgpu, "info", return_value={"label": "card"}), \
+             patch.object(pipeline, "_keyframes") as keyframes:
+            cloudgpu.state.update(extras={**cloudgpu.no_extras(), "moss": False}, loras=["m.safetensors"])
+            pipeline.do_keyframes(p)  # the pod has no MOSS yet: this PC
+            self.assertEqual(len(keyframes.call_args.args), 5)
+            cloudgpu.state.update(extras={**cloudgpu.no_extras(), "moss": True}, loras=[])
+            pipeline.do_keyframes(p)  # MOSS is in but the LoRA is still uploading: this PC
+            self.assertEqual(len(keyframes.call_args.args), 5)
+            cloudgpu.state["loras"] = ["m.safetensors"]
+            pipeline.do_keyframes(p)
+            self.assertEqual(keyframes.call_args.args[-1], "http://pod.fixture")
+
+    def test_krea_waits_for_its_lora_on_the_pod(self):
+        p = self.project("krea2-turbo")
+        p["lora"] = "k.safetensors"
+        cfg = {"loras": [{"file": "k.safetensors", "label": "Fixture", "engine": "krea2-turbo"}]}
+        cloudgpu.state.update(extras={**cloudgpu.state["extras"], "krea2": True}, loras=[])
+        with patch.object(cloudgpu, "url", return_value="http://pod.fixture"), \
+             patch.object(pipeline, "load_config", return_value=cfg), \
+             patch.object(pipeline, "_keyframes") as keyframes:
+            with self.assertRaisesRegex(RuntimeError, "still uploading"):
+                pipeline.do_keyframes(p)
+            keyframes.assert_not_called()
+            cloudgpu.state["loras"] = ["k.safetensors"]
+            with patch.object(cloudgpu, "using"):
+                pipeline.do_keyframes(p)
+            keyframes.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
+
