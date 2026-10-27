@@ -337,7 +337,7 @@
         <details id="create-references" open><summary>Reference pictures <span id="reference-count"></span></summary>
           <p class="field-note">Up to 3: main subject, then outfit, product or place.</p>
           <div class="chars" id="chars"></div>
-          <div id="chars-hint" class="field-note">This engine cannot use reference pictures. <a href="#" id="use-kontext">Choose a supported engine</a></div>
+          <div id="chars-hint" class="field-note"><span id="chars-hint-text">This engine cannot use reference pictures. </span><a href="#" id="use-kontext">Choose a supported engine</a></div>
           <input id="ref-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
         </details>
         <div id="create-ref-preview" class="selected-references"></div>
@@ -586,6 +586,7 @@ function syncCreate() {
   $('#t2v-eng-wrap').style.display = m === 't2v' ? '' : 'none';
   $('#img-eng-wrap').style.display = m === 't2v' ? 'none' : '';
   renderLora();
+  if (CHARS) renderChars();  // Video only: references need the H3 Fast GPU, other modes a reference image engine
   syncCreationSummary();
 }
 $$('#mode-seg button').forEach(b => b.onclick = () => { NEW.mode = b.dataset.mode; syncCreate(); });
@@ -647,12 +648,16 @@ const refEngines = () => [...new Set([...(ENG?.reference_engines || ['qwen-image
 // the one "Switch to it" picks: the first installed of them
 const bestRefEngine = () => refEngines()
   .find(id => (ENG?.image || []).some(e => e.id === id && e.installed)) || refEngines()[0];
+const T2V_REF_HINT = 'Video only keeps a character with MiniMax H3 on a Fast GPU (FastH3 Omni). Start a Fast GPU, or make the pictures first with Images + video.';
 function renderChars() {
-  const ok = refEngines().includes($('#img-eng').value);
+  const t2v = NEW.mode === 't2v';
+  const ok = t2v ? !!ENG?.t2v_reference : refEngines().includes($('#img-eng').value);
   if (!ok) NEW.refs = [];
   $('#chars').style.opacity = ok ? '' : '.35';
   $('#chars').style.pointerEvents = ok ? '' : 'none';
   $('#chars-hint').style.display = ok ? 'none' : '';
+  $('#chars-hint-text').textContent = t2v ? T2V_REF_HINT : 'This engine cannot use reference pictures. ';
+  $('#use-kontext').style.display = t2v ? 'none' : '';
   NEW.refs = NEW.refs.filter(c => CHARS.includes(c));
   $('#chars').innerHTML = `<div class="char ${NEW.refs.length ? '' : 'on'}" data-c=""><div class="pic">∅</div><span>None</span></div>` +
     CHARS.map(c => { const k = NEW.refs.indexOf(c); return `<div class="char ${k >= 0 ? 'on' : ''}" data-c="${esc(c)}">${k >= 0 ? `<span class="num">${k + 1}</span>` : ''}<div class="pic" style="background-image:url('/characters/${encodeURIComponent(c)}')"></div><span>${esc(c.replace(/\.\w+$/, ''))}</span><button class="del" data-del-char="${esc(c)}" title="Delete this character picture">×</button></div>`; }).join('') +
@@ -1286,12 +1291,13 @@ function renderStudio() {
     ${!isT2V ? `<label for="f-quality">Quality</label><select id="f-quality" ${dis}>${opt([['standard','360p · fast'],['sharp','720p'],['high','1080p'],['2k','2K'],['ultra','4K']],P.quality || 'standard')}</select>` : ''}
     <label for="f-style-sel">Style</label><select id="f-style-sel" ${dis}>${styleOptions(P.style || '')}</select>
     <input id="f-style" value="${esc(P.style || '')}" placeholder="Custom style" style="margin-top:8px" ${dis}>
-    ${!isT2V ? `<details data-detail="references" ${pRefs.length ? 'open' : ''}><summary>Reference pictures${pRefs.length ? ` (${pRefs.length})` : ''}</summary>
+    ${(() => { const noRef = isT2V ? !ENG?.t2v_reference : (!refEngines().includes(P.image_engine) && !P.reference);
+      return `<details data-detail="references" ${pRefs.length ? 'open' : ''}><summary>Reference pictures${pRefs.length ? ` (${pRefs.length})` : ''}</summary>
       <div class="reference-preview">${pRefs.map(c => `<img src="/characters/${encodeURIComponent(c)}" alt="${esc(c)}">`).join('')}</div>
-      ${[0,1,2].map(r=>`<select class="f-ref" aria-label="Reference picture ${r+1}" style="${r ? 'margin-top:6px' : ''}${r && !pRefs[r-1] ? ';display:none' : ''}" ${busy || (!refEngines().includes(P.image_engine) && !P.reference) ? 'disabled' : ''}>${refOpts(r)}</select>`).join('')}
+      ${[0,1,2].map(r=>`<select class="f-ref" aria-label="Reference picture ${r+1}" style="${r ? 'margin-top:6px' : ''}${r && !pRefs[r-1] ? ';display:none' : ''}" ${busy || noRef ? 'disabled' : ''}>${refOpts(r)}</select>`).join('')}
       <button id="studio-add-reference" ${busy ? 'disabled' : ''}>Upload reference</button>
-      ${!refEngines().includes(P.image_engine) && !P.reference ? '<p class="field-note">Choose a reference-compatible image engine under Advanced.</p>' : ''}
-    </details>` : ''}
+      ${noRef ? `<p class="field-note">${isT2V ? T2V_REF_HINT : 'Choose a reference-compatible image engine under Advanced.'}</p>` : ''}
+    </details>`; })()}
     <details data-detail="advanced"><summary>Advanced settings</summary>
       ${!isT2V ? `<label for="f-img-eng">Image engine</label><select id="f-img-eng" ${dis}>${ENG ? engOptions(ENG.image,P.image_engine || ENG.default_image) : ''}</select>
         <p class="field-note">${esc(ENG?.image.find(e=>e.id===P.image_engine)?.description || ENG?.image.find(e=>e.id===P.image_engine)?.label || '')}</p><button type="button" class="krea-setup">Krea setup</button>

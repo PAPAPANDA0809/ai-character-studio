@@ -551,6 +551,7 @@ def engines():
     return {
         "loras": [{**l, "installed": ready(lora_file(l))} for l in cfg.get("loras", [])],
         "reference_engines": list(comfy.REFERENCE_ENGINES) + (["gpt-image"] if cloud.available() else []),
+        "t2v_reference": cloudgpu.state["status"] == "ready" and cloudgpu.state.get("video") == "h3",
         "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()] + krea.entries() + ([{
             "id": "gpt-image", "label": "GPT Image 2.5 (OpenAI, paid: ~$0.05 a picture at 1080p, keeps character "
             "pictures well, no NSFW)", "installed": True}] if cloud.available() else []),
