@@ -967,16 +967,38 @@ def clip_engine(p, cfg, remote, key="video_engine", local_default="wan22-14b", e
 def clip_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix, p=None, refs=None):
     """A clip from first/last frames (start only = animate one picture; neither = text-to-video; refs = character
     pictures for H3's reference-to-video). H3 follows the project's setting: 720p = its native 768x1344 (about 2.5x
-    slower: 7.3 min of sampling on an RTX 5090 against ~2.5 at 480), 480p = 480x832."""
+    slower: 7.3 min of sampling on an RTX 5090 against ~2.5 at 480), 480p = 480x832. For H3, Claude first rewrites
+    the prompt into MiniMax's own format (shots, camera, dialogue, soundscape, music) when it is available."""
     if engine == "h3":
         res = "720p" if (p or {}).get("video_res") == "720p" else "480p"
         unet = cloudgpu.state.get("h3_unet")
-        return comfy.h3_workflow(prompt, start, end, w, h, seed, prefix, text_encoder=cloudgpu.state.get("h3_te"),
+        frames = h3_frames(p, res)
+        task = "ref2va" if refs else "fl2va" if start and end else "i2va" if start else "t2va"
+        written = h3_prompt_for(cfg, p, task, prompt, frames / 24, len(refs or []))
+        return comfy.h3_workflow(written or prompt, start, end, w, h, seed, prefix, text_encoder=cloudgpu.state.get("h3_te"),
                                  unet=unet, short=768 if res == "720p" else 480, refs=refs,
-                                 ref_unet=cloudgpu.H3_REF.get(unet), frames=h3_frames(p, res))
+                                 ref_unet=cloudgpu.H3_REF.get(unet), frames=frames, formatted=bool(written))
     if not start:
         return comfy.t2v_workflow(cfg, engine, prompt, w, h, seed, prefix)
     return comfy.video_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix)
+
+
+def h3_prompt_for(cfg, p, task, prompt, seconds, refs=0):
+    """Claude's H3-format prompt for this clip, remembered in the project so a regeneration reuses it (same seed,
+    same words) and Claude is asked once per clip text. None when Claude isn't available: the plain prompt is sent."""
+    key = f"{task}|{refs}|{round(seconds, 2)}|{prompt}"
+    cache = (p or {}).get("h3_prompts") or {}
+    if key in cache:
+        return cache[key] or None
+    if p is not None:
+        log(p, "writing the MiniMax H3 prompt with Claude (shots, camera, sound)")
+    written = llm.h3_prompt(cfg["llm"], task, prompt, seconds, refs=refs)
+    if p is not None:
+        if not written:
+            log(p, "Claude isn't available for the H3 prompt; using the plain prompt")
+        p["h3_prompts"] = {**dict(list(cache.items())[-30:]), key: written or ""}
+        save(p)
+    return written
 
 
 def h3_frames(p, res):
@@ -1048,7 +1070,7 @@ def _t2v(p, only=None, remote=None):
         user = user_of(p["id"])
         ref_names = [c.upload_image(os.path.join(char_dir(user), r), "aics_ref_" + re.sub(r"[^\w.\-]", "_", user + "_" + r))
                      for r in refs if r in list_characters(user)]
-        log(p, f"keeping the character from {', '.join(refs)} (MiniMax H3 reference)")
+        log(p, f"keeping the character from {', '.join(refs)} (FastH3 Omni reference, 8 steps)")
     elif refs:
         log(p, f"the character picture isn't used: {engine} makes video-only clips from text (an H3 Fast GPU card uses "
                "it; or make a picture with the character first and use Make video)")

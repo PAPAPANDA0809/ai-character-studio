@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "app"))
 import auth
 import cloudgpu
 import comfy
+import llm
 import pipeline
 
 
@@ -276,6 +277,11 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(cloudgpu.h3_plan(card["RTX PRO 6000"])[0], cloudgpu.H3_FULL)  # 96 GB: frames need room
         self.assertEqual(cloudgpu.h3_plan(card["RTX 5090"])[0], cloudgpu.H3_PRUNED)
         self.assertIn(cloudgpu.H3_BF16, cloudgpu.H3_REF)
+        self.assertEqual(cloudgpu.H3_REF[cloudgpu.H3_PRUNED], cloudgpu.OMNI_INT8)  # FastH3 Omni: 8 steps
+        self.assertEqual(cloudgpu.H3_REF[cloudgpu.H3_BF16], cloudgpu.OMNI_BF16)
+        script = (ROOT / "app" / "cloud_setup.sh").read_text(encoding="utf-8")
+        self.assertIn("FastVideo/FastH3-Omni-Comfy/resolve/82eff2a6", script)
+        self.assertIn("$F/diffusion_models/$H3_REF", script)
         self.assertIn("bf16", cloudgpu.comfy_te(card["H100"]))
         for c in cloudgpu.CATALOG:  # every planned file has a size, and the disk is never below the old fixed sizes
             plan = cloudgpu.h3_plan(c)
@@ -407,6 +413,71 @@ class BatchQueueTests(unittest.TestCase):
             self.run_queue_once()
         self.assertEqual(pipeline.load(p["id"])["status"], "error:keyframes")
         self.assertTrue(pipeline.jobs.empty())
+
+
+class FastH3OmniTests(unittest.TestCase):
+    """Character videos on the rented card use FastH3 Omni (8 steps, sigma shifts); other H3 clips stay as they were."""
+
+    def test_reference_clips_run_the_omni_recipe(self):
+        wf = comfy.h3_workflow("p", None, None, 768, 1344, 7, "t", refs=["a.png", "b.png"], ref_unet=cloudgpu.OMNI_INT8)
+        self.assertEqual(wf["1"]["inputs"]["unet_name"], cloudgpu.OMNI_INT8)
+        self.assertEqual(wf["17"]["class_type"], "MiniMaxH3SigmaShift")
+        self.assertEqual((wf["17"]["inputs"]["shift_video"], wf["17"]["inputs"]["shift_audio"]), (12.0, 3.0))
+        self.assertEqual(wf["8"]["inputs"]["model"], ["17", 0])
+        self.assertEqual(wf["11"]["inputs"]["model"], ["17", 0])
+        self.assertEqual((wf["8"]["inputs"]["steps"], wf["9"]["inputs"]["sampler_name"]), (8, "euler"))
+        self.assertEqual(wf["6"]["class_type"], "MiniMaxH3ReferenceToVideo")
+        self.assertTrue(wf["6"]["inputs"]["prompt"].startswith("Use <Picture 1>"))
+        self.assertEqual(wf["6"]["inputs"]["ref_images.ref_image_1"], ["r1", 0])
+
+    def test_formatted_prompts_get_no_lead_in_and_other_clips_keep_the_base_recipe(self):
+        wf = comfy.h3_workflow("subject_definitions:\n...", None, None, 768, 1344, 7, "t", refs=["a.png"], formatted=True)
+        self.assertTrue(wf["6"]["inputs"]["prompt"].startswith("subject_definitions:"))
+        wf = comfy.h3_workflow("p", "a.png", "b.png", 768, 1344, 7, "t")
+        self.assertNotIn("17", wf)
+        self.assertEqual((wf["8"]["inputs"]["steps"], wf["9"]["inputs"]["sampler_name"]), (20, "res_multistep"))
+        self.assertEqual(wf["1"]["inputs"]["unet_name"], comfy.H3["unet"])
+
+
+class H3PromptTests(unittest.TestCase):
+    """Claude rewrites H3 clip prompts into MiniMax's format; the plain prompt is sent when it can't."""
+
+    def test_request_names_the_task_length_and_scene(self):
+        u = llm.h3_request("fl2va", "she turns and smiles", 5.0, character="a woman in a red coat", style="film", motion="slow push in")
+        self.assertIn("First-and-last-frame", u)
+        self.assertIn("Clip length: 5.00 seconds", u)
+        self.assertIn("Scene: she turns and smiles", u)
+        self.assertIn("Motion and camera for this clip: slow push in", u)
+        self.assertIn("<Picture 1>..<Picture 2>", llm.h3_request("ref2va", "s", 10, refs=2))
+
+    def test_prompt_is_none_without_claude_or_without_the_format(self):
+        with patch.object(llm, "_claude", return_value=(None, "")):
+            self.assertIsNone(llm.h3_prompt({}, "t2va", "s", 5))
+        with patch.object(llm, "_claude", return_value=("just a sentence", "Claude")):
+            self.assertIsNone(llm.h3_prompt({}, "t2va", "s", 5))
+        with patch.object(llm, "_claude", side_effect=RuntimeError("rate-limited")):
+            self.assertIsNone(llm.h3_prompt({}, "t2va", "s", 5))
+        good = "integrated_multimodal_description: [Shot 1] ...\n\noverall_soundscape: wind\n\nnon_diegetic_music: N/A"
+        with patch.object(llm, "_claude", return_value=(good, "Claude")):
+            self.assertEqual(llm.h3_prompt({}, "t2va", "s", 5), good)
+
+    def test_clip_workflow_sends_claudes_prompt_once_and_remembers_it(self):
+        p = {"id": "x", "video_res": "480p", "h3_prompts": {}}
+        good = "integrated_multimodal_description: [Shot 1] a\n\noverall_soundscape: b\n\nnon_diegetic_music: N/A"
+        with patch.object(llm, "h3_prompt", return_value=good) as h3, patch.object(pipeline, "save"), \
+                patch.object(pipeline, "log"), patch.object(cloudgpu, "info", return_value={"h3_max": {"480p": 15}}), \
+                patch.dict(cloudgpu.state, {"h3_unet": cloudgpu.H3_PRUNED, "h3_te": "te.safetensors"}):
+            wf = pipeline.clip_workflow({"llm": {}}, "h3", "she waves", "a.png", None, 480, 832, 1, "t", p)
+            self.assertEqual(wf["6"]["inputs"]["prompt"], good)
+            self.assertEqual(h3.call_args.args[1:3], ("i2va", "she waves"))
+            self.assertAlmostEqual(h3.call_args.args[3], 124 / 24)  # 5 s on H3's 17k+5 frame grid
+            pipeline.clip_workflow({"llm": {}}, "h3", "she waves", "a.png", None, 480, 832, 1, "t", p)
+            self.assertEqual(h3.call_count, 1)  # remembered in the project
+            self.assertEqual(list(p["h3_prompts"].values()), [good])
+            h3.return_value = None
+            wf = pipeline.clip_workflow({"llm": {}}, "h3", "he nods", None, None, 480, 832, 1, "t", p, refs=["r.png"])
+            self.assertTrue(wf["6"]["inputs"]["prompt"].startswith("Use <Picture 1>"))  # plain prompt with the lead-in
+            self.assertEqual(h3.call_args.args[1], "ref2va")
 
 
 class LoraSettingsTests(unittest.TestCase):

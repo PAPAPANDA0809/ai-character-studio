@@ -35,9 +35,12 @@ H3_EXCLUDED = ("US", "EU", "UK", "GB", "KR")  # data centre id prefixes / countr
 H3_BF16 = "minimax_h3_fl2va_bf16.safetensors"                 # 62 GB full precision: 141 GB+ cards
 H3_FULL = "minimax_h3_fl2va_int8_convrot.safetensors"           # 34 GB: 80 GB+ cards
 H3_PRUNED = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"  # 21 GB slimmed H3: fits a 32 GB RTX 5090
-# H3's reference-to-video model (Video only with a character picture), same size as the card's main H3 model
-H3_REF = {H3_BF16: "minimax_h3_ref2va_bf16.safetensors", H3_FULL: "minimax_h3_ref2va_int8_convrot.safetensors",
-          H3_PRUNED: "minimax_h3_ref2va_pruned_int8_convrot.safetensors"}
+# H3's reference-to-video model (Video only with a character picture): FastH3 Omni (FastVideo + Nuva Lab, 20 Oct
+# 2026), H3 distilled to 8 sampling steps with the same encoder and VAEs, so a clip takes well under half the time
+# of the 20-step base model. One pruned export: int8 (22 GB, 32 GB+ cards) or bf16 (44 GB).
+OMNI_INT8 = "fasth3_omniref_8step_pruned_int8_convrot.safetensors"
+OMNI_BF16 = "fasth3_omniref_8step_pruned_bf16.safetensors"
+H3_REF = {H3_BF16: OMNI_BF16, H3_FULL: OMNI_INT8, H3_PRUNED: OMNI_INT8}
 FLUX2_MIN_MEM, FLUX2_DISK = 48, 60
 # downloads that arrive after the card is ready, each switched on by /root/done_<name> on the pod
 EXTRAS = ("video", "qwen_hq", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")
@@ -48,7 +51,8 @@ GB = {"krea2_turbo_bf16.safetensors": 24.48, "krea2_turbo_fp8_scaled.safetensors
       "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors": 20.03,
       "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors": 24.46,
       "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors": 14.32,
-      H3_BF16: 61.73, H3_FULL: 31.7, H3_PRUNED: 19.53, "qwen3vl_32b_minimax_h3_bf16.safetensors": 47.97,
+      H3_BF16: 61.73, H3_FULL: 31.7, H3_PRUNED: 19.53, OMNI_INT8: 20.69, OMNI_BF16: 41.2,
+      "qwen3vl_32b_minimax_h3_bf16.safetensors": 47.97,
       "qwen3vl_32b_minimax_h3_int8_convrot.safetensors": 25.28, "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": 14.61}
 # always on the pod: Qwen-Image 2.1 int8 + bf16 + VAE, upscaler, Ideogram 4 (both models, encoder, VAE), Krea and
 # MOSS VAEs, the Krea identity / edit LoRAs, plus ComfyUI, packages and room to unpack
@@ -90,7 +94,7 @@ def disk_gb(card, video, h3_unet=""):
     f = pod_files(card)
     total = BASE_GB + sum(GB[f[k]] for k in ("KREA_UNET", "KREA_TE", "MOSS_UNET", "MOSS_TE"))
     if video == "h3":
-        total += 2 * GB[h3_unet] + GB[comfy_te(card)] + 5.41  # main + reference model, encoder, VAEs
+        total += GB[h3_unet] + GB[H3_REF[h3_unet]] + GB[comfy_te(card)] + 5.41  # main + reference model, encoder, VAEs
     else:
         total += GB[f["LTX_UNET"]] + GB[f["LTX_TE"]] + 1.71
     if card["mem"] >= FLUX2_MIN_MEM:

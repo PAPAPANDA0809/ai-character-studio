@@ -150,40 +150,12 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
                  "the outfit from the reference picture. Also describe the scene, placement or pose, action, mood "
                  "and camera.\n")
         user += MULTI_REF_RULE.format(n=int(has_reference)) if int(has_reference) > 1 else ""
-    cli = _claude_cli()
-    if cli:  # Claude Code on this PC, signed in with the owner's Claude account
-        r = subprocess.run([cli, *CLI_ARGS],
-                           input=ENHANCE_SYSTEM + "\n\n" + user, capture_output=True, text=True, encoding="utf-8",
-                           timeout=180, cwd=os.path.dirname(os.path.abspath(__file__)))
-        out = (r.stdout or "").strip()
-        if r.returncode == 0 and out:
-            return out, "Claude (your Claude login)"
-        if "log" not in (out + (r.stderr or "")).lower():  # anything other than "not logged in" is a real error
-            raise RuntimeError("Claude Code failed: " + (r.stderr or out)[-300:])
-    key = os.environ.get("ANTHROPIC_API_KEY") or _secret("claude_api_key")
-    if key:
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
-        model = cfg.get("claude_model", "claude-opus-5-5")
-        try:
-            resp = client.beta.messages.create(
-                model=model, max_tokens=2000, system=ENHANCE_SYSTEM,
-                messages=[{"role": "user", "content": user}],
-                output_config={"effort": "low"},
-                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
-            )
-        except anthropic.AuthenticationError:
-            raise RuntimeError("Claude API key was rejected; check claude_api_key in app/secrets.json")
-        except anthropic.RateLimitError:
-            raise RuntimeError("Claude is rate-limited right now; try again in a minute")
-        except anthropic.APIStatusError as e:
-            raise RuntimeError(f"Claude API error {e.status_code}: {e.message}")
-        except anthropic.APIConnectionError:
-            raise RuntimeError("couldn't reach the Claude API (no internet?)")
-        if resp.stop_reason == "refusal":
-            raise RuntimeError("Claude declined to rewrite this idea")
-        text = "".join(b.text for b in resp.content if b.type == "text").strip()
-        return text, f"Claude ({resp.model})"
+    try:
+        text, label = _claude(cfg, ENHANCE_SYSTEM, user)
+    except RuntimeError as e:
+        raise RuntimeError(str(e).replace("declined this prompt", "declined to rewrite this idea"))
+    if text:
+        return text, label
     if cfg["provider"] == "template":
         return idea, "no AI configured"
     if not cfg.get("local_rewrite", False):
@@ -192,6 +164,140 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
     text = chat(cfg, ENHANCE_SYSTEM, user, want_json=False)
     text = text.split("</think>")[-1].strip()  # small local models sometimes leak their reasoning
     return text, f"local {cfg.get('ollama_model') if cfg['provider'] == 'ollama' else cfg.get('openai_model')}"
+
+
+# MiniMax's own prompt format (docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md and _ref_en.md in MiniMaxAI/MiniMax-H3,
+# condensed): H3 makes the sound too, and follows shots, camera moves and dialogue written this way far better
+# than a one-line motion. Claude writes it from the project's plan; without Claude the plain prompt is used.
+H3_SYSTEM = """You write the prompt for MiniMax H3, a video model that generates the picture AND the sound together,
+following MiniMax's official prompt format exactly. You get the scene the user planned (subject, action, setting,
+style) and must turn it into one H3 prompt. Keep the user's subject, action, setting, wording and intent; add only
+what makes it filmable: concrete shots, camera moves, lighting, sound. Never add people the scene doesn't have.
+Write in English (dialogue stays in its own language inside <d>). Return ONLY the prompt text, no preamble.
+
+FORMAT (text-to-video):
+integrated_multimodal_description: [Shot 1] ...
+
+overall_soundscape: ...
+
+non_diegetic_music: ...
+
+With a first-frame picture (image-to-video), the first line is exactly:
+For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
+then a blank line, then the three fields. [Shot 1] continues from what <Picture 1> shows (same person, clothes,
+composition, scene), then the action develops.
+
+With first AND last pictures (first-and-last-frame), the first line is exactly:
+How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the S.SS-second mark of the target video.
+(S.SS = the clip length with two decimals), then a blank line, then the three fields. Use ONE shot: describe the
+motion path from the state in Picture 1 to the pose, spacing and composition of Picture 2 at the end.
+
+With character/reference pictures (reference-to-video) use the six-field format instead:
+subject_definitions:
+<Subject 1> is the person in <Picture 1>: ...   (one line per picture; <Subject 2> for <Picture 2> ...)
+
+summary:
+[reference generation] one short paragraph: the target video and how the subjects are used.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], ...): fully_preserved - face, hair, body and clothes are retained.
+
+detailed_description:
+One or two sentences of style, then [Shot 1] ... (name <Subject N> where each appears; 150-300 words)
+
+overall_soundscape: ...
+
+non_diegetic_music: ...
+
+RULES
+- integrated_multimodal_description / detailed_description is a timeline. Start [Shot 1] with the style (Live-action,
+  cinematic / 2D-animated / 3D CG ...) and the opening composition, then the subject, its look and position, the
+  action, the camera and the sounds that happen in the shot.
+- [Shot 1] has no timestamp. Later shots: "[Shot 2] At 00:03.500, the camera cuts to ..." with strictly increasing
+  times inside the clip length. Never write time ranges like [0s-3s]. Cut only when subject, space, state, viewpoint
+  or time changes; a reframe is camera motion inside the shot. A 5-second clip is usually 1-2 shots.
+- Camera moves as natural sentences with type (+ amplitude + speed only when they matter): zoom in/out, push in /
+  pull out, pan left/right, truck left/right, tilt up/down, pedestal up/down, arc shot, tracking shot, static shot,
+  POV, shake slightly/strongly; "with small/large amplitude", "at slow/fast speed". E.g. "The camera pushes in with
+  small amplitude at slow speed toward her face."
+- Dialogue or singing: give the speaker a stable ID the first time with voice details, then the words inside <d>
+  with a language tag: The young woman with a soft, low voice (S1) says: <d>[English] I get off at the next station.</d>
+  Only use dialogue the scene asks for. Voiceover: "says in an off-screen voiceover" and state the lips stay closed.
+- On-screen text goes in English double quotes, verbatim.
+- overall_soundscape: 1-4 sentences of ambience, action sounds and non-verbal human sounds (wind, footsteps, fabric,
+  breathing, laughter). No dialogue or music here. N/A only for a silent clip.
+- non_diegetic_music: 1-3 sentences on instruments, tempo, rhythm and dynamics of the score only (no mood words);
+  N/A when the scene wants none. Music the characters hear (radio, singing) belongs in the shots instead.
+- Describe what should appear; never list what to avoid (there is no negative prompt).
+- Length: 80-200 words for the main field of a text/image clip; nothing beyond the fields."""
+
+
+def h3_request(task, scene, seconds, character="", style="", refs=0, motion=""):
+    """The user message for H3_SYSTEM: task = t2va | i2va | fl2va | ref2va."""
+    kind = {"t2va": "Text-to-video (no pictures).",
+            "i2va": "Image-to-video: <Picture 1> is the first frame.",
+            "fl2va": "First-and-last-frame: Picture 1 is the first frame, Picture 2 the last frame.",
+            "ref2va": f"Reference-to-video with {refs} character picture(s) <Picture 1>..<Picture {refs}>: the main "
+                      "subject's face, hair and body come from <Picture 1>; don't describe the face, keep its clothes "
+                      "unless the scene says otherwise."}[task]
+    user = f"Task: {kind}\nClip length: {seconds:.2f} seconds\nScene: {scene}\n"
+    if motion:
+        user += f"Motion and camera for this clip: {motion}\n"
+    if character:
+        user += f"Character (fixed look): {character}\n"
+    if style:
+        user += f"Visual style: {style}\n"
+    return user
+
+
+def h3_prompt(cfg, task, scene, seconds, character="", style="", refs=0, motion=""):
+    """An H3-format prompt from Claude, or None when Claude isn't available or declines (the caller then sends the
+    plain prompt)."""
+    user = h3_request(task, scene, seconds, character, style, refs, motion)
+    try:
+        text, _ = _claude(cfg, H3_SYSTEM, user, timeout=240)
+    except RuntimeError:
+        return None
+    if not text or ("integrated_multimodal_description:" not in text and "detailed_description:" not in text):
+        return None
+    return text.strip()
+
+
+def _claude(cfg, system, user, timeout=180):
+    """(text, label) from Claude Code on this PC (owner's login), else the Claude API key; (None, "") when neither
+    is available. Raises RuntimeError for a real failure (rate limit, refusal, rejected key...)."""
+    cli = _claude_cli()
+    if cli:
+        r = subprocess.run([cli, *CLI_ARGS], input=system + "\n\n" + user, capture_output=True, text=True,
+                           encoding="utf-8", timeout=timeout, cwd=os.path.dirname(os.path.abspath(__file__)))
+        out = (r.stdout or "").strip()
+        if r.returncode == 0 and out:
+            return out, "Claude (your Claude login)"
+        if "log" not in (out + (r.stderr or "")).lower():  # anything other than "not logged in" is a real error
+            raise RuntimeError("Claude Code failed: " + (r.stderr or out)[-300:])
+    key = os.environ.get("ANTHROPIC_API_KEY") or _secret("claude_api_key")
+    if not key:
+        return None, ""
+    import anthropic
+    client = anthropic.Anthropic(api_key=key)
+    try:
+        resp = client.beta.messages.create(
+            model=cfg.get("claude_model", "claude-opus-5-5"), max_tokens=2000, system=system,
+            messages=[{"role": "user", "content": user}],
+            output_config={"effort": "low"},
+            betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+        )
+    except anthropic.AuthenticationError:
+        raise RuntimeError("Claude API key was rejected; check claude_api_key in app/secrets.json")
+    except anthropic.RateLimitError:
+        raise RuntimeError("Claude is rate-limited right now; try again in a minute")
+    except anthropic.APIStatusError as e:
+        raise RuntimeError(f"Claude API error {e.status_code}: {e.message}")
+    except anthropic.APIConnectionError:
+        raise RuntimeError("couldn't reach the Claude API (no internet?)")
+    if resp.stop_reason == "refusal":
+        raise RuntimeError("Claude declined this prompt")
+    return "".join(b.text for b in resp.content if b.type == "text").strip(), f"Claude ({resp.model})"
 
 
 def _extract_json(text):

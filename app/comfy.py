@@ -800,7 +800,11 @@ LTX_NEGATIVE = ("blurry, out of focus, overexposed, underexposed, low contrast, 
 H3 = {"unet": "minimax_h3_fl2va_int8_convrot.safetensors", "video_vae": "minimax_h3_video_vae_fp16.safetensors",
       "audio_vae": "minimax_h3_audio_vae_fp32.safetensors", "text_encoder": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
       "text_encoder_blackwell": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "steps": 20, "frames": 124, "fps": 24,
-      "ref_unet": "minimax_h3_ref2va_int8_convrot.safetensors"}
+      "ref_unet": "fasth3_omniref_8step_pruned_int8_convrot.safetensors"}
+# FastH3 Omni (the reference-to-video model on the rented card): ComfyUI's video_fasth3_ominiref_r2v template.
+# 8 steps, euler, the checkpoint's own video/audio sigma shifts; dense attention (the template's VSA sparse
+# attention only speeds up full-size 15 s clips and needs kernels this app hasn't tested on rented cards).
+OMNI = {"steps": 8, "shift_video": 12.0, "shift_audio": 3.0}
 # Ideogram 4.0: #2 open text-to-image (Oct 2026), best at text inside pictures; two models (with and without the
 # prompt) through DualModelGuider as in ComfyUI's template, "Quality" preset. Weights: non-commercial licence.
 IDEOGRAM4 = {"unet": "ideogram4_int8_convrot.safetensors", "unet_uncond": "ideogram4_unconditional_int8_convrot.safetensors",
@@ -813,11 +817,11 @@ LTX25_POD = {"unet": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safet
 
 
 def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_encoder=None, unet=None, short=768,
-                refs=None, ref_unet=None, frames=None):
+                refs=None, ref_unet=None, frames=None, formatted=False):
     """MiniMax H3 with sound: start+end = first/last frame, start = image-to-video, neither = text-to-video. Frames come
     back through SaveImage and the soundtrack through SaveAudio, like LTX-2, so the pipeline stores both the same way.
-    refs = character pictures (uploaded names): H3's reference-to-video model keeps those people, named <Picture 1>...
-    in the prompt (ComfyUI's video_minimax_h3_r2v template)."""
+    refs = character pictures (uploaded names): the reference-to-video model (FastH3 Omni) keeps those people, named
+    <Picture 1>... in the prompt. formatted = the prompt is already in H3's own format (llm.h3_prompt), so no lead-in."""
     c = H3
     # H3's native canvas: a 768 px short edge, at most 768x1344, multiples of 32 (MiniMax's prompting tips); the
     # project's 480p/720p choice only gives the shape. short=480 on 32 GB cards (the slimmed model, 864x480).
@@ -851,7 +855,14 @@ def h3_workflow(prompt, start_name, end_name, width, height, seed, prefix, text_
                 + (f"; {tags} show the people and things to use" if len(refs) > 1 else "") + ". ")
         wf["1"]["inputs"]["unet_name"] = ref_unet or c["ref_unet"]
         wf["6"] = {"class_type": "MiniMaxH3ReferenceToVideo",
-                   "inputs": {**wf["6"]["inputs"], "prompt": lead + prompt, "audio_vae": ["4", 0], "ref_image_size": "match"}}
+                   "inputs": {**wf["6"]["inputs"], "prompt": prompt if formatted else lead + prompt,
+                              "audio_vae": ["4", 0], "ref_image_size": "match"}}
+        # FastH3 Omni: 8 euler steps on the checkpoint's sigma shifts (the base model's 20 res_multistep steps elsewhere)
+        wf["17"] = {"class_type": "MiniMaxH3SigmaShift",
+                    "inputs": {"model": ["1", 0], "shift_video": OMNI["shift_video"], "shift_audio": OMNI["shift_audio"]}}
+        wf["8"]["inputs"].update(model=["17", 0], steps=OMNI["steps"])
+        wf["9"]["inputs"]["sampler_name"] = "euler"
+        wf["11"]["inputs"]["model"] = ["17", 0]
         for k, name in enumerate(refs[:9]):
             wf[f"r{k}"] = {"class_type": "LoadImage", "inputs": {"image": name}}
             wf["6"]["inputs"][f"ref_images.ref_image_{k}"] = [f"r{k}", 0]

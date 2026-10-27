@@ -32,6 +32,7 @@ printf 'reelmint:\n  base_path: /root\n  loras: loras\n' > extra_model_paths.yam
 H=https://huggingface.co
 Q=$H/Comfy-Org/Qwen-Image-2.1/resolve/main
 M=$H/Comfy-Org/MiniMax-H3/resolve/main
+F=$H/FastVideo/FastH3-Omni-Comfy/resolve/82eff2a6eee6c962846879f4bab52610a4df24d3  # FastH3 Omni, pinned (20 Oct 2026)
 L=$H/comfyicu/LTX-2.5/resolve/main  # open mirror of Lightricks/LTX-2.5 (the original asks for a Hugging Face login)
 I=$H/Comfy-Org/Ideogram-4/resolve/main
 # cloud_dl.py (sent by the app in DL_B64): 8 connections a file, stalled pieces fetched again. A single curl
@@ -96,9 +97,9 @@ extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
     $Q/text_encoders/qwen3vl_8b_bf16.safetensors models/text_encoders
   if [ "$VIDEO" = h3 ]; then
     H3_UNET=${H3_UNET:-minimax_h3_fl2va_int8_convrot.safetensors}  # or the slimmed (pruned) one on 32-48 GB cards
-    # + the reference-to-video model, for Video only with a character picture
+    # + the reference-to-video model (FastH3 Omni, 8 steps), for Video only with a character picture
     extra video $M/diffusion_models/$H3_UNET models/diffusion_models $M/text_encoders/$H3_TE models/text_encoders \
-      $M/diffusion_models/$H3_REF models/diffusion_models \
+      $F/diffusion_models/$H3_REF models/diffusion_models \
       $M/vae/minimax_h3_video_vae_fp16.safetensors models/vae $M/vae/minimax_h3_audio_vae_fp32.safetensors models/vae
   else
     extra video $L/diffusion_models/${LTX_UNET:-ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors} models/diffusion_models \
