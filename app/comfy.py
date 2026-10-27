@@ -678,13 +678,27 @@ def _wan_flf(cfg, prompt, start_name, end_name, width, height, seed, prefix):
 
 
 def apply_lora_settings(wf, lora):
-    """A LoRA's own sampling settings from config ("cfg", "negative"): some fine-tunes want true CFG with a negative
-    prompt where the base recipe runs CFG 1 (e.g. the Qwen-Image 2.1 Omni LoRA: CFG 4, negative " ")."""
+    """A LoRA's (or swapped model's) own sampling settings from config: "cfg", "negative", "sampler", "scheduler".
+    Some fine-tunes want true CFG with a negative prompt where the base recipe runs CFG 1 (Noct Q: CFG 3), or
+    another sampler (the TheseAlpacas NSFW LoRA: er_sde + beta, "euler gives poor results")."""
     for n in wf.values():
-        if "cfg" in lora and n["class_type"] == "KSampler":
-            n["inputs"]["cfg"] = float(lora["cfg"])
+        if n["class_type"] == "KSampler":
+            if "cfg" in lora:
+                n["inputs"]["cfg"] = float(lora["cfg"])
+            if "sampler" in lora:
+                n["inputs"]["sampler_name"] = lora["sampler"]
+            if "scheduler" in lora:
+                n["inputs"]["scheduler"] = lora["scheduler"]
         if "negative" in lora and n["class_type"] == "TextEncodeQwenImage21":
             n["inputs"]["negative_prompt"] = lora["negative"]
+    return wf
+
+
+def set_unet(wf, name):
+    """Swap the workflow's diffusion model for another file of the same family (a merged fine-tune such as Noct Q
+    for Qwen-Image 2.1), keeping every other node."""
+    loader = next(k for k, n in wf.items() if n["class_type"] in ("UNETLoader", "UnetLoaderGGUF"))
+    wf[loader] = _unet(name)
     return wf
 
 

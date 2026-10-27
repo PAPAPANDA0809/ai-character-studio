@@ -370,8 +370,8 @@
         <input id="style" value="" placeholder="Type your own style" style="margin-top:8px;display:none">
         <details id="create-advanced"><summary>Advanced settings</summary>
         <div id="img-eng-wrap"><label for="img-eng">Image engine</label><select id="img-eng"></select><p id="create-engine-note" class="field-note"></p><button type="button" class="krea-setup">Krea setup</button></div>
-        <div id="lora-wrap" style="display:none"><label>Trained character</label><select id="lora-sel"></select>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">Keeps the trained character in every picture; its trigger word is added to the prompt for you.</div></div>
+        <div id="lora-wrap" style="display:none"><label>Character or style</label><select id="lora-sel"></select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">A trained character keeps the same face in every picture (its trigger word is added for you); a style or model changes how the engine draws.</div></div>
         <div id="vid-eng-wrap"><label>Video engine</label><select id="vid-eng"></select></div>
         <div id="t2v-eng-wrap"><label>Text-to-video engine</label><select id="t2v-eng"></select></div>
         <details><summary>Describe the character in words (optional)</summary>
@@ -1295,7 +1295,7 @@ function renderStudio() {
     <details data-detail="advanced"><summary>Advanced settings</summary>
       ${!isT2V ? `<label for="f-img-eng">Image engine</label><select id="f-img-eng" ${dis}>${ENG ? engOptions(ENG.image,P.image_engine || ENG.default_image) : ''}</select>
         <p class="field-note">${esc(ENG?.image.find(e=>e.id===P.image_engine)?.description || ENG?.image.find(e=>e.id===P.image_engine)?.label || '')}</p><button type="button" class="krea-setup">Krea setup</button>
-        ${lorasFor(P.image_engine).length ? `<label for="f-lora">Trained character</label><select id="f-lora" ${dis}>${loraOptions(P.image_engine,P.lora || '')}</select>` : ''}` : ''}
+        ${lorasFor(P.image_engine).length ? `<label for="f-lora">Character or style</label><select id="f-lora" ${dis}>${loraOptions(P.image_engine,P.lora || '')}</select>` : ''}` : ''}
       ${!isImg ? `<label for="f-vres">Video resolution</label><select id="f-vres" ${dis}>${opt([['480p','480p'],['720p','720p · slower']],P.video_res || '480p')}</select>
         <label for="f-vsecs">Clip length <b id="f-vsecs-v">${P.video_seconds || 5} s</b></label><input type="range" id="f-vsecs" min="5" max="15" step="1" value="${P.video_seconds || 5}" ${dis}>
         <p class="field-note">${GPU?.status==='ready' && GPU.video==='h3' ? `About ${h3Minutes(P.video_res || '480p',P.video_seconds || 5)} min a clip on ${esc(GPU.label)}` : 'Other video engines make 5 s clips'}</p>` : ''}

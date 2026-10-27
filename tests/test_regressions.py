@@ -421,6 +421,24 @@ class LoraSettingsTests(unittest.TestCase):
         self.assertEqual(wf["5"]["inputs"]["negative_prompt"], " ")
         self.assertEqual(wf["2"]["inputs"]["model"], ["45", 0])  # the LoRA sits between the loader and the cache
 
+    def test_lora_sampler_and_scheduler_reach_the_sampler(self):
+        cfg = pipeline.load_config()
+        wf = comfy.apply_lora_settings(comfy.qwen_image21_workflow(cfg, "p", 1024, 1024, 7, "t"),
+                                       {"sampler": "er_sde", "scheduler": "beta"})
+        self.assertEqual((wf["7"]["inputs"]["sampler_name"], wf["7"]["inputs"]["scheduler"]), ("er_sde", "beta"))
+
+    def test_a_model_entry_swaps_the_diffusion_model_instead_of_adding_a_lora(self):
+        cfg = pipeline.load_config()
+        wf = comfy.set_unet(comfy.qwen_image21_workflow(cfg, "p", 1024, 1024, 7, "t"), "NoctQ_V4_int8_convrot.safetensors")
+        self.assertEqual(wf["1"]["inputs"]["unet_name"], "NoctQ_V4_int8_convrot.safetensors")
+        self.assertEqual(wf["1"]["class_type"], "UNETLoader")
+        self.assertNotIn("45", wf)
+        self.assertEqual(wf["2"]["inputs"]["model"], ["1", 0])
+        noct = pipeline.lora_entry(cfg, "NoctQ_V4_int8_convrot.safetensors", "qwen-image-21")
+        self.assertEqual(pipeline.lora_file(noct), "diffusion_models/NoctQ_V4_int8_convrot.safetensors")
+        self.assertEqual(pipeline.lora_file({"file": "x.safetensors"}), "loras/x.safetensors")
+        self.assertFalse(noct.get("default", False))
+
     def test_lora_without_settings_leaves_the_recipe_alone(self):
         cfg = pipeline.load_config()
         wf = comfy.apply_lora_settings(comfy.qwen_image21_workflow(cfg, "p", 1024, 1024, 7, "t"), {"strength": 1.0})

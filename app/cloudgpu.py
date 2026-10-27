@@ -585,7 +585,8 @@ def _send_loras():
     models = os.path.join(os.path.dirname(APP_DIR), "models", "loras")
     for l in c.get("loras", []):
         src = os.path.join(models, l["file"])
-        if l.get("engine") not in ("qwen-image-21", "krea2-turbo", "moss-image") or not os.path.exists(src) or not state["pod"]:
+        if l.get("model") or l.get("engine") not in ("qwen-image-21", "krea2-turbo", "moss-image") \
+                or not os.path.exists(src) or not state["pod"]:
             continue
         try:
             ok = _send_lora(src, l["file"])

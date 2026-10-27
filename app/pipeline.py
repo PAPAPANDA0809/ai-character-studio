@@ -427,8 +427,15 @@ def start():
 # ---------------------------------------------------------------- steps
 
 def lora_entry(cfg, file, engine):
-    """The configured LoRA with this file, if it was trained for this image engine (else None)."""
+    """The configured LoRA with this file, if it was trained for this image engine (else None). An entry with
+    "model": true is a whole fine-tuned diffusion model (Noct Q) offered in the same picker, swapped in for the
+    engine's own file instead of loaded on top of it."""
     return next((l for l in cfg.get("loras", []) if l["file"] == file and l["engine"] == engine), None)
+
+
+def lora_file(lora):
+    """Where the entry's file lives under models/: LoRAs in loras/, swapped models in diffusion_models/."""
+    return ("diffusion_models/" if lora.get("model") else "loras/") + lora["file"]
 
 
 def with_trigger(text, lora):
@@ -542,7 +549,7 @@ def engines():
                 "" if cloudgpu.state["extras"].get("video") else " (downloading, a few minutes)")
         return {"id": key, "label": label, "installed": all(ready(f) for f in e["files"])}
     return {
-        "loras": [{**l, "installed": ready("loras/" + l["file"])} for l in cfg.get("loras", [])],
+        "loras": [{**l, "installed": ready(lora_file(l))} for l in cfg.get("loras", [])],
         "reference_engines": list(comfy.REFERENCE_ENGINES) + (["gpt-image"] if cloud.available() else []),
         "image": [entry(k, e) for k, e in comfy.IMAGE_ENGINES.items()] + krea.entries() + ([{
             "id": "gpt-image", "label": "GPT Image 2.5 (OpenAI, paid: ~$0.05 a picture at 1080p, keeps character "
@@ -772,7 +779,10 @@ def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
             log(p, f"using the rented {cloudgpu.info()['label']}")
             with cloudgpu.using():
                 return _keyframes(p, indices, reseed, engine, edit, remote)
-        log(p, f'the trained character "{lora["label"]}" is still uploading to the rented GPU, so this runs on this PC')
+        if lora.get("model"):  # a whole model (7 GB) is only on this PC
+            log(p, f'"{lora["label"]}" is only installed on this PC, so this runs here')
+        else:
+            log(p, f'the trained character "{lora["label"]}" is still uploading to the rented GPU, so this runs on this PC')
     return _keyframes(p, indices, reseed, engine, edit)
 
 
@@ -875,8 +885,8 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
                 ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
                 rw, rh = (ow + 15) // 16 * 16, (oh + 15) // 16 * 16
         lora = lora_entry(cfg, p.get("lora", ""), use)  # a trained character, only for the engine it was made for
-        if lora and not model_path(cfg, "loras/" + lora["file"]):
-            raise RuntimeError(f'the trained character "{lora["label"]}" ({lora["file"]}) is not in models\\loras yet')
+        if lora and not model_path(cfg, lora_file(lora)):
+            raise RuntimeError(f'"{lora["label"]}" ({lora_file(lora)}) is not in the models folder yet')
         if edit:
             src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
             if not os.path.exists(src):
@@ -892,7 +902,9 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,
                                       p["keyframe_seeds"][key], prefix, steps)
         if lora:
-            wf = comfy.apply_lora_settings(comfy.add_lora(wf, lora["file"], lora.get("strength", 1.0)), lora)
+            wf = comfy.set_unet(wf, lora["file"]) if lora.get("model") else \
+                comfy.add_lora(wf, lora["file"], lora.get("strength", 1.0))
+            wf = comfy.apply_lora_settings(wf, lora)
         if upscale:
             wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p / 2K / 4K
