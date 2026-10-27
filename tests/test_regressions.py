@@ -407,3 +407,26 @@ class BatchQueueTests(unittest.TestCase):
             self.run_queue_once()
         self.assertEqual(pipeline.load(p["id"])["status"], "error:keyframes")
         self.assertTrue(pipeline.jobs.empty())
+
+
+class LoraSettingsTests(unittest.TestCase):
+    """A LoRA entry may carry its own CFG and negative prompt (the Qwen-Image 2.1 Omni LoRA wants CFG 4, " ")."""
+
+    def test_lora_cfg_and_negative_reach_the_qwen21_sampler(self):
+        cfg = pipeline.load_config()
+        wf = comfy.qwen_image21_workflow(cfg, "a woman in a park", 1024, 1024, 7, "t")
+        self.assertEqual(wf["7"]["inputs"]["cfg"], cfg["qwen_image_21"]["cfg"])
+        wf = comfy.apply_lora_settings(comfy.add_lora(wf, "x.safetensors"), {"cfg": 4.0, "negative": " "})
+        self.assertEqual(wf["7"]["inputs"]["cfg"], 4.0)
+        self.assertEqual(wf["5"]["inputs"]["negative_prompt"], " ")
+        self.assertEqual(wf["2"]["inputs"]["model"], ["45", 0])  # the LoRA sits between the loader and the cache
+
+    def test_lora_without_settings_leaves_the_recipe_alone(self):
+        cfg = pipeline.load_config()
+        wf = comfy.apply_lora_settings(comfy.qwen_image21_workflow(cfg, "p", 1024, 1024, 7, "t"), {"strength": 1.0})
+        self.assertEqual(wf["7"]["inputs"]["cfg"], cfg["qwen_image_21"]["cfg"])
+        self.assertEqual(wf["5"]["inputs"]["negative_prompt"], "")
+
+    def test_omni_lora_is_offered_for_qwen21_but_not_default(self):
+        l = pipeline.lora_entry(pipeline.load_config(), "qwen21_uncensored_omni_v0.1.safetensors", "qwen-image-21")
+        self.assertEqual((l["cfg"], l["negative"], l.get("default", False)), (4.0, " ", False))

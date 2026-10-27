@@ -892,7 +892,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,
                                       p["keyframe_seeds"][key], prefix, steps)
         if lora:
-            wf = comfy.add_lora(wf, lora["file"], lora.get("strength", 1.0))
+            wf = comfy.apply_lora_settings(comfy.add_lora(wf, lora["file"], lora.get("strength", 1.0)), lora)
         if upscale:
             wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))
         if p.get("mode") == "images":  # pictures are delivered at an exact size: 360p / 720p / 1080p / 2K / 4K

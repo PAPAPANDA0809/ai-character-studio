@@ -677,6 +677,17 @@ def _wan_flf(cfg, prompt, start_name, end_name, width, height, seed, prefix):
     }
 
 
+def apply_lora_settings(wf, lora):
+    """A LoRA's own sampling settings from config ("cfg", "negative"): some fine-tunes want true CFG with a negative
+    prompt where the base recipe runs CFG 1 (e.g. the Qwen-Image 2.1 Omni LoRA: CFG 4, negative " ")."""
+    for n in wf.values():
+        if "cfg" in lora and n["class_type"] == "KSampler":
+            n["inputs"]["cfg"] = float(lora["cfg"])
+        if "negative" in lora and n["class_type"] == "TextEncodeQwenImage21":
+            n["inputs"]["negative_prompt"] = lora["negative"]
+    return wf
+
+
 def add_lora(wf, lora_name, strength=1.0):
     """Put a LoRA (e.g. a trained character) between the workflow's model loader and everything that uses it."""
     loader = next(k for k, n in wf.items() if n["class_type"] in ("UNETLoader", "UnetLoaderGGUF", "CheckpointLoaderSimple"))
