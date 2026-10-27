@@ -410,7 +410,7 @@ class BatchQueueTests(unittest.TestCase):
 
 
 class LoraSettingsTests(unittest.TestCase):
-    """A LoRA entry may carry its own CFG and negative prompt (the Qwen-Image 2.1 Omni LoRA wants CFG 4, " ")."""
+    """A LoRA entry may carry its own CFG and negative prompt (e.g. a Qwen-Image 2.1 LoRA that wants CFG 4, " ")."""
 
     def test_lora_cfg_and_negative_reach_the_qwen21_sampler(self):
         cfg = pipeline.load_config()
@@ -427,6 +427,3 @@ class LoraSettingsTests(unittest.TestCase):
         self.assertEqual(wf["7"]["inputs"]["cfg"], cfg["qwen_image_21"]["cfg"])
         self.assertEqual(wf["5"]["inputs"]["negative_prompt"], "")
 
-    def test_omni_lora_is_offered_for_qwen21_but_not_default(self):
-        l = pipeline.lora_entry(pipeline.load_config(), "qwen21_uncensored_omni_v0.1.safetensors", "qwen-image-21")
-        self.assertEqual((l["cfg"], l["negative"], l.get("default", False)), (4.0, " ", False))

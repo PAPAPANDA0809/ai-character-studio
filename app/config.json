@@ -229,10 +229,8 @@
   "extra_model_dirs": ["D:/AICharacterStudio/models"],
   "cloud_gpu": {"image": "runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2404", "idle_minutes": 15, "max_hours": 4, "local_port": 8190},
   "loras": [
-    {"file": "jacelynrm_qwen21_v2.safetensors", "label": "Jacelyn", "name": "Jacelyn", "engine": "qwen-image-21", "trigger": "jacelynrm", "class": "a woman with round glasses", "strength": 1.0},
     {"file": "krea2_nsfw_uzumix_v2.safetensors", "label": "NSFW style (uzumix)", "engine": "krea2-turbo", "trigger": "KNP", "strength": 1.0},
-    {"file": "moss_image_nsfw_uncensored_comfyui.safetensors", "label": "NSFW (MOSS)", "engine": "moss-image", "trigger": "moss_xvstyle", "strength": 0.7, "default": true},
-    {"file": "qwen21_uncensored_omni_v0.1.safetensors", "label": "NSFW Omni v0.1 (chatrlabs)", "engine": "qwen-image-21", "strength": 1.0, "cfg": 4.0, "negative": " "}
+    {"file": "moss_image_nsfw_uncensored_comfyui.safetensors", "label": "NSFW (MOSS)", "engine": "moss-image", "trigger": "moss_xvstyle", "strength": 0.7, "default": true}
   ],
   "flux2_klein": {
     "4b": {"unet": "flux-2-klein-4b-fp8.safetensors", "text_encoder": "qwen_3_4b_fp8_mixed.safetensors"},
