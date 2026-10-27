@@ -991,6 +991,7 @@ def h3_prompt_for(cfg, p, task, prompt, seconds, refs=0):
     cache = (p or {}).get("h3_prompts") or {}
     if key in cache:
         return cache[key] or None
+    before = (p or {}).get("message", "")  # "clip 1/4: animating..." comes back once the prompt is written
     if p is not None:
         log(p, "writing the MiniMax H3 prompt with Claude (shots, camera, sound)")
     written = llm.h3_prompt(cfg["llm"], task, prompt, seconds, refs=refs)
@@ -998,6 +999,8 @@ def h3_prompt_for(cfg, p, task, prompt, seconds, refs=0):
         if not written:
             log(p, "Claude isn't available for the H3 prompt; using the plain prompt")
         p["h3_prompts"] = {**dict(list(cache.items())[-30:]), key: written or ""}
+        if before:
+            log(p, before + " · rendering on the rented card")
         save(p)
     return written
 
