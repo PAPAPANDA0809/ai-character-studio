@@ -230,9 +230,7 @@
   "cloud_gpu": {"image": "runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2404", "idle_minutes": 15, "max_hours": 4, "local_port": 8190},
   "loras": [
     {"file": "krea2_nsfw_uzumix_v2.safetensors", "label": "NSFW style (uzumix)", "engine": "krea2-turbo", "trigger": "KNP", "strength": 1.0},
-    {"file": "moss_image_nsfw_uncensored_comfyui.safetensors", "label": "NSFW (MOSS)", "engine": "moss-image", "trigger": "moss_xvstyle", "strength": 0.7, "default": true},
-    {"file": "NoctQ_V4_int8_convrot.safetensors", "label": "Noct Q V4 (uncensored model, CFG 3: ~2x slower)", "engine": "qwen-image-21", "model": true, "cfg": 3.0, "negative": "artifacts, gpt-image, washed-out colors, low quality, low resolution, AI slop, deviantart, sloppy lines, rough sketch, blurry, indistinct, missing fingers, badly drawn hands, wrong number of fingers"},
-    {"file": "qwen21_nsfw_thesealpacas_v2.safetensors", "label": "NSFW v2 (TheseAlpacas, CFG 4: ~2x slower)", "engine": "qwen-image-21", "strength": 0.8, "cfg": 4.0, "sampler": "er_sde", "scheduler": "beta", "negative": "artifacts, gpt-image, washed-out colors, low quality, low resolution, AI slop, deviantart, sloppy lines, rough sketch, blurry, indistinct, missing fingers, badly drawn hands, wrong number of fingers"}
+    {"file": "moss_image_nsfw_uncensored_comfyui.safetensors", "label": "NSFW (MOSS)", "engine": "moss-image", "trigger": "moss_xvstyle", "strength": 0.7, "default": true}
   ],
   "flux2_klein": {
     "4b": {"unet": "flux-2-klein-4b-fp8.safetensors", "text_encoder": "qwen_3_4b_fp8_mixed.safetensors"},

@@ -434,10 +434,8 @@ class LoraSettingsTests(unittest.TestCase):
         self.assertEqual(wf["1"]["class_type"], "UNETLoader")
         self.assertNotIn("45", wf)
         self.assertEqual(wf["2"]["inputs"]["model"], ["1", 0])
-        noct = pipeline.lora_entry(cfg, "NoctQ_V4_int8_convrot.safetensors", "qwen-image-21")
-        self.assertEqual(pipeline.lora_file(noct), "diffusion_models/NoctQ_V4_int8_convrot.safetensors")
+        self.assertEqual(pipeline.lora_file({"file": "n.safetensors", "model": True}), "diffusion_models/n.safetensors")
         self.assertEqual(pipeline.lora_file({"file": "x.safetensors"}), "loras/x.safetensors")
-        self.assertFalse(noct.get("default", False))
 
     def test_lora_without_settings_leaves_the_recipe_alone(self):
         cfg = pipeline.load_config()
