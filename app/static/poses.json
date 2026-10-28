@@ -54,6 +54,7 @@
       {"name": "Low crawl", "prompt": "in a low crawl pose, chest and forearms on the floor, hips raised high"},
       {"name": "Low crouch", "prompt": "crouching low on her toes with knees wide, elbows resting on her knees"},
       {"name": "Deep squat", "prompt": "in a deep squat, knees turned outward, hands on the floor between her feet"},
+      {"name": "Squat, leaning back", "prompt": "squatting low on her toes with knees spread wide, leaning back on one hand placed on the floor behind her, the other hand resting on her knee, looking at the camera"},
       {"name": "Frog sit", "prompt": "in a frog position, knees open wide on the floor, hips low, hands on the floor"},
       {"name": "Toe balance", "prompt": "crouching on her toes, one arm raised, balancing with the other hand on the floor"},
       {"name": "Pigeon sit", "prompt": "sitting with one leg folded in front and the other stretched behind, leaning forward"}
