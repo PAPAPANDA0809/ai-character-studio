@@ -86,7 +86,7 @@ class H(BaseHTTPRequestHandler):
                 os.replace(part, os.path.join(LORAS, name))
                 return self.send(200, "ok")
         if u.path == "/rm/extras":  # downloaded after READY: full-quality Qwen, Ideogram 4
-            return self.send(200, json.dumps({k: os.path.exists(f"/root/done_{k}") for k in ("video", "qwen_hq", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")}),
+            return self.send(200, json.dumps({k: os.path.exists(f"/root/done_{k}") for k in ("video", "qwen_hq", "qwen_turbo", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")}),
                              "application/json")
         if u.path == "/rm/loras":
             files = sorted(f for f in os.listdir(LORAS) if not f.startswith(".")) if os.path.isdir(LORAS) else []

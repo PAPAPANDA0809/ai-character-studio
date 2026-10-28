@@ -95,6 +95,8 @@ extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
   touch /root/dl_done
   extra qwen_hq $Q/diffusion_models/qwen_image_2.1_bf16.safetensors models/diffusion_models \
     $Q/text_encoders/qwen3vl_8b_bf16.safetensors models/text_encoders
+  # Qwen-Image 2.1 Turbo (8 steps), the picker's second Qwen choice; same encoder and VAE
+  extra qwen_turbo $Q/diffusion_models/qwen_image_2.1_turbo_bf16.safetensors models/diffusion_models
   if [ "$VIDEO" = h3 ]; then
     H3_UNET=${H3_UNET:-minimax_h3_fl2va_int8_convrot.safetensors}  # or the slimmed (pruned) one on 32-48 GB cards
     # + the reference-to-video model (FastH3 Omni, 8 steps), for Video only with a character picture

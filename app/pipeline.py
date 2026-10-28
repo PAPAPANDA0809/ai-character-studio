@@ -433,6 +433,12 @@ def lora_entry(cfg, file, engine):
     return next((l for l in cfg.get("loras", []) if l["file"] == file and l["engine"] == engine), None)
 
 
+def on_pod(lora):
+    """True when the rented card has this swapped model's copy (its "pod" extra finished downloading)."""
+    pod = lora.get("pod")
+    return bool(pod and cloudgpu.state["status"] == "ready" and cloudgpu.state["extras"].get(pod["extra"]))
+
+
 def lora_file(lora):
     """Where the entry's file lives under models/: LoRAs in loras/, swapped models in diffusion_models/."""
     return ("diffusion_models/" if lora.get("model") else "loras/") + lora["file"]
@@ -776,11 +782,13 @@ def do_keyframes(p, indices=None, reseed=False, engine=None, edit=None):
             return _keyframes(p, indices, reseed, engine, edit, remote)
     if remote and engine != "gpt-image" and (edit or p.get("image_engine") == "qwen-image-21"):
         lora = lora_entry(load_config(), p.get("lora", ""), "qwen-image-21")
-        if not lora or cloudgpu.has_lora(lora["file"]):
+        if not lora or cloudgpu.has_lora(lora["file"]) or on_pod(lora):
             log(p, f"using the rented {cloudgpu.info()['label']}")
             with cloudgpu.using():
                 return _keyframes(p, indices, reseed, engine, edit, remote)
-        if lora.get("model"):  # a whole model (7 GB) is only on this PC
+        if lora.get("pod"):  # the rented card downloads its own copy after the main files
+            log(p, f'"{lora["label"]}" is still downloading on the rented GPU, so this runs on this PC')
+        elif lora.get("model"):  # a whole model (7 GB) is only on this PC
             log(p, f'"{lora["label"]}" is only installed on this PC, so this runs here')
         else:
             log(p, f'the trained character "{lora["label"]}" is still uploading to the rented GPU, so this runs on this PC')
@@ -886,7 +894,7 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
                 ow, oh = cfg["output_sizes"][q][p.get("aspect", "portrait")]
                 rw, rh = (ow + 15) // 16 * 16, (oh + 15) // 16 * 16
         lora = lora_entry(cfg, p.get("lora", ""), use)  # a trained character, only for the engine it was made for
-        if lora and not model_path(cfg, lora_file(lora)):
+        if lora and not (remote and on_pod(lora)) and not model_path(cfg, lora_file(lora)):
             raise RuntimeError(f'"{lora["label"]}" ({lora_file(lora)}) is not in the models folder yet')
         if edit:
             src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
@@ -903,8 +911,8 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,
                                       p["keyframe_seeds"][key], prefix, steps)
         if lora:
-            wf = comfy.set_unet(wf, lora["file"]) if lora.get("model") else \
-                comfy.add_lora(wf, lora["file"], lora.get("strength", 1.0))
+            wf = comfy.set_unet(wf, lora["pod"]["file"] if remote and on_pod(lora) else lora["file"]) if lora.get("model") \
+                else comfy.add_lora(wf, lora["file"], lora.get("strength", 1.0))
             wf = comfy.apply_lora_settings(wf, lora)
         if upscale:
             wf = comfy.add_upscale(cfg, wf, full=(q == "ultra"))

@@ -43,7 +43,7 @@ OMNI_BF16 = "fasth3_omniref_8step_pruned_bf16.safetensors"
 H3_REF = {H3_BF16: OMNI_BF16, H3_FULL: OMNI_INT8, H3_PRUNED: OMNI_INT8}
 FLUX2_MIN_MEM, FLUX2_DISK = 48, 60
 # downloads that arrive after the card is ready, each switched on by /root/done_<name> on the pod
-EXTRAS = ("video", "qwen_hq", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")
+EXTRAS = ("video", "qwen_hq", "qwen_turbo", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")
 # file sizes in GB (Comfy-Org / comfyicu repos, 23 Oct 2026), for the container disk
 GB = {"krea2_turbo_bf16.safetensors": 24.48, "krea2_turbo_fp8_scaled.safetensors": 12.24,
       "qwen3vl_4b_bf16.safetensors": 8.27, "moss_image_sft_bf16.safetensors": 9.47, "qwen3.5_9b_bf16.safetensors": 17.98,
@@ -56,7 +56,7 @@ GB = {"krea2_turbo_bf16.safetensors": 24.48, "krea2_turbo_fp8_scaled.safetensors
       "qwen3vl_32b_minimax_h3_int8_convrot.safetensors": 25.28, "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": 14.61}
 # always on the pod: Qwen-Image 2.1 int8 + bf16 + VAE, upscaler, Ideogram 4 (both models, encoder, VAE), Krea and
 # MOSS VAEs, the Krea identity / edit LoRAs, plus ComfyUI, packages and room to unpack
-BASE_GB = 16.1 + 29.58 + 0.07 + 28.05 + 0.47 + 1.8 + 40
+BASE_GB = 16.1 + 29.58 + 14.23 + 0.07 + 28.05 + 0.47 + 1.8 + 40  # 14.23: Qwen-Image 2.1 Turbo bf16
 
 
 def pod_files(card):

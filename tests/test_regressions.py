@@ -508,6 +508,32 @@ class LoraSettingsTests(unittest.TestCase):
         self.assertEqual(pipeline.lora_file({"file": "n.safetensors", "model": True}), "diffusion_models/n.safetensors")
         self.assertEqual(pipeline.lora_file({"file": "x.safetensors"}), "loras/x.safetensors")
 
+    def test_a_sigma_schedule_replaces_ksampler_with_a_custom_sampler(self):
+        cfg = pipeline.load_config()
+        turbo = pipeline.lora_entry(cfg, "qwen_image_2.1_turbo_int8_convrot.safetensors", "qwen-image-21")
+        wf = comfy.qwen_image21_workflow(cfg, "p", 1024, 1024, 7, "t")
+        wf = comfy.apply_lora_settings(comfy.set_unet(wf, turbo["file"]), turbo)
+        self.assertEqual(wf["7"]["class_type"], "SamplerCustomAdvanced")
+        self.assertEqual(wf["7s"]["inputs"]["sigmas"].split(", ")[-2:], ["0.414568", "0"])
+        self.assertEqual(wf["7n"]["inputs"]["noise_seed"], 7)
+        self.assertEqual((wf["7g"]["inputs"]["cfg"], wf["7g"]["inputs"]["model"]), (cfg["qwen_image_21"]["cfg"], ["2", 0]))
+        self.assertEqual(wf["7"]["inputs"]["latent_image"], ["6", 0])
+        self.assertEqual(wf["8"]["inputs"]["samples"], ["7", 0])  # the decoder still reads the sampler's latent
+        self.assertEqual(wf["1"]["inputs"]["unet_name"], turbo["file"])
+        self.assertEqual(turbo["pod"], {"extra": "qwen_turbo", "file": "qwen_image_2.1_turbo_bf16.safetensors"})
+
+    def test_a_swapped_model_runs_on_the_pod_once_its_copy_is_there(self):
+        turbo = {"file": "t.safetensors", "model": True, "pod": {"extra": "qwen_turbo", "file": "t_bf16.safetensors"}}
+        with patch.dict(cloudgpu.state, {"status": "ready", "extras": {**cloudgpu.state["extras"], "qwen_turbo": False}}):
+            self.assertFalse(pipeline.on_pod(turbo))
+        with patch.dict(cloudgpu.state, {"status": "ready", "extras": {**cloudgpu.state["extras"], "qwen_turbo": True}}):
+            self.assertTrue(pipeline.on_pod(turbo))
+            self.assertFalse(pipeline.on_pod({"file": "n.safetensors", "model": True}))
+        self.assertIn("qwen_turbo", cloudgpu.EXTRAS)
+        script = (ROOT / "app" / "cloud_setup.sh").read_text(encoding="utf-8")
+        self.assertIn("extra qwen_turbo $Q/diffusion_models/qwen_image_2.1_turbo_bf16.safetensors", script)
+        self.assertIn('"qwen_turbo"', (ROOT / "app" / "cloud_agent.py").read_text(encoding="utf-8"))
+
     def test_lora_without_settings_leaves_the_recipe_alone(self):
         cfg = pipeline.load_config()
         wf = comfy.apply_lora_settings(comfy.qwen_image21_workflow(cfg, "p", 1024, 1024, 7, "t"), {"strength": 1.0})

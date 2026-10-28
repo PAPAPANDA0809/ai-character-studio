@@ -691,6 +691,25 @@ def apply_lora_settings(wf, lora):
                 n["inputs"]["scheduler"] = lora["scheduler"]
         if "negative" in lora and n["class_type"] == "TextEncodeQwenImage21":
             n["inputs"]["negative_prompt"] = lora["negative"]
+    if "sigmas" in lora:
+        wf = use_sigmas(wf, lora["sigmas"])
+    return wf
+
+
+def use_sigmas(wf, sigmas):
+    """Sample on a fixed noise schedule instead of KSampler's steps (Qwen-Image 2.1 Turbo bakes its 8-step schedule
+    into the checkpoint; ComfyUI's template feeds exactly these sigmas). The KSampler node keeps its id, so the
+    decoder and the upscale pass still read the latent from it."""
+    key, ks = next((k, n) for k, n in wf.items() if n["class_type"] == "KSampler")
+    i = ks["inputs"]
+    wf[key + "s"] = {"class_type": "ManualSigmas", "inputs": {"sigmas": sigmas}}
+    wf[key + "k"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": i.get("sampler_name", "euler")}}
+    wf[key + "n"] = {"class_type": "RandomNoise", "inputs": {"noise_seed": i["seed"]}}
+    wf[key + "g"] = {"class_type": "CFGGuider",
+                     "inputs": {"model": i["model"], "positive": i["positive"], "negative": i["negative"], "cfg": i["cfg"]}}
+    wf[key] = {"class_type": "SamplerCustomAdvanced",
+               "inputs": {"noise": [key + "n", 0], "guider": [key + "g", 0], "sampler": [key + "k", 0],
+                          "sigmas": [key + "s", 0], "latent_image": i["latent_image"]}}
     return wf
 
 
