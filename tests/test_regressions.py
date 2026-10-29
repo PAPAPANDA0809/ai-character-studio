@@ -461,6 +461,30 @@ class H3PromptTests(unittest.TestCase):
         with patch.object(llm, "_claude", return_value=(good, "Claude")):
             self.assertEqual(llm.h3_prompt({}, "t2va", "s", 5), good)
 
+    def test_local_model_writes_when_claude_declines(self):
+        cfg = {"uncensored_fallback": True, "provider": "ollama", "ollama_model": "q"}
+        good = "integrated_multimodal_description: [Shot 1] ...\n\noverall_soundscape: wind\n\nnon_diegetic_music: N/A"
+        with patch.object(llm, "_claude", return_value=("I'm sorry, I can't help with that.", "Claude")),                 patch.object(llm, "chat", return_value="<think>x</think>" + good):
+            self.assertEqual(llm.h3_prompt(cfg, "t2va", "s", 5), good)
+        with patch.object(llm, "_claude", side_effect=RuntimeError("Claude declined this prompt")),                 patch.object(llm, "chat", return_value="a woman in a red dress on a beach at sunset"):
+            text, label = llm.enhance(cfg, "beach photo", "images", count=1)
+            self.assertEqual((text, label), ("a woman in a red dress on a beach at sunset", "local q"))
+        with patch.object(llm, "_claude", return_value=("Sorry, I won't write that.", "Claude")),                 patch.object(llm, "chat", return_value="rewritten"):
+            self.assertEqual(llm.enhance(cfg, "idea", "images", count=1), ("rewritten", "local q (Claude declined)"))
+        with patch.object(llm, "_claude", return_value=("Sorry, no.", "Claude")):  # fallback off: Claude's word stands
+            self.assertIsNone(llm.h3_prompt({}, "t2va", "s", 5))
+
+    def test_local_fallback_keeps_the_minors_check(self):
+        cfg = {"uncensored_fallback": True, "provider": "ollama", "ollama_model": "q"}
+        with patch.object(llm, "_claude", return_value=(None, "")), patch.object(llm, "chat", return_value="x") as chat:
+            with self.assertRaises(ValueError):
+                llm.enhance(cfg, "a nude 15 year old", "images", count=1)
+            chat.assert_not_called()  # never reaches the model
+        with patch.object(llm, "_claude", return_value=(None, "")),                 patch.object(llm, "chat", return_value="a naked schoolgirl"):
+            with self.assertRaises(ValueError):
+                llm.enhance(cfg, "a woman at school", "images", count=1)
+            self.assertIsNone(llm.h3_prompt(cfg, "t2va", "a woman at school", 5))
+
     def test_clip_workflow_sends_claudes_prompt_once_and_remembers_it(self):
         p = {"id": "x", "video_res": "480p", "h3_prompts": {}}
         good = "integrated_multimodal_description: [Shot 1] a\n\noverall_soundscape: b\n\nnon_diegetic_music: N/A"

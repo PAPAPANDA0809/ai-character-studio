@@ -1005,7 +1005,7 @@ def h3_prompt_for(cfg, p, task, prompt, seconds, refs=0):
     written = llm.h3_prompt(cfg["llm"], task, prompt, seconds, refs=refs)
     if p is not None:
         if not written:
-            log(p, "Claude isn't available for the H3 prompt; using the plain prompt")
+            log(p, "neither Claude nor the local model wrote an H3 prompt; using the plain prompt")
         p["h3_prompts"] = {**dict(list(cache.items())[-30:]), key: written or ""}
         if before:
             log(p, before + " · rendering on the rented card")

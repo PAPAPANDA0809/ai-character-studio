@@ -153,9 +153,14 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
     try:
         text, label = _claude(cfg, ENHANCE_SYSTEM, user)
     except RuntimeError as e:
-        raise RuntimeError(str(e).replace("declined this prompt", "declined to rewrite this idea"))
-    if text:
+        if not cfg.get("uncensored_fallback"):
+            raise RuntimeError(str(e).replace("declined this prompt", "declined to rewrite this idea"))
+        text, label = None, ""
+    if text and not refused(text):
         return text, label
+    if cfg.get("uncensored_fallback"):  # Claude declined or isn't there: the uncensored local Qwen writes it
+        label = f"local {cfg.get('ollama_model')}" + (" (Claude declined)" if text else "")
+        return local_write(cfg, ENHANCE_SYSTEM, user), label
     if cfg["provider"] == "template":
         return idea, "no AI configured"
     if not cfg.get("local_rewrite", False):
@@ -257,10 +262,42 @@ def h3_prompt(cfg, task, scene, seconds, character="", style="", refs=0, motion=
     try:
         text, _ = _claude(cfg, H3_SYSTEM, user, timeout=240)
     except RuntimeError:
-        return None
-    if not text or ("integrated_multimodal_description:" not in text and "detailed_description:" not in text):
-        return None
-    return text.strip()
+        text = None
+    if not _h3_shaped(text) and cfg.get("uncensored_fallback"):  # declined or missing: the local Qwen tries
+        try:
+            text = local_write(cfg, H3_SYSTEM, user)
+        except (RuntimeError, ValueError, OSError):
+            text = None
+    return text.strip() if _h3_shaped(text) else None
+
+
+def _h3_shaped(text):
+    return bool(text) and ("integrated_multimodal_description:" in text or "detailed_description:" in text)
+
+
+REFUSAL = re.compile(r"^\W*(?:I'?m sorry|I am sorry|sorry|I can(?:'|no)t|I cannot|I won'?t|I'?m (?:not able|unable)|"
+                     r"I am (?:not able|unable)|I'?m not comfortable|I don'?t (?:feel comfortable|think I can))", re.I)
+
+
+def refused(text):
+    """Claude sometimes answers a declined request in plain words instead of a refusal stop."""
+    return bool(REFUSAL.search((text or "")[:200]))
+
+
+def local_write(cfg, system, user):
+    """The local Ollama model (an uncensored Qwen3) writes the text when Claude declines. Reelmint's minors check runs
+    on what goes in and on what comes out, whatever image engine the project uses."""
+    import krea
+    krea.validate_prompt(user)
+    try:
+        text = chat(cfg, system, user, want_json=False)
+    except OSError as e:
+        raise RuntimeError(f"the local model ({cfg.get('ollama_model')}) isn't reachable; is Ollama running? ({e})")
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).split("</think>")[-1].strip()
+    if not text:
+        raise RuntimeError("the local model returned nothing")
+    krea.validate_prompt(text)
+    return text
 
 
 def _claude(cfg, system, user, timeout=180):
