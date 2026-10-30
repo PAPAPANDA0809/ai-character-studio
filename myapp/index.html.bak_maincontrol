@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5c6eff">
+<title>MyApp</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#111317; --card:#1a1d23; --line:#2a2e37; --text:#e7e9ee; --muted:#9097a5; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+         font:16px/1.4 system-ui, Segoe UI, Roboto, sans-serif; padding:28px 16px; }
+  h1 { font-size:22px; margin:8px 4px 4px; }
+  p.sub { color:var(--muted); margin:0 4px 22px; font-size:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:14px; max-width:640px; }
+  a.tile { display:flex; flex-direction:column; gap:12px; padding:18px; border-radius:18px; background:var(--card);
+           border:1px solid var(--line); color:inherit; text-decoration:none; }
+  a.tile:active { transform:scale(.98); }
+  .ico { width:56px; height:56px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-size:28px; }
+  .name { font-weight:600; }
+  .desc { color:var(--muted); font-size:13px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#555; margin-right:6px; vertical-align:middle; }
+  .dot.up { background:#4cc38a; } .dot.down { background:#ff6b6b; }
+</style>
+</head>
+<body>
+  <h1>MyApp</h1>
+  <p class="sub">Your apps on the home PC (Tailscale must be on)</p>
+  <div class="grid">
+    <a class="tile" href="https://desktop-h7p36q5.tail46ae30.ts.net/" data-status="https://desktop-h7p36q5.tail46ae30.ts.net/login">
+      <div class="ico" style="background:linear-gradient(135deg,#6d7bff,#9b6dff)">📈</div>
+      <div><div class="name"><span class="dot"></span>Wickward</div><div class="desc">Trading dashboard</div></div>
+    </a>
+    <a class="tile" href="http://desktop-h7p36q5:8090/" data-status="http://desktop-h7p36q5:8090/api/status">
+      <img class="ico" src="reelmint-192.png" alt="">
+      <div><div class="name"><span class="dot"></span>Reelmint</div><div class="desc">Images and videos from a post idea</div></div>
+    </a>
+  </div>
+<script>
+  // opened over https (e.g. a shared device): point the Reelmint tile at its https entrance
+  if (location.protocol === 'https:') document.querySelectorAll('[data-status]').forEach(a => {
+    a.href = `https://${location.hostname}:8443/`; a.dataset.status = `https://${location.hostname}:8443/api/status`; });
+  // light up a green dot when the studio is reachable
+  document.querySelectorAll('[data-status]').forEach(async a => {
+    const dot = a.querySelector('.dot');
+    try { await fetch(a.dataset.status, {cache: 'no-store', mode: 'no-cors'}); dot.classList.add('up'); }
+    catch (e) { dot.classList.add('down'); }
+  });
+</script>
+</body>
+</html>
