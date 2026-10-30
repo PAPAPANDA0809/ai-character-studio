@@ -23,6 +23,7 @@ import pipeline
 import imageundo
 import krea
 import library
+import facegallery
 import push
 
 STATIC = os.path.join(pipeline.APP_DIR, "static")
@@ -240,7 +241,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/library":
                 return self.send_json(library.listing(u))
             if m := re.fullmatch(r"/library/thumb/([^/]+)", path):
-                f = library.thumb_file(u, urllib.parse.unquote(m.group(1)))
+                item_id = urllib.parse.unquote(m.group(1))
+                f = facegallery.thumb_file(item_id) if item_id.startswith("face:") else library.thumb_file(u, item_id)
                 return self.send_file(f) if f else self.send_json({"error": "not found"}, 404)
             if m := re.fullmatch(r"/api/gallery/(images|videos)", path):
                 return self.send_json(pipeline.gallery(m.group(1), u))
@@ -313,6 +315,8 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 return self.send_json({"id": library.save_own(u, q.get("kind", [""])[0], q.get("name", ["picture.png"])[0], data)})
             b = self.body()
+            if path == "/api/library/face/select":
+                return self.send_json({"name": facegallery.select(b.get("id", ""), pipeline.char_dir(u))})
             if path == "/api/push/subscribe":
                 push.subscribe(u, b.get("subscription"))
                 return self.send_json({"ok": True})

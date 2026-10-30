@@ -14,6 +14,7 @@ import re
 import threading
 import urllib.parse
 import urllib.request
+import facegallery
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "library")
 KINDS = ("pose", "outfit")
@@ -195,6 +196,7 @@ def listing(user):
         out[kind] = {"items": items, "imported": bool(index(kind)), "importing": importing[kind],
                      "source": SOURCES[kind]}
     out["favorites"] = favorites(user)
+    out["face"] = facegallery.listing()
     return out
 
 

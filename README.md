@@ -75,3 +75,9 @@ When Claude isn't available on the PC, `llm.local_rewrite` decides what happens:
 
 - ComfyUI runs with `--disable-pinned-memory --cache-ram 6` so the 14B video model doesn't push Windows into heavy paging on 32 GB RAM.
 - Close GPU-heavy apps (browsers with many tabs, games) before animating: the 8 GB card is tight.
+
+## Local face gallery
+
+Create → Face picture includes the downloaded portrait and styling gallery, with hairstyle filters, search and favourites. Project Settings → Reference pictures → Choose face opens the same picker. Selecting a gallery picture copies that original into the signed-in user's character pictures; existing reference and generation controls continue to use that private copy.
+
+To connect or relocate an existing download, run `python setup/import_face_gallery.py "D:\Download\AI-Face-Reference-Library"` from the repository root and restart the Reelmint web server. The importer uses the saved gallery manifest and download receipts, checks that originals exist, and creates small WebP thumbnails under `app/library/face`. It does not download the gallery again or copy all originals into Reelmint. Originals stay in the configured download folder, which must remain available for selecting new faces.

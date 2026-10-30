@@ -652,15 +652,21 @@ let PICLIB = null;
 const MULTI_REF = ['qwen-image-21', 'flux3-klein'];  // engines that take a pose / outfit picture next to the character
 async function loadPicLib() { try { PICLIB = await api('/api/library'); } catch (e) { PICLIB = PICLIB || null; } return PICLIB; }
 const picItem = id => id && PICLIB ? (PICLIB[id.replace(/^mine-/, '').split(':')[0]]?.items || []).find(x => x.id === id) : null;
-const picThumb = (id, kind) => kind === 'face' ? '/characters/' + encodeURIComponent(id) : '/library/thumb/' + encodeURIComponent(id);
-const faceLib = () => ({items: (CHARS || []).map(c => ({id: c, group: c, cat: 'My pictures', sub: '', angle: '', name: c.replace(/\.\w+$/, '')})), imported: true, importing: null});
-const picDesc = (id, kind) => { if (kind === 'face') return id.replace(/\.\w+$/, ''); const it = picItem(id); if (!it) return id ? id.split(':').pop() : '';
+const picThumb = (id, kind) => kind === 'face' && !id.startsWith('face:') ? '/characters/' + encodeURIComponent(id) : '/library/thumb/' + encodeURIComponent(id);
+const faceLib = () => ({items: [...(CHARS || []).map(c => ({id: c, group: c, cat: 'My pictures', sub: '', angle: '', name: c.replace(/\.\w+$/, '')})), ...(PICLIB?.face?.items || [])], imported: true, importing: null});
+const picDesc = (id, kind) => { if (kind === 'face' && !id.startsWith('face:')) return id.replace(/\.\w+$/, ''); const it = picItem(id); if (!it) return id ? id.split(':').pop() : '';
   return it.cat === 'My pictures' ? 'Your picture · ' + it.name : it.angle ? `${it.sub || it.cat} · ${it.angle}` : `${it.cat} · ${it.group}`; };
 function picSlot(kind, id, label, empty) {
   return `<span class="ps-pic ${id ? '' : 'empty'}" ${id ? `style="background-image:url('${picThumb(id, kind)}')${kind === 'face' ? ';background-size:cover' : ''}"` : ''}>${id ? '' : '＋'}</span>
     <span><b>${label}</b><small>${id ? esc(picDesc(id, kind)) : empty || ({pose: 'Choose a pose picture', outfit: 'Choose an outfit picture', face: 'Choose who it is'})[kind]}</small></span>`;
 }
-const PK = {cat: {}, sub: '', angle: 'front', q: '', limit: 150};
+const PK = {cat: {}, sub: '', hair: '', angle: 'front', q: '', limit: 150};
+async function resolveFacePicture(id) {
+  if (!id.startsWith('face:')) return id;
+  const selected = await api('/api/library/face/select', {id});
+  CHARS = await api('/api/characters');
+  return selected.name;
+}
 async function openPicker(kind, current, onPick, noneLabel) {
   if (!PICLIB) await loadPicLib();
   if (!PICLIB) return alert('The picture library could not be loaded');
@@ -676,13 +682,16 @@ async function openPicker(kind, current, onPick, noneLabel) {
     const inCat = x => cat === 'All' || (cat === '★ Favourites' ? favs.includes(x.id) : x.cat === cat);
     const subs = kind === 'pose' ? [...new Set(all.filter(inCat).map(x => x.sub).filter(Boolean))].sort() : [];
     const sub = subs.includes(PK.sub) ? PK.sub : '';
+    const hairs = kind === 'face' ? [...new Set(all.filter(inCat).map(x => x.sub).filter(Boolean))].sort() : [];
+    const hair = hairs.includes(PK.hair) ? PK.hair : '';
     const q = PK.q.trim().toLowerCase();
     const shown = all.filter(x => inCat(x) && (!sub || x.sub === sub)
+      && (!hair || x.sub === hair)
       && (kind !== 'pose' || cat === '★ Favourites' || !PK.angle || !x.angle || x.angle === PK.angle)
-      && (!q || [x.id, x.name, x.sub, x.cat, x.angle].join(' ').toLowerCase().includes(q)));
+      && (!q || [x.id, x.name, x.sub, x.cat, x.angle, x.keywords].join(' ').toLowerCase().includes(q)));
     const imp = lib.importing;
     const importing = imp && !imp.error && (!imp.total || imp.done < imp.total);
-    box.innerHTML = `<div class="pk-box" role="dialog" aria-label="${kind === 'pose' ? 'Pick a pose picture' : 'Pick an outfit picture'}">
+    box.innerHTML = `<div class="pk-box" role="dialog" aria-modal="true" aria-label="${({pose: 'Pick a pose picture', outfit: 'Pick an outfit picture', face: 'Pick a face picture'})[kind]}">
       <div class="pk-head"><h3>${({pose: 'Pick a pose', outfit: 'Pick an outfit', face: 'Pick a face'})[kind]}</h3>
         <button id="pk-up">${kind === 'face' ? 'Add a new face' : 'Upload your own'}</button><button id="pk-none">${esc(noneLabel || 'None')}</button><button id="pk-close" aria-label="Close">✕</button>
         <input type="file" id="pk-file" accept="image/png,image/jpeg,image/webp" hidden></div>
@@ -690,9 +699,11 @@ async function openPicker(kind, current, onPick, noneLabel) {
         : ME?.admin ? `The ${kind === 'pose' ? 'POSE-DB-01 pose' : 'COSTUME-DB-01 outfit'} gallery isn't imported yet. <button id="pk-import">Import it</button> (about 12 MB of thumbnails; each full picture downloads the first time it's used)`
         : 'An admin can import the free pose and outfit galleries. Meanwhile you can upload your own pictures.'}${imp?.error ? ` <span style="color:var(--err)">Import failed: ${esc(imp.error)}</span>` : ''}</div>` : ''}
       <div class="pk-tabs">${cats.map(c => `<button data-cat="${esc(c)}" class="${c === cat ? 'on' : ''}">${esc(c)}</button>`).join('')}</div>
+      ${kind === 'face' ? `<div class="pk-note">${shown.length} pictures · ${PICLIB.face?.items.length || 0} in the local gallery</div>` : ''}
       <div class="pk-filters">${kind === 'pose' ? `<select id="pk-sub" aria-label="Kind of pose"><option value="">All kinds</option>${subs.map(s => `<option ${s === sub ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
         <select id="pk-angle" aria-label="Angle">${[['', 'All angles'], ['front', 'Front'], ['three-quarter', 'Three-quarter'], ['side', 'Side'], ['from above', 'From above'], ['from below', 'From below']].map(([v, l]) => `<option value="${v}" ${v === PK.angle ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
-        <input id="pk-q" placeholder="${({pose: 'Search, e.g. P012 or kneeling', outfit: 'Search, e.g. lace, denim, red', face: 'Search by name'})[kind]}" value="${esc(PK.q)}"></div>
+        ${kind === 'face' && hairs.length ? `<select id="pk-hair" aria-label="Hairstyle"><option value="">All hairstyles</option>${hairs.map(h => `<option ${h === hair ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select>` : ''}
+        <input id="pk-q" placeholder="${({pose: 'Search, e.g. P012 or kneeling', outfit: 'Search, e.g. lace, denim, red', face: 'Search by name or hairstyle'})[kind]}" value="${esc(PK.q)}"></div>
       <div class="pk-grid">${shown.slice(0, PK.limit).map(x => `<button class="pk-it ${x.id === current ? 'on' : ''}" data-id="${esc(x.id)}" title="${esc(x.id.split(':').pop() + (x.name ? ' · ' + x.name : ''))}">
           <img src="${picThumb(x.id, kind)}" alt="" loading="lazy"><span class="fav ${favs.includes(x.id) ? '' : 'off'}" role="button" data-fav="${esc(x.id)}" title="${favs.includes(x.id) ? 'Remove from favourites' : 'Add to favourites'}">${favs.includes(x.id) ? '★' : '☆'}</span><span>${esc(x.cat === 'My pictures' ? x.name : kind === 'pose' ? `${x.group.split('_').pop()} · ${x.sub || x.angle}` : x.group)}</span>
           ${x.cat === 'My pictures' && kind !== 'face' ? `<span class="del" role="button" data-del="${esc(x.id)}" title="Remove your picture">×</span>` : ''}</button>`).join('')
@@ -714,6 +725,7 @@ async function openPicker(kind, current, onPick, noneLabel) {
     $$('.pk-tabs [data-cat]').forEach(b => b.onclick = () => { PK.cat[kind] = b.dataset.cat; PK.limit = 150; draw(); });
     if ($('#pk-sub')) $('#pk-sub').onchange = e => { PK.sub = e.target.value; PK.limit = 150; draw(); };
     if ($('#pk-angle')) $('#pk-angle').onchange = e => { PK.angle = e.target.value; PK.limit = 150; draw(); };
+    if ($('#pk-hair')) $('#pk-hair').onchange = e => { PK.hair = e.target.value; PK.limit = 150; draw(); };
     $('#pk-q').oninput = e => { PK.q = e.target.value; PK.limit = 150; clearTimeout(PK.qt); PK.qt = setTimeout(() => { draw(); const i = $('#pk-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); };
     if ($('#pk-more')) $('#pk-more').onclick = () => { PK.limit += 300; draw(); };
     $$('.pk-it').forEach(b => b.onclick = async e => {
@@ -729,7 +741,12 @@ async function openPicker(kind, current, onPick, noneLabel) {
         try { await api('/api/library/delete', {id: e.target.dataset.del}); } catch (err) { return alert(err.message); }
         await loadPicLib(); return draw();
       }
-      close(); onPick(b.dataset.id);
+      if (b.disabled) return;
+      b.disabled = true;
+      try {
+        const id = kind === 'face' ? await resolveFacePicture(b.dataset.id) : b.dataset.id;
+        close(); await onPick(id);
+      } catch (err) { b.disabled = false; alert(err.message); }
     });
     if (importing) PK.timer = setTimeout(async () => { await loadPicLib(); if ($('#pk')) draw(); }, 1500);
   };
@@ -1439,6 +1456,7 @@ function renderStudio() {
       return `<details data-detail="references" ${pRefs.length ? 'open' : ''}><summary>Reference pictures${pRefs.length ? ` (${pRefs.length})` : ''}</summary>
       <div class="reference-preview">${pRefs.map(c => `<img src="/characters/${encodeURIComponent(c)}" alt="${esc(c)}">`).join('')}</div>
       ${[0,1,2].map(r=>`<select class="f-ref" aria-label="Reference picture ${r+1}" style="${r ? 'margin-top:6px' : ''}${r && !pRefs[r-1] ? ';display:none' : ''}" ${busy || noRef ? 'disabled' : ''}>${refOpts(r)}</select>`).join('')}
+      <button id="studio-pick-face" ${busy || noRef ? 'disabled' : ''}>Choose face</button>
       <button id="studio-add-reference" ${busy ? 'disabled' : ''}>Upload reference</button>
       ${noRef ? `<p class="field-note">${isT2V ? T2V_REF_HINT : 'Choose a reference-compatible image engine under Advanced.'}</p>` : ''}
     </details>`; })()}
@@ -1600,6 +1618,11 @@ function renderStudio() {
   on('#ma-more', () => setPanel(true));
   on('#st-settings', () => setPanel(!PANEL));
   on('#studio-add-reference', () => $('#ref-file').click());
+  on('#studio-pick-face', () => openPicker('face', (P.references || [P.reference])[0] || '', async id => {
+    const refs = P.references || (P.reference ? [P.reference] : []);
+    const references = id ? [id, ...refs.filter(c => c !== id)].slice(0, 3) : refs.slice(1);
+    P = await api(`/api/projects/${P.id}/reference`, {references}); render();
+  }, 'No face picture'));
   on('#st-pclose', () => setPanel(false));
   on('#st-back', () => setPanel(false));
   on('#ma-vid', () => $('#st-vid').click());
