@@ -24,3 +24,4 @@ app/cloud_known_hosts
 app/cloud_last_setup.log
 app/push_keys.pem
 app/push_subs.json
+app/library/

@@ -22,6 +22,7 @@ import llm
 import pipeline
 import imageundo
 import krea
+import library
 import push
 
 STATIC = os.path.join(pipeline.APP_DIR, "static")
@@ -236,6 +237,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(pipeline.list_projects(u))
             if path == "/api/characters":
                 return self.send_json(pipeline.list_characters(u))
+            if path == "/api/library":
+                return self.send_json(library.listing(u))
+            if m := re.fullmatch(r"/library/thumb/([^/]+)", path):
+                f = library.thumb_file(u, urllib.parse.unquote(m.group(1)))
+                return self.send_file(f) if f else self.send_json({"error": "not found"}, 404)
             if m := re.fullmatch(r"/api/gallery/(images|videos)", path):
                 return self.send_json(pipeline.gallery(m.group(1), u))
             if path == "/api/cloud":  # the RunPod balance only for admins, who rent and pay for the card
@@ -302,6 +308,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not data:
                     return self.send_json({"error": "empty upload"}, 400)
                 return self.send_json({"name": pipeline.save_character(u, q.get("name", ["character.png"])[0], data)})
+            if path == "/api/library/upload":  # raw image bytes, ?kind=pose|outfit&name=file.png
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                return self.send_json({"id": library.save_own(u, q.get("kind", [""])[0], q.get("name", ["picture.png"])[0], data)})
             b = self.body()
             if path == "/api/push/subscribe":
                 push.subscribe(u, b.get("subscription"))
@@ -335,10 +345,10 @@ class Handler(BaseHTTPRequestHandler):
                 krea.save_key(b.get("key"))
                 return self.send_json({"api_ready": krea.available()})
             if path == "/api/enhance":
+                nrefs = len(b.get("references") or []) or int(bool(b.get("reference")))
                 text, engine = llm.enhance(pipeline.load_config()["llm"], b.get("idea", ""), b.get("mode", "video"),
-                                           b.get("style", ""), b.get("character", ""),
-                                           len(b.get("references") or []) or bool(b.get("reference")),
-                                           b.get("keyframes"))
+                                           b.get("style", ""), b.get("character", ""), nrefs, b.get("keyframes"),
+                                           pipeline.picture_note(nrefs, b.get("outfit_pic"), b.get("pose_pic")))
                 return self.send_json({"text": text, "engine": engine})
             if path == "/api/characters/delete":
                 if not pipeline.delete_character(u, b.get("name", "")):
@@ -367,8 +377,18 @@ class Handler(BaseHTTPRequestHandler):
                 p = pipeline.create_project(u, b["idea"], b.get("keyframes", 4), b.get("style", ""),
                                             b.get("character", ""), b.get("aspect", "portrait"), b.get("seed"),
                                             b.get("references") or b.get("reference", ""), b.get("image_engine"), b.get("video_engine"),
-                                            b.get("mode", "video"), b.get("quality"), b.get("video_res"), b.get("lora"))
+                                            b.get("mode", "video"), b.get("quality"), b.get("video_res"), b.get("lora"),
+                                            b.get("outfit_pic", ""), b.get("pose_pic", ""))
                 return self.send_json(p)
+            if path == "/api/library/import":  # fetches the gallery's list and thumbnails (about 12 MB each)
+                if not auth.is_admin(u):
+                    return self.send_json({"error": "admins only"}, 403)
+                return self.send_json(library.start_import(b.get("kind")))
+            if path == "/api/library/favorite":
+                return self.send_json(library.set_favorite(u, b.get("kind"), b.get("id"), bool(b.get("on"))))
+            if path == "/api/library/delete":
+                library.delete_own(u, b.get("id", ""))
+                return self.send_json({"ok": True})
             m = re.fullmatch(r"/api/projects/([\w\-]+)/(\w+)", path)
             if not m or not self.owns(u, m.group(1)):
                 return self.send_json({"error": "not found"}, 404)
@@ -378,6 +398,8 @@ class Handler(BaseHTTPRequestHandler):
                                                            b.get("mode"), b.get("t2v_engine"), b.get("quality"),
                                                            b.get("video_res"), b.get("lora"), b.get("style"),
                                                            b.get("video_seconds")))
+            if action == "pictures":
+                return self.send_json(pipeline.set_pictures(pid, b.get("outfit_pic"), b.get("pose_pic"), b.get("index")))
             if action == "reference":
                 return self.send_json(pipeline.set_reference(pid, b.get("references") or b.get("reference", "")))
             if action == "pin":

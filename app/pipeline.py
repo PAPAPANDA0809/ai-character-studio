@@ -17,6 +17,7 @@ import cloudgpu
 import comfy
 import llm
 import krea
+import library
 import push
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -477,19 +478,21 @@ def refs_of(p):
 
 
 def create_project(user, idea, n_keyframes, style, character, aspect, seed=None, reference="",
-                   image_engine=None, video_engine=None, mode="video", quality=None, video_res=None, lora=None):
+                   image_engine=None, video_engine=None, mode="video", quality=None, video_res=None, lora=None,
+                   outfit_pic="", pose_pic=""):
     cfg = load_config()
+    outfit_pic, pose_pic = library.valid(user, outfit_pic, "outfit"), library.valid(user, pose_pic, "pose")
     if image_engine in krea.API_ENGINES or image_engine == "krea2-turbo":
         krea.validate_prompt(". ".join(str(value or "") for value in (idea, style, character)))
         if reference and image_engine != "krea2-turbo":  # the GPU Krea takes one character picture; the API none
             raise ValueError("Krea 2 generates from text. Remove reference pictures or choose Qwen-Image 2.1.")
-    if image_engine in PROMPT_CHECKED:
-        krea.validate_prompt(". ".join(str(value or "") for value in (idea, style, character)))
+    krea.check_minors(". ".join(str(value or "") for value in (idea, style, character)))  # every engine
     mode = mode if mode in ("images", "t2v") else "video"
     n_keyframes = max(2 if mode == "video" else 1, min(int(n_keyframes), 12 if mode == "images" else 8))
     refs = clean_refs(user, reference)
     reference = refs[0] if refs else ""
-    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=len(refs), mode=mode)
+    plan = llm.plan(cfg["llm"], idea, n_keyframes, style, character, has_reference=len(refs), mode=mode,
+                    note=picture_note(len(refs), outfit_pic, pose_pic))
     base = user + "--" + time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^a-z0-9]+", "-", plan["title"].lower()).strip("-")[:30]
     pid, k = base, 2
     while os.path.exists(pdir(pid)):  # same title in the same second
@@ -500,8 +503,9 @@ def create_project(user, idea, n_keyframes, style, character, aspect, seed=None,
         "id": pid, "created": time.time(), "idea": idea, "style": style, "aspect": aspect,
         "seed": int(seed) if seed not in (None, "") else random.randint(1, 2**31 - 1),
         "plan": plan, "keyframe_seeds": {}, "status": "planned", "log": [],
-        "reference": reference, "references": refs,
-        "image_engine": "gpt-image" if image_engine == "gpt-image" and cloud.available() else
+        "reference": reference, "references": refs, "outfit_pic": outfit_pic, "pose_pic": pose_pic, "pose_pics": {},
+        "image_engine": (image_engine if image_engine in MULTI_REF else MULTI_REF[0]) if outfit_pic or pose_pic else
+                        "gpt-image" if image_engine == "gpt-image" and cloud.available() else
                         (image_engine if image_engine in comfy.REFERENCE_ENGINES else comfy.REFERENCE_ENGINES[0]) if reference else
                         image_engine if image_engine in (*comfy.IMAGE_ENGINES, *krea.API_ENGINES) else cfg.get("default_image_engine", "qwen-image-21"),
         "video_engine": video_engine if video_engine in comfy.VIDEO_ENGINES else cfg.get("default_video_engine", "wan22-14b"),
@@ -604,6 +608,57 @@ def set_engines(pid, image_engine=None, video_engine=None, mode=None, t2v_engine
     return p
 
 
+MULTI_REF = ("qwen-image-21", "flux3-klein")  # engines that take a pose / outfit picture next to the character's
+
+
+def picture_note(n_refs, outfit_pic, pose_pic):
+    """Tells the planner (and Improve) that clothes or pose come from a picture, so the words don't contradict it."""
+    k, out = n_refs, []
+    if outfit_pic:
+        k += 1
+        out.append(f"The outfit comes from an outfit picture (picture {k}): don't describe clothing, shoes or accessories")
+    if pose_pic:
+        k += 1
+        out.append(f"The body pose comes from a pose picture (picture {k}): don't describe the pose, arms or legs; "
+                   "describe the place, light, mood and framing")
+    return ". ".join(out) + "." if out else ""
+
+
+def picture_extras(p, i):
+    """[(role, library id)] going to the image engine after the character pictures for picture i: the project's
+    outfit picture, then this picture's own pose picture or else the project's."""
+    out = []
+    if p.get("outfit_pic"):
+        out.append(("outfit", p["outfit_pic"]))
+    pose = (p.get("pose_pics") or {}).get(str(i), p.get("pose_pic", ""))
+    if pose:
+        out.append(("pose", pose))
+    return out
+
+
+def set_pictures(pid, outfit_pic=None, pose_pic=None, index=None):
+    """Change the outfit or pose picture: pose with index sets that one picture's pose ("" = back to the project's;
+    "none" = no pose picture for it)."""
+    p, user = load(pid), user_of(pid)
+    if outfit_pic is not None:
+        p["outfit_pic"] = library.valid(user, outfit_pic, "outfit")
+    if pose_pic is not None:
+        if index is None:
+            p["pose_pic"] = library.valid(user, pose_pic, "pose")
+        else:
+            pics = p.setdefault("pose_pics", {})
+            pics.pop(str(int(index)), None)
+            if pose_pic == "none":
+                pics[str(int(index))] = ""
+            elif library.valid(user, pose_pic, "pose"):
+                pics[str(int(index))] = pose_pic
+    if (p.get("outfit_pic") or p.get("pose_pic") or any((p.get("pose_pics") or {}).values())) \
+            and p.get("image_engine") not in MULTI_REF:
+        p["image_engine"] = MULTI_REF[0]
+    save(p)
+    return p
+
+
 def set_reference(pid, reference):
     p = load(pid)
     p["references"] = clean_refs(user_of(pid), reference)
@@ -653,7 +708,7 @@ def keyframe_prompt(p, i):
     return ". ".join(s.strip().rstrip(".") for s in parts if s and s.strip())
 
 
-def reference_prompt(p, i, n=None):
+def reference_prompt(p, i, n=None, extras=()):
     """Character-picture prompt: keep the subject from the reference (a person, animal, product or object) and let
     the user's words decide clothing, pose and scene; an outfit named in the prompt replaces the reference outfit.
     n = how many pictures the engine gets (Krea 2 takes only the first)."""
@@ -664,15 +719,29 @@ def reference_prompt(p, i, n=None):
     # Image models read "face", "hair", "people" (even in "do not add people") as a request to draw a person, so
     # person and clothing words are only added when the user's own description is about a person / clothes.
     n = n or len(refs_of(p))  # Qwen's encoder labels them "Picture 1", "Picture 2", ... in this order
-    src = "picture 1" if n > 1 else "the reference image"
-    keep = f"Keep the exact same subject from {src}, with its identity and details unchanged"
-    if PERSON_WORDS.search(scene):
-        keep += ": same face, eyes, hair, skin tone and body"
-    if CLOTHING_WORDS.search(scene):
-        keep += f". Use the clothing described here instead of the outfit in {src}"
-    if n > 1:
-        keep += f". Pictures 2{' and 3' if n > 2 else ''} are extra references: use them only as the description says"
-    return f"{keep}. {scene}. " + (f"Style: {style}." if style else "")
+    total = n + len(extras)
+    src = "picture 1" if total > 1 else "the reference image"
+    roles = [r for r, _ in extras]
+    lines = []
+    if n:
+        keep = f"Keep the exact same subject from {src}, with its identity and details unchanged"
+        if PERSON_WORDS.search(scene) or roles:
+            keep += ": same face, eyes, hair, skin tone and body"
+        if CLOTHING_WORDS.search(scene) and "outfit" not in roles:
+            keep += f". Use the clothing described here instead of the outfit in {src}"
+        if n > 1:
+            keep += f". Pictures 2{' and 3' if n > 2 else ''} are extra references: use them only as the description says"
+        lines.append(keep)
+    for k, role in enumerate(roles, n + 1):
+        if role == "outfit":
+            lines.append(f"The person wears exactly the outfit shown in picture {k}: every garment with its colour, "
+                         "fabric, cut and details, plus its shoes and accessories")
+        else:
+            lines.append(f"Copy the exact body pose from picture {k}, a faceless grey mannequin line drawing: the same "
+                         "position of the head, torso, arms, hands and legs, and the same camera angle. Take only the "
+                         "pose from it, not its drawing style, grey colour or mannequin body; the result is a "
+                         "finished, fully rendered image")
+    return ". ".join(lines + [scene]) + ". " + (f"Style: {style}." if style else "")
 
 
 def video_size(cfg, p):
@@ -845,16 +914,23 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             raise RuntimeError("Krea 2 generates from text. Remove reference pictures or choose Qwen-Image 2.1.")
         if use == "krea2-turbo" and ref and not edit and not (remote and cloudgpu.state["extras"].get("krea2ref")):
             raise RuntimeError("Krea 2 with a character picture runs on a rented card once its reference files are in")
-        if (use in krea.API_ENGINES or use == "krea2-turbo" or use in PROMPT_CHECKED) and not edit:
-            krea.validate_prompt(". ".join((p.get("idea", ""), keyframe_prompt(p, i))))
+        if not edit:  # every engine
+            krea.check_minors(". ".join((p.get("idea", ""), keyframe_prompt(p, i))))
         if ref and use != "gpt-image" and use not in comfy.REFERENCE_ENGINES:
             use = comfy.REFERENCE_ENGINES[0]
+        extras = [] if edit or c is None or use == "gpt-image" else picture_extras(p, i)  # GPT Image: words only
+        if extras and use not in MULTI_REF:
+            log(p, f"keyframe {i + 1}/{n}: pose and outfit pictures need Qwen-Image 2.1, so this picture uses it")
+            use = MULTI_REF[0]
+        extra_names = []
+        for role, item in extras:
+            path = library.local_file(user_of(p["id"]), item)
+            extra_names.append(c.upload_image(path, "aics_lib_" + re.sub(r"[^\w.\-]", "_", item) + os.path.splitext(path)[1]))
         if edit:  # the picture itself is the reference: Krea 2 edits Krea projects on a card that has the edit files,
             # Qwen-Image 2.1 everything else
             use = ("krea2-turbo" if use == "krea2-turbo" and krea_edits(remote) else
                    "flux3-klein" if use == "flux3-klein" else "qwen-image-21")
-            if use == "krea2-turbo" or use in PROMPT_CHECKED:
-                krea.validate_prompt(edit)
+            krea.check_minors(". ".join((p.get("idea", ""), edit)))
         if use == "ideogram4" and not (remote and cloudgpu.state["extras"].get("ideogram")):
             raise RuntimeError("Ideogram 4.0 runs on a rented card: connect a Fast GPU and wait until Ideogram is "
                                "ready in its panel, or pick Qwen-Image 2.1")
@@ -903,10 +979,10 @@ def _keyframes(p, indices=None, reseed=False, engine=None, edit=None, remote=Non
             name = c.upload_image(src, f"aics_{p['id']}_edit{i:02d}.png")
             # the instruction as typed: the trained character's trigger lead-in would read as a new picture request
             wf = comfy.reference_workflow(cfg, use, edit, [name], rw, rh, p["keyframe_seeds"][key], prefix, steps, edit=True)
-        elif ref:
-            wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i, 1 if use == "krea2-turbo" else None),
-                                                                 lora), ref_names, rw, rh,
-                                          p["keyframe_seeds"][key], prefix, steps)
+        elif ref or extras:
+            n_char = len(ref_names) if extras else (1 if use == "krea2-turbo" else None)
+            wf = comfy.reference_workflow(cfg, use, with_trigger(reference_prompt(p, i, n_char, extras), lora),
+                                          ref_names + extra_names, rw, rh, p["keyframe_seeds"][key], prefix, steps)
         else:
             wf = comfy.image_workflow(cfg, use, with_trigger(keyframe_prompt(p, i), lora), rw, rh,
                                       p["keyframe_seeds"][key], prefix, steps)
@@ -978,6 +1054,7 @@ def clip_workflow(cfg, engine, prompt, start, end, w, h, seed, prefix, p=None, r
     pictures for H3's reference-to-video). H3 follows the project's setting: 720p = its native 768x1344 (about 2.5x
     slower: 7.3 min of sampling on an RTX 5090 against ~2.5 at 480), 480p = 480x832. For H3, Claude first rewrites
     the prompt into MiniMax's own format (shots, camera, dialogue, soundscape, music) when it is available."""
+    krea.check_minors(". ".join(((p or {}).get("idea", ""), prompt or "")))  # every engine
     if engine == "h3":
         res = "720p" if (p or {}).get("video_res") == "720p" else "480p"
         unet = cloudgpu.state.get("h3_unet")

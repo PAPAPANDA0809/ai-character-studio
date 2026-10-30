@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "app"))
 import auth
 import cloudgpu
 import comfy
+import library
 import llm
 import pipeline
 
@@ -563,4 +564,109 @@ class LoraSettingsTests(unittest.TestCase):
         wf = comfy.apply_lora_settings(comfy.qwen_image21_workflow(cfg, "p", 1024, 1024, 7, "t"), {"strength": 1.0})
         self.assertEqual(wf["7"]["inputs"]["cfg"], cfg["qwen_image_21"]["cfg"])
         self.assertEqual(wf["5"]["inputs"]["negative_prompt"], "")
+
+
+class PicLibraryTests(unittest.TestCase):
+    """Pose and outfit pictures picked from the library go to Qwen as extra references after the character's."""
+
+    def test_gallery_index_is_read_and_translated(self):
+        html = ('<script>\nconst D=[{"id": "full_sexy_P001_front", "系統": "全身1人・セクシー系", "ポーズ番号": "P001", '
+                '"分類": "立ち", "ポーズ名": "x", "アングル": "斜め", "サムネ": "thumbs/a.jpg", "原寸": "img/a.png"}];\n</script>')
+        it = library.gallery_items("pose", html)[0]
+        self.assertEqual((it["id"], it["group"], it["cat"], it["sub"], it["angle"]),
+                         ("pose:full_sexy_P001_front", "full_sexy_P001", "Full body · sexy", "standing", "three-quarter"))
+        self.assertEqual(it["full_url"], "https://ai-pose-gallery.pages.dev/img/a.png")
+        html = '<script>\nconst D=[{"id": "SPR-0001", "カテゴリ": "水着", "キーワード": "red bikini", "サムネ": "thumbs/S.webp", "画像": "img/S.webp", "原寸": "png/S.png"}];\n'
+        it = library.gallery_items("outfit", html)[0]
+        self.assertEqual((it["id"], it["cat"], it["name"]), ("outfit:SPR-0001", "Swimwear", "red bikini"))
+        self.assertEqual(library.kind_of("mine-pose:me.png"), "pose")
+        self.assertIsNone(library.kind_of("character.png"))
+
+    def test_prompt_names_each_picture_by_its_number(self):
+        p = {"style": "", "references": ["me.png"], "plan": {"keyframes": [{"image_prompt": "on a beach at sunset"}]}}
+        text = pipeline.reference_prompt(p, 0, 1, [("outfit", "outfit:SPR-1"), ("pose", "pose:P1")])
+        self.assertIn("Keep the exact same subject from picture 1", text)
+        self.assertIn("same face", text)
+        self.assertIn("outfit shown in picture 2", text)
+        self.assertIn("pose from picture 3", text)
+        self.assertNotIn("Use the clothing described", text)
+        alone = pipeline.reference_prompt({"style": "", "references": [], "plan": p["plan"]}, 0, 0, [("pose", "pose:P1")])
+        self.assertTrue(alone.startswith("Copy the exact body pose from picture 1"))
+        self.assertNotIn("Keep the exact same subject", alone)
+        self.assertEqual(pipeline.reference_prompt(p, 0), pipeline.reference_prompt(p, 0, None, ()))  # unchanged without
+
+    def test_each_picture_can_have_its_own_pose(self):
+        p = {"outfit_pic": "outfit:A", "pose_pic": "pose:B", "pose_pics": {"1": "pose:C", "2": ""}}
+        self.assertEqual(pipeline.picture_extras(p, 0), [("outfit", "outfit:A"), ("pose", "pose:B")])
+        self.assertEqual(pipeline.picture_extras(p, 1), [("outfit", "outfit:A"), ("pose", "pose:C")])
+        self.assertEqual(pipeline.picture_extras(p, 2), [("outfit", "outfit:A")])  # "none for this picture"
+        self.assertEqual(pipeline.picture_extras({}, 0), [])
+        note = pipeline.picture_note(1, "outfit:A", "pose:B")
+        self.assertIn("outfit picture (picture 2)", note)
+        self.assertIn("pose picture (picture 3)", note)
+        self.assertEqual(pipeline.picture_note(0, "", ""), "")
+
+    def test_set_pictures_switches_to_an_engine_that_takes_them(self):
+        p = {"id": "u--x", "image_engine": "krea-api-turbo", "pose_pics": {}}
+        valid = lambda user, item, kind: item if item and item.startswith(kind) else ""
+        with patch.object(pipeline, "load", return_value=p), patch.object(pipeline, "save"),                 patch.object(pipeline, "user_of", return_value="u"), patch.object(library, "valid", side_effect=valid):
+            pipeline.set_pictures("u--x", outfit_pic="outfit:A")
+            self.assertEqual((p["outfit_pic"], p["image_engine"]), ("outfit:A", "qwen-image-21"))
+            pipeline.set_pictures("u--x", pose_pic="none", index=2)
+            pipeline.set_pictures("u--x", pose_pic="pose:C", index=1)
+            self.assertEqual(p["pose_pics"], {"2": "", "1": "pose:C"})
+            pipeline.set_pictures("u--x", pose_pic="", index=1)  # back to the project's pose
+            self.assertEqual(p["pose_pics"], {"2": ""})
+
+    def test_own_pictures_stay_per_user(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(library, "ROOT", d):
+            pid = library.save_own("ann", "outfit", "red dress.png", b"png")
+            self.assertEqual(pid, "mine-outfit:red dress.png")
+            self.assertEqual(library.save_own("ann", "outfit", "red dress.png", b"png"), "mine-outfit:red dress 2.png")
+            self.assertEqual(library.valid("ann", pid, "outfit"), pid)
+            self.assertEqual(library.valid("bob", pid, "outfit"), "")
+            self.assertEqual(library.valid("ann", pid, "pose"), "")
+            self.assertIsNone(library.thumb_file("ann", "mine-outfit:../../x.png"))
+            with self.assertRaises(ValueError):
+                library.delete_own("bob", pid)
+            library.delete_own("ann", pid)
+            self.assertEqual(library.valid("ann", pid, "outfit"), "")
+
+    def test_favourites_are_per_user_and_newest_first(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(library, "ROOT", d):
+            library.set_favorite("ann", "pose", "pose:A", True)
+            library.set_favorite("ann", "pose", "pose:B", True)
+            library.set_favorite("ann", "face", "me.png", True)
+            self.assertEqual(library.favorites("ann")["pose"], ["pose:B", "pose:A"])
+            library.set_favorite("ann", "pose", "pose:B", False)
+            self.assertEqual(library.favorites("ann"), {"face": ["me.png"], "pose": ["pose:A"], "outfit": []})
+            self.assertEqual(library.favorites("bob")["face"], [])
+            with self.assertRaises(ValueError):
+                library.set_favorite("ann", "hat", "x", True)
+
+
+class MinorsCheckTests(unittest.TestCase):
+    """Sexual content involving minors is refused on every engine, not only Krea / MOSS / FLUX.3."""
+
+    def test_every_engine_refuses_it_before_planning(self):
+        for engine in ("qwen-image-21", "z-image", "gpt-image", "flux2-dev", None):
+            with patch.object(llm, "plan") as plan, self.assertRaises(ValueError):
+                pipeline.create_project("u", "a 13 year old girl fully naked", 1, "", "", "portrait",
+                                        image_engine=engine, mode="images")
+            plan.assert_not_called()
+
+    def test_wording_variants_are_caught_and_adults_are_not(self):
+        import krea
+        for bad in ("a little italian girl fully naked", "an italian teenage girl nude", "15yo in lingerie",
+                    "young schoolgirl topless", "13-year-old, sexy pose"):
+            with self.assertRaises(ValueError, msg=bad):
+                krea.check_minors(bad)
+        for ok in ("a woman in a red bikini", "sexy adult woman in lingerie", "a little girl playing in a park",
+                   "a teenage boy skateboarding", "25 year old model in lingerie"):
+            krea.check_minors(ok)
+
+    def test_video_prompts_are_checked_too(self):
+        with self.assertRaises(ValueError):
+            pipeline.clip_workflow({"llm": {}}, "wan22-14b", "the teen girl undresses", None, None, 480, 832, 1, "t",
+                                   {"idea": ""})
 

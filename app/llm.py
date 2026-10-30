@@ -124,7 +124,7 @@ def _claude_cli():
     return bundled[-1] if bundled else None
 
 
-def enhance(cfg, idea, mode="video", style="", character="", has_reference=False, count=None):
+def enhance(cfg, idea, mode="video", style="", character="", has_reference=False, count=None, note=""):
     """Rewrite a rough idea into a richer brief: Claude Code on this PC (owner's login), else a Claude API key,
     else the local LLM. count = number of pictures/scenes the project will have.
     Returns (text, engine_label)."""
@@ -150,6 +150,8 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
                  "the outfit from the reference picture. Also describe the scene, placement or pose, action, mood "
                  "and camera.\n")
         user += MULTI_REF_RULE.format(n=int(has_reference)) if int(has_reference) > 1 else ""
+    if note:
+        user += note + "\n"
     try:
         text, label = _claude(cfg, ENHANCE_SYSTEM, user)
     except RuntimeError as e:
@@ -384,7 +386,7 @@ T2V_RULE = ("This is a TEXT-TO-VIDEO post: each keyframe is a separate 5-second 
             "(repeat the subject's look in every scene). Return an empty \"motions\" list.")
 
 
-def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mode="video"):
+def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mode="video", note=""):
     if cfg["provider"] == "template":
         p = template_plan(idea, n_keyframes, "" if has_reference else character)
         if has_reference:
@@ -405,6 +407,8 @@ def plan(cfg, idea, n_keyframes, style="", character="", has_reference=False, mo
             user += f"(Who the character is, for context only: {character})\n"
     elif character:
         user += f"The character must look like this: {character}\n"
+    if note:
+        user += note + "\n"
     user += ("Follow the post idea closely: every keyframe must come from it (same subject, setting, actions, "
              "props, mood and hook). Split it into the moments it describes, reusing its own wording for each "
              "moment; do not invent a different story, new props or new characters.\n")

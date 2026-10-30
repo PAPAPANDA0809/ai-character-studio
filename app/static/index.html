@@ -294,6 +294,33 @@
     .pgrid { grid-template-columns:repeat(2,1fr); gap:10px; }
   }
   nav.tabs button.on { border-color:rgba(84,223,255,.7); color:var(--mint); background:rgba(84,223,255,.08); }
+  /* pose and outfit pictures */
+  .picrow { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+  .picslot { display:flex; align-items:center; gap:10px; padding:6px 12px 6px 6px; border-radius:14px; text-align:left; font-weight:500; flex:1 1 180px; min-width:0; }
+  .picslot .ps-pic { flex:none; width:44px; height:58px; border-radius:10px; background:#e9e9ec center/contain no-repeat; display:flex; align-items:center; justify-content:center; color:#555; font-size:20px; }
+  .picslot .ps-pic.empty { background:rgba(0,0,0,.35); color:var(--muted); border:1px dashed var(--line); }
+  .picslot b { display:block; font-size:13px; } .picslot small { display:block; font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .picslot > span:last-child { min-width:0; }
+  .picslot.sm { flex:0 1 auto; padding:4px 10px 4px 4px; } .picslot.sm .ps-pic { width:30px; height:40px; border-radius:7px; }
+  .pk { position:fixed; inset:0; z-index:60; background:rgba(3,4,7,.85); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; padding:16px; }
+  .pk-box { width:100%; max-width:1000px; height:min(92vh,900px); background:#0d1016; border:1px solid var(--line); border-radius:20px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .pk-head { display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .pk-head h3 { margin:0 auto 0 0; font-size:17px; }
+  .pk-tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; flex:none; }
+  .pk-tabs button { flex:none; padding:6px 12px; border-radius:99px; font-size:12px; font-weight:500; }
+  .pk-tabs button.on { border-color:var(--mint); color:var(--mint); }
+  .pk-filters { display:flex; gap:8px; flex:none; } .pk-filters > * { flex:1; min-width:0; padding:8px 11px; }
+  .pk-grid { flex:1; min-height:0; overflow-y:auto; grid-auto-rows:max-content; display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:8px; align-content:start; }
+  .pk-it { position:relative; border-radius:12px; overflow:hidden; border:2px solid transparent; background:#e9e9ec; cursor:pointer; padding:0; display:block; }
+  .pk-it.on { border-color:var(--mint); } .pk-it:hover { border-color:var(--cyan); }
+  .pk-it img { width:100%; height:auto; aspect-ratio:3/4; object-fit:contain; display:block; }
+  .pk-it span { position:absolute; left:0; right:0; bottom:0; font-size:10px; padding:3px 5px; background:rgba(7,9,13,.75); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:left; }
+  .pk-it .fav { position:absolute; top:4px; left:4px; width:24px; height:24px; border-radius:50%; background:rgba(7,9,13,.7); color:#ffd166; font-size:14px; line-height:24px; text-align:center; padding:0; }
+  .pk-it .fav.off { color:rgba(255,255,255,.75); opacity:0; } .pk-it:hover .fav.off, .pk-it:focus-visible .fav.off { opacity:1; }
+  @media (pointer:coarse) { .pk-it .fav.off { opacity:.8; } }
+  .pk-it .del { position:absolute; top:4px; right:4px; width:22px; height:22px; padding:0; border-radius:50%; font-size:13px; line-height:1; }
+  .pk-note { font-size:12px; color:var(--muted); flex:none; }
+  .pk-more { grid-column:1/-1; }
+  @media (max-width:640px) { .pk { padding:0; } .pk-box { height:100%; border-radius:0; } .pk-grid { grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); } }
 </style>
 <link rel="stylesheet" href="/static/studio.css?v=20261017-1">
 </head>
@@ -325,6 +352,7 @@
         <label for="idea" class="prompt-label">What would you like to create?</label>
         <textarea id="idea" class="idea" rows="5" placeholder="A quiet coffee shop at golden hour, warm light on the table…"></textarea>
         <div class="st-count-row" id="idea-pose-row" style="margin-top:10px" hidden><span>Pose</span><select id="idea-pose" aria-label="Pose" title="Adds a ready-made pose to your idea; you can still edit the words"><option value="">Choose a pose…</option></select></div>
+        <div class="picrow" id="pic-row"><button type="button" class="picslot" id="pick-face"></button><button type="button" class="picslot" id="pick-outfit"></button><button type="button" class="picslot" id="pick-pose"></button></div>
         <div class="enh">
           <div class="row" style="justify-content:space-between;margin:14px 0 6px">
             <span style="font-size:12px;color:var(--muted)">AI prompt assistant <span id="enh-by"></span></span>
@@ -575,6 +603,7 @@ function syncCreate() {
   $('#q-hint').textContent = $('#img-eng').value.startsWith('krea') ? (ENG?.image.find(e=>e.id===$('#img-eng').value)?.description || 'Krea 2 · text to image') : gpt ? GPT_HINT : QWEN_HINT;
   $$('#vres-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === NEW.vres));
   $('#vres-wrap').style.display = m === 'images' ? 'none' : '';
+  if ($('#pic-row')) $('#pic-row').hidden = m === 't2v';
   $('#nkf-label').textContent = {images: 'Images', t2v: 'Scenes'}[m] || 'Keyframes';
   const min = m === 'video' ? 2 : 1, max = m === 'images' ? 12 : 8;
   $('#nkf').min = min; $('#nkf').max = max;
@@ -617,6 +646,115 @@ function applyPose(ta, pose) {  // swap the earlier pose text (if any) in the bo
 $('#idea-pose').onchange = e => applyPose($('#idea'), e.target.value);
 $('#idea').addEventListener('input', () => { if (POSES) $('#idea-pose').value = (poseList().find(o => $('#idea').value.includes(o.prompt)) || {}).prompt || ''; });
 loadPoses().then(() => { if (POSES.length) { $('#idea-pose').innerHTML = poseOptions($('#idea').value); $('#idea-pose-row').hidden = false; } });
+
+/* ---------- pose and outfit pictures (app/library.py): picked from a grid instead of described in words ---------- */
+let PICLIB = null;
+const MULTI_REF = ['qwen-image-21', 'flux3-klein'];  // engines that take a pose / outfit picture next to the character
+async function loadPicLib() { try { PICLIB = await api('/api/library'); } catch (e) { PICLIB = PICLIB || null; } return PICLIB; }
+const picItem = id => id && PICLIB ? (PICLIB[id.replace(/^mine-/, '').split(':')[0]]?.items || []).find(x => x.id === id) : null;
+const picThumb = (id, kind) => kind === 'face' ? '/characters/' + encodeURIComponent(id) : '/library/thumb/' + encodeURIComponent(id);
+const faceLib = () => ({items: (CHARS || []).map(c => ({id: c, group: c, cat: 'My pictures', sub: '', angle: '', name: c.replace(/\.\w+$/, '')})), imported: true, importing: null});
+const picDesc = (id, kind) => { if (kind === 'face') return id.replace(/\.\w+$/, ''); const it = picItem(id); if (!it) return id ? id.split(':').pop() : '';
+  return it.cat === 'My pictures' ? 'Your picture · ' + it.name : it.angle ? `${it.sub || it.cat} · ${it.angle}` : `${it.cat} · ${it.group}`; };
+function picSlot(kind, id, label, empty) {
+  return `<span class="ps-pic ${id ? '' : 'empty'}" ${id ? `style="background-image:url('${picThumb(id, kind)}')${kind === 'face' ? ';background-size:cover' : ''}"` : ''}>${id ? '' : '＋'}</span>
+    <span><b>${label}</b><small>${id ? esc(picDesc(id, kind)) : empty || ({pose: 'Choose a pose picture', outfit: 'Choose an outfit picture', face: 'Choose who it is'})[kind]}</small></span>`;
+}
+const PK = {cat: {}, sub: '', angle: 'front', q: '', limit: 150};
+async function openPicker(kind, current, onPick, noneLabel) {
+  if (!PICLIB) await loadPicLib();
+  if (!PICLIB) return alert('The picture library could not be loaded');
+  let box = $('#pk');
+  if (!box) { box = document.createElement('div'); box.id = 'pk'; box.className = 'pk'; document.body.appendChild(box); }
+  const close = () => { box.remove(); clearTimeout(PK.timer); };
+  const draw = () => {
+    const lib = kind === 'face' ? faceLib() : PICLIB[kind], favs = (PICLIB.favorites || {})[kind] || [];
+    const all = [...favs.map(id => lib.items.find(x => x.id === id)).filter(Boolean), ...lib.items.filter(x => !favs.includes(x.id))];
+    const hasFav = all.some(x => favs.includes(x.id));
+    const cats = [...(hasFav ? ['★ Favourites'] : []), 'All', ...new Set(all.map(x => x.cat))];
+    const cat = cats.includes(PK.cat[kind]) ? PK.cat[kind] : hasFav ? '★ Favourites' : 'All';
+    const inCat = x => cat === 'All' || (cat === '★ Favourites' ? favs.includes(x.id) : x.cat === cat);
+    const subs = kind === 'pose' ? [...new Set(all.filter(inCat).map(x => x.sub).filter(Boolean))].sort() : [];
+    const sub = subs.includes(PK.sub) ? PK.sub : '';
+    const q = PK.q.trim().toLowerCase();
+    const shown = all.filter(x => inCat(x) && (!sub || x.sub === sub)
+      && (kind !== 'pose' || cat === '★ Favourites' || !PK.angle || !x.angle || x.angle === PK.angle)
+      && (!q || [x.id, x.name, x.sub, x.cat, x.angle].join(' ').toLowerCase().includes(q)));
+    const imp = lib.importing;
+    const importing = imp && !imp.error && (!imp.total || imp.done < imp.total);
+    box.innerHTML = `<div class="pk-box" role="dialog" aria-label="${kind === 'pose' ? 'Pick a pose picture' : 'Pick an outfit picture'}">
+      <div class="pk-head"><h3>${({pose: 'Pick a pose', outfit: 'Pick an outfit', face: 'Pick a face'})[kind]}</h3>
+        <button id="pk-up">${kind === 'face' ? 'Add a new face' : 'Upload your own'}</button><button id="pk-none">${esc(noneLabel || 'None')}</button><button id="pk-close" aria-label="Close">✕</button>
+        <input type="file" id="pk-file" accept="image/png,image/jpeg,image/webp" hidden></div>
+      ${!lib.imported ? `<div class="pk-note">${importing ? `Importing the gallery… ${imp.done} of ${imp.total || '?'} thumbnails`
+        : ME?.admin ? `The ${kind === 'pose' ? 'POSE-DB-01 pose' : 'COSTUME-DB-01 outfit'} gallery isn't imported yet. <button id="pk-import">Import it</button> (about 12 MB of thumbnails; each full picture downloads the first time it's used)`
+        : 'An admin can import the free pose and outfit galleries. Meanwhile you can upload your own pictures.'}${imp?.error ? ` <span style="color:var(--err)">Import failed: ${esc(imp.error)}</span>` : ''}</div>` : ''}
+      <div class="pk-tabs">${cats.map(c => `<button data-cat="${esc(c)}" class="${c === cat ? 'on' : ''}">${esc(c)}</button>`).join('')}</div>
+      <div class="pk-filters">${kind === 'pose' ? `<select id="pk-sub" aria-label="Kind of pose"><option value="">All kinds</option>${subs.map(s => `<option ${s === sub ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
+        <select id="pk-angle" aria-label="Angle">${[['', 'All angles'], ['front', 'Front'], ['three-quarter', 'Three-quarter'], ['side', 'Side'], ['from above', 'From above'], ['from below', 'From below']].map(([v, l]) => `<option value="${v}" ${v === PK.angle ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
+        <input id="pk-q" placeholder="${({pose: 'Search, e.g. P012 or kneeling', outfit: 'Search, e.g. lace, denim, red', face: 'Search by name'})[kind]}" value="${esc(PK.q)}"></div>
+      <div class="pk-grid">${shown.slice(0, PK.limit).map(x => `<button class="pk-it ${x.id === current ? 'on' : ''}" data-id="${esc(x.id)}" title="${esc(x.id.split(':').pop() + (x.name ? ' · ' + x.name : ''))}">
+          <img src="${picThumb(x.id, kind)}" alt="" loading="lazy"><span class="fav ${favs.includes(x.id) ? '' : 'off'}" role="button" data-fav="${esc(x.id)}" title="${favs.includes(x.id) ? 'Remove from favourites' : 'Add to favourites'}">${favs.includes(x.id) ? '★' : '☆'}</span><span>${esc(x.cat === 'My pictures' ? x.name : kind === 'pose' ? `${x.group.split('_').pop()} · ${x.sub || x.angle}` : x.group)}</span>
+          ${x.cat === 'My pictures' && kind !== 'face' ? `<span class="del" role="button" data-del="${esc(x.id)}" title="Remove your picture">×</span>` : ''}</button>`).join('')
+        || `<div class="pk-note">No pictures here yet.</div>`}
+        ${shown.length > PK.limit ? `<button class="pk-more" id="pk-more">Show more (${shown.length - PK.limit} left)</button>` : ''}</div></div>`;
+    box.onclick = e => { if (e.target === box) close(); };
+    $('#pk-close').onclick = close;
+    $('#pk-none').onclick = () => { close(); onPick(''); };
+    $('#pk-up').onclick = () => $('#pk-file').click();
+    $('#pk-file').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = await fetch(kind === 'face' ? '/api/characters?name=' + encodeURIComponent(f.name)
+        : `/api/library/upload?kind=${kind}&name=${encodeURIComponent(f.name)}`, {method: 'POST', body: f});
+      const j = await r.json(); if (j.error) return alert(j.error);
+      if (kind === 'face') { CHARS = await api('/api/characters'); } else await loadPicLib();
+      close(); onPick(j.id || j.name);
+    };
+    if ($('#pk-import')) $('#pk-import').onclick = async () => { await api('/api/library/import', {kind}); await loadPicLib(); draw(); };
+    $$('.pk-tabs [data-cat]').forEach(b => b.onclick = () => { PK.cat[kind] = b.dataset.cat; PK.limit = 150; draw(); });
+    if ($('#pk-sub')) $('#pk-sub').onchange = e => { PK.sub = e.target.value; PK.limit = 150; draw(); };
+    if ($('#pk-angle')) $('#pk-angle').onchange = e => { PK.angle = e.target.value; PK.limit = 150; draw(); };
+    $('#pk-q').oninput = e => { PK.q = e.target.value; PK.limit = 150; clearTimeout(PK.qt); PK.qt = setTimeout(() => { draw(); const i = $('#pk-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); };
+    if ($('#pk-more')) $('#pk-more').onclick = () => { PK.limit += 300; draw(); };
+    $$('.pk-it').forEach(b => b.onclick = async e => {
+      if (e.target.dataset.fav) {
+        e.stopPropagation();
+        try { PICLIB.favorites = await api('/api/library/favorite', {kind, id: e.target.dataset.fav, on: !favs.includes(e.target.dataset.fav)}); }
+        catch (err) { return alert(err.message); }
+        return draw();
+      }
+      if (e.target.dataset.del) {
+        e.stopPropagation();
+        if (!confirm('Remove this picture from your library?')) return;
+        try { await api('/api/library/delete', {id: e.target.dataset.del}); } catch (err) { return alert(err.message); }
+        await loadPicLib(); return draw();
+      }
+      close(); onPick(b.dataset.id);
+    });
+    if (importing) PK.timer = setTimeout(async () => { await loadPicLib(); if ($('#pk')) draw(); }, 1500);
+  };
+  draw();
+}
+function renderPicSlots() {
+  if (!$('#pick-face')) return;
+  $('#pick-face').innerHTML = picSlot('face', NEW.refs[0] || '', 'Face picture');
+  $('#pick-outfit').innerHTML = picSlot('outfit', NEW.outfit, 'Outfit picture');
+  $('#pick-pose').innerHTML = picSlot('pose', NEW.pose, 'Pose picture');
+  $('#pic-row').hidden = NEW.mode === 't2v';
+}
+function usePicEngine() {  // pose and outfit pictures go to Qwen-Image 2.1 (or FLUX.3) as extra reference pictures
+  if ((NEW.outfit || NEW.pose || NEW.refs.length) && !MULTI_REF.includes($('#img-eng').value)) {
+    $('#img-eng').value = 'qwen-image-21'; renderChars(); renderLora(); syncCreate();
+  }
+}
+NEW.outfit = ''; NEW.pose = '';
+$('#pick-face').onclick = () => openPicker('face', NEW.refs[0] || '', id => {  // picture 1: who it is
+  NEW.refs = id ? [id, ...NEW.refs.filter(c => c !== id)].slice(0, 3) : NEW.refs.slice(1);
+  usePicEngine(); renderChars(); renderPicSlots(); }, 'No face picture');
+$('#pick-outfit').onclick = () => openPicker('outfit', NEW.outfit, id => { NEW.outfit = id; renderPicSlots(); usePicEngine(); });
+$('#pick-pose').onclick = () => openPicker('pose', NEW.pose, id => { NEW.pose = id; renderPicSlots(); usePicEngine(); });
+renderPicSlots();
+loadPicLib().then(renderPicSlots);
 async function refreshEngines() {
   ENG = await api('/api/engines');
   $('#img-eng').innerHTML = engOptions(ENG.image, $('#img-eng').value || ENG.default_image);
@@ -685,6 +823,7 @@ function renderChars() {
     refreshChars();
   });
   $('#char-up').onclick = () => $('#ref-file').click();
+  if (typeof renderPicSlots === 'function' && NEW.outfit !== undefined) renderPicSlots();
   syncCreationSummary();
 }
 async function refreshChars() { CHARS = await api('/api/characters'); renderChars(); }
@@ -725,7 +864,8 @@ $('#btn-enh').onclick = async () => {
   if (!idea) return $('#idea').focus();
   const b = $('#btn-enh'); b.disabled = true; b.textContent = 'Improving…';
   try {
-    const r = await api('/api/enhance', {idea, mode: NEW.mode, style: $('#style').value, character: $('#character').value, references: NEW.refs, keyframes: +$('#nkf').value});
+    const r = await api('/api/enhance', {idea, mode: NEW.mode, style: $('#style').value, character: $('#character').value, references: NEW.refs, keyframes: +$('#nkf').value,
+      outfit_pic: NEW.mode === 't2v' ? '' : NEW.outfit, pose_pic: NEW.mode === 't2v' ? '' : NEW.pose});
     $('#idea2').value = r.text; $('#idea2').hidden = false; $('#clear-enh').hidden = false; $('#enh-by').textContent = '· by ' + r.engine;
   } catch (e) { alert(e.message); }
   b.disabled = false; b.textContent = 'Improve prompt';
@@ -767,6 +907,7 @@ $('#btn-plan').onclick = async () => {
   $('#btn-plan').disabled = true; $('#plan-msg').style.display = 'flex';
   try {
     P = await api('/api/plan', {idea, character: $('#character').value, style: $('#style').value, references: NEW.refs,
+      outfit_pic: NEW.mode === 't2v' ? '' : NEW.outfit, pose_pic: NEW.mode === 't2v' ? '' : NEW.pose,
       mode: NEW.mode, image_engine: $('#img-eng').value, video_engine: $('#vid-eng').value, t2v_engine: $('#t2v-eng').value, lora: $('#lora-sel').value,
       keyframes: +$('#nkf').value, aspect: NEW.aspect, quality: NEW.quality || (NEW.mode === 'images' ? 'sharp' : 'standard'), video_res: NEW.vres});
     dirty = false; STE = null; STEXT = ''; STK = 'kf'; STI = 0; STV = null;
@@ -1255,6 +1396,9 @@ function renderStudio() {
       ${editing ? `<div class="st-cur" id="st-curp" title="Tap to change the prompt instead">${esc(shownPrompt)}</div>`
         : onPic && made && !STV ? '<div class="st-cur st-tog" id="st-toedit">✎ Edit the picture instead</div>' : ''}
       ${onPic && !editing && POSES && POSES.length ? `<div class="st-count-row"><span>Pose</span><select id="st-pose" aria-label="Pose" title="Adds a ready-made pose to the prompt; you can still edit the words" ${dis}>${poseOptions(shownPrompt)}</select></div>` : ''}
+      ${onPic && !editing && !isT2V ? (() => { const own = (P.pose_pics || {})[i], eff = own ?? P.pose_pic ?? '';
+        return `<div class="st-count-row"><span>Pose picture</span><button type="button" class="picslot sm" id="st-posepic" ${dis}>${picSlot('pose', eff, eff ? (own !== undefined ? 'This picture' : 'Project pose') : 'No pose picture', own === '' ? 'None for this picture' : 'Choose a pose picture')}</button>
+          ${own !== undefined ? `<button type="button" class="quiet" id="st-posepic-reset" ${dis}>Use the project's</button>` : ''}</div>`; })() : ''}
       ${onPic && !editing ? `<div class="st-count-row"><span>Pictures per press</span><div class="st-count" role="group" aria-label="Pictures per press" title="How many pictures one press of Generate makes, one after another">${BATCH_COUNTS.map(c => `<button type="button" data-count="${c}" class="${c === STN ? 'on' : ''}" aria-pressed="${c === STN}" ${dis}>${c}</button>`).join('')}</div></div>` : ''}
       <div class="st-row">
         <textarea id="kp${i}" data-original-prompt="${esc(shownPrompt)}" rows="1" placeholder="Describe the ${isT2V ? 'scene' : 'picture'}…" style="${editing ? 'display:none' : ''}">${esc(shownPrompt)}</textarea>
@@ -1298,6 +1442,11 @@ function renderStudio() {
       <button id="studio-add-reference" ${busy ? 'disabled' : ''}>Upload reference</button>
       ${noRef ? `<p class="field-note">${isT2V ? T2V_REF_HINT : 'Choose a reference-compatible image engine under Advanced.'}</p>` : ''}
     </details>`; })()}
+    ${!isT2V ? `<details data-detail="pictures" ${P.outfit_pic || P.pose_pic ? 'open' : ''}><summary>Pose and outfit pictures</summary>
+      <div class="picrow"><button type="button" class="picslot" id="p-outfit" ${dis}>${picSlot('outfit', P.outfit_pic, 'Outfit picture')}</button>
+        <button type="button" class="picslot" id="p-pose" ${dis}>${picSlot('pose', P.pose_pic, 'Pose for every picture')}</button></div>
+      <p class="field-note">They go to Qwen-Image 2.1 after the reference pictures. Each picture can have its own pose under its prompt.</p>
+    </details>` : ''}
     <details data-detail="advanced"><summary>Advanced settings</summary>
       ${!isT2V ? `<label for="f-img-eng">Image engine</label><select id="f-img-eng" ${dis}>${ENG ? engOptions(ENG.image,P.image_engine || ENG.default_image) : ''}</select>
         <p class="field-note">${esc(ENG?.image.find(e=>e.id===P.image_engine)?.description || ENG?.image.find(e=>e.id===P.image_engine)?.label || '')}</p><button type="button" class="krea-setup">Krea setup</button>
@@ -1425,6 +1574,12 @@ function renderStudio() {
     return run('keyframes', {indices: [i], reseed: made, count: STN}, () => { STV = null; STE = false; })();
   };
   if ($('#st-pose')) $('#st-pose').onchange = e => { applyPose($('#kp' + i), e.target.value); dirty = true; };
+  const setPics = async body => { await savePlan(); P = await api(`/api/projects/${P.id}/pictures`, body); render(); };
+  if ($('#st-posepic')) $('#st-posepic').onclick = () => openPicker('pose', (P.pose_pics || {})[i] ?? P.pose_pic,
+    id => setPics({pose_pic: id || 'none', index: i}), 'No pose for this picture');
+  if ($('#st-posepic-reset')) $('#st-posepic-reset').onclick = () => setPics({pose_pic: '', index: i});
+  if ($('#p-outfit')) $('#p-outfit').onclick = () => openPicker('outfit', P.outfit_pic, id => setPics({outfit_pic: id}));
+  if ($('#p-pose')) $('#p-pose').onclick = () => openPicker('pose', P.pose_pic, id => setPics({pose_pic: id}));
   $$('.st-count button').forEach(b => b.onclick = () => { STN = +b.dataset.count; localStorage.setItem('reelmint.batch', STN); render(); });
   if ($('#st-send')) $('#st-send').onclick = send;
   bar.forEach(ta => ta.onkeydown = e => {  // Enter sends on a computer; phones keep Enter for new lines
