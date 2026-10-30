@@ -20,11 +20,7 @@ API_ENGINES = {
 }
 GPU_FILES = ["diffusion_models/krea2_turbo_fp8_scaled.safetensors",
              "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", "vae/qwen_image_vae.safetensors"]
-MINOR = re.compile(r"\b(?:underage\w*|child(?:ren|ish)?|kids?|minors?|pre-?teens?|teens?|teenage\w*|tweens?|"
-                   r"schoolgirls?|schoolboys?|adolescen\w*|toddlers?|infants?|bab(?:y|ies)|loli\w*|shota\w*|"
-                   r"junior high|middle school\w*|elementary school\w*|grade school\w*|"
-                   r"(?:little|young|small|tiny)\s+(?:\w+\s+){0,2}(?:girls?|boys?|daughters?|sons?)|"
-                   r"(?:[0-9]|1[0-7])\s*[- ]?\s*(?:years?\s*[- ]?\s*olds?|y/?o|yrs?))\b", re.I)
+MINOR = re.compile(r"\b(?:schoolgirls?|schoolboys?|adolescen\w*|toddlers?|infants?|bab(?:y|ies)|loli\w*|shota\w*)\b", re.I)
 SEXUAL = re.compile(r"\b(?:naked|nude\w*|nudity|sexual\w*|sex|sexy|porn\w*|erotic\w*|undress\w*|unclothed|"
                     r"genitals?|vagina\w*|pussy|penis|breasts?|nipples?|boobs?|tits|butt|ass|lingerie|bikini|"
                     r"panties|bra|thong|seductive\w*|sensual\w*|lewd|nsfw|hentai|orgasm\w*|masturbat\w*|"
