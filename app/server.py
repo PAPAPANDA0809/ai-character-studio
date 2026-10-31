@@ -352,7 +352,8 @@ class Handler(BaseHTTPRequestHandler):
                 nrefs = len(b.get("references") or []) or int(bool(b.get("reference")))
                 text, engine = llm.enhance(pipeline.load_config()["llm"], b.get("idea", ""), b.get("mode", "video"),
                                            b.get("style", ""), b.get("character", ""), nrefs, b.get("keyframes"),
-                                           pipeline.picture_note(nrefs, b.get("outfit_pic"), b.get("pose_pic")))
+                                           pipeline.picture_note(nrefs, b.get("outfit_pic"), b.get("pose_pic")),
+                                           "local" if b.get("engine") == "local" else "auto")
                 return self.send_json({"text": text, "engine": engine})
             if path == "/api/characters/delete":
                 if not pipeline.delete_character(u, b.get("name", "")):

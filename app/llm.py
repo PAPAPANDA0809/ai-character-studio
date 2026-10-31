@@ -124,9 +124,10 @@ def _claude_cli():
     return bundled[-1] if bundled else None
 
 
-def enhance(cfg, idea, mode="video", style="", character="", has_reference=False, count=None, note=""):
+def enhance(cfg, idea, mode="video", style="", character="", has_reference=False, count=None, note="", engine="auto"):
     """Rewrite a rough idea into a richer brief: Claude Code on this PC (owner's login), else a Claude API key,
-    else the local LLM. count = number of pictures/scenes the project will have.
+    else the local LLM. engine="local" skips Claude and always uses the local Ollama model (free, nothing leaves
+    the PC). count = number of pictures/scenes the project will have.
     Returns (text, engine_label)."""
     n = int(count) if str(count or "").isdigit() else None
     if mode == "images":
@@ -152,6 +153,10 @@ def enhance(cfg, idea, mode="video", style="", character="", has_reference=False
         user += MULTI_REF_RULE.format(n=int(has_reference)) if int(has_reference) > 1 else ""
     if note:
         user += note + "\n"
+    if engine == "local":
+        if cfg["provider"] != "ollama":
+            raise RuntimeError("Local prompt help needs Ollama (llm.provider \"ollama\" in config.json)")
+        return local_write(cfg, ENHANCE_SYSTEM, user), f"local {cfg.get('ollama_model')}"
     try:
         text, label = _claude(cfg, ENHANCE_SYSTEM, user)
     except RuntimeError as e:

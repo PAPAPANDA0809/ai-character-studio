@@ -356,7 +356,8 @@
         <div class="enh">
           <div class="row" style="justify-content:space-between;margin:14px 0 6px">
             <span style="font-size:12px;color:var(--muted)">AI prompt assistant <span id="enh-by"></span></span>
-            <button id="btn-enh" class="enh-btn">Improve prompt</button>
+            <span class="row" style="gap:6px"><select id="enh-engine" aria-label="Prompt assistant" title="Claude writes the best prompts; Local runs on this PC (free, private, a bit slower)" style="font-size:12px;padding:4px 6px"><option value="auto">Claude</option><option value="local">Local AI</option></select>
+            <button id="btn-enh" class="enh-btn">Improve prompt</button></span>
           </div>
           <textarea id="idea2" rows="4" aria-label="Improved prompt" hidden></textarea>
           <button id="clear-enh" class="quiet" hidden>Use original prompt</button>
@@ -876,13 +877,15 @@ function detectAsk(text) {
 }
 $('#idea').addEventListener('blur', () => { const r = detectAsk($('#idea').value); if (r) $('#enh-by').textContent = '· ' + r; });
 
+try { $('#enh-engine').value = localStorage.getItem('reelmint.enhEngine') || 'auto'; } catch {}
+$('#enh-engine').onchange = () => { try { localStorage.setItem('reelmint.enhEngine', $('#enh-engine').value); } catch {} };
 $('#btn-enh').onclick = async () => {
   const idea = $('#idea').value.trim();
   if (!idea) return $('#idea').focus();
   const b = $('#btn-enh'); b.disabled = true; b.textContent = 'Improving…';
   try {
     const r = await api('/api/enhance', {idea, mode: NEW.mode, style: $('#style').value, character: $('#character').value, references: NEW.refs, keyframes: +$('#nkf').value,
-      outfit_pic: NEW.mode === 't2v' ? '' : NEW.outfit, pose_pic: NEW.mode === 't2v' ? '' : NEW.pose});
+      outfit_pic: NEW.mode === 't2v' ? '' : NEW.outfit, pose_pic: NEW.mode === 't2v' ? '' : NEW.pose, engine: $('#enh-engine').value});
     $('#idea2').value = r.text; $('#idea2').hidden = false; $('#clear-enh').hidden = false; $('#enh-by').textContent = '· by ' + r.engine;
   } catch (e) { alert(e.message); }
   b.disabled = false; b.textContent = 'Improve prompt';
