@@ -255,7 +255,8 @@ body.auth-page { background:var(--bg); }
   #v-create .create-composer,#v-create.sheet .create-composer { display:block; background:var(--panel); border:1px solid var(--line); padding:18px; border-radius:14px; }
   #v-create.sheet #idea,#v-create.sheet .enh { display:block; }
   #v-create .create-settings { display:none; }
-  #v-create.sheet .create-settings { display:block; position:fixed; left:0; right:0; bottom:0; max-height:85dvh; overflow:auto; z-index:61; background:var(--panel); padding:0 20px calc(24px + env(safe-area-inset-bottom)); border:1px solid var(--line); border-radius:18px 18px 0 0; }
+  #v-create.sheet .create-settings,#v-create.sheet .create-grid>.create-settings.glass { display:block; position:fixed; left:0; right:0; bottom:0; max-height:85dvh; overflow:auto; z-index:61; background:#0c1120; background-color:#0c1120; padding:0 20px calc(24px + env(safe-area-inset-bottom)); border:1px solid var(--line); border-radius:18px 18px 0 0; box-shadow:0 -12px 40px #000c; }
+  #v-create.sheet .msheet-bar { background:#0c1120; }
   .desktop-settings-title { display:none; }
   .msheet-bar { display:flex; background:var(--panel); padding:16px 0 10px; margin:0; }
   .msheet-bar h2 { display:block!important; margin:0; }
