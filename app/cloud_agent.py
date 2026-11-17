@@ -9,16 +9,23 @@ address work too. Every request needs the session's key in X-RM-Key (RM_KEY, mad
   POST /rm/lora?name=&size=    the last piece arrived: check the size and make it visible to ComfyUI
   GET  /rm/loras               the trained characters on the pod
   GET  /rm/extras              {"video": bool, "qwen_hq": bool, "ideogram": bool, ...}: the downloads after READY
-  GET  /rm/log?f=setup|comfy|pip  the end of a log, for finding out what went wrong
+  GET  /rm/log?f=setup|comfy|pip|longcat  the end of a log, for finding out what went wrong
+  PUT  /rm/talk/in?id=&name=image.png|audio.wav   a talking-video job's picture and voice track
+  POST /rm/talk?id=            body = job.json: start LongCat-Video-Avatar on it (one job at a time)
+  GET  /rm/talk?id=            {"status": ..., "size": bytes of out.mp4, "log": the end of its log on an error}
+  GET  /rm/talk/out?id=&offset=&size=  a piece of the finished video
+  POST /rm/talk/stop?id=       stop the job
   anything else                passed on to ComfyUI on 127.0.0.1:8188
 """
-import hmac, http.client, json, os, re, subprocess, urllib.parse
+import hmac, http.client, json, os, re, signal, subprocess, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 KEY = os.environ.get("RM_KEY", "")
 LORAS = "/root/loras"
-LOGS = {"setup": "/root/setup.log", "comfy": "/root/comfy.log", "pip": "/root/pip.log"}
+TALK = "/root/talk"
+LOGS = {"setup": "/root/setup.log", "comfy": "/root/comfy.log", "pip": "/root/pip.log", "longcat": "/root/longcat_setup.log"}
 started = [False]
+talk_proc = [None]  # the running LongCat job
 
 
 def read(path, default=""):
@@ -86,8 +93,10 @@ class H(BaseHTTPRequestHandler):
                 os.replace(part, os.path.join(LORAS, name))
                 return self.send(200, "ok")
         if u.path == "/rm/extras":  # downloaded after READY: full-quality Qwen, Ideogram 4
-            return self.send(200, json.dumps({k: os.path.exists(f"/root/done_{k}") for k in ("video", "qwen_hq", "qwen_turbo", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")}),
+            return self.send(200, json.dumps({k: os.path.exists(f"/root/done_{k}") for k in ("video", "qwen_hq", "qwen_turbo", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss", "longcat")}),
                              "application/json")
+        if u.path.startswith("/rm/talk"):
+            return self.talk(u.path, q, data)
         if u.path == "/rm/loras":
             files = sorted(f for f in os.listdir(LORAS) if not f.startswith(".")) if os.path.isdir(LORAS) else []
             return self.send(200, json.dumps(files), "application/json")
@@ -103,6 +112,59 @@ class H(BaseHTTPRequestHandler):
             self.send(r.status, out, r.getheader("Content-Type") or "application/octet-stream")
         except OSError as e:
             self.send(503, f"ComfyUI isn't running yet ({e})")
+
+    def talk(self, path, q, data):
+        """Talking videos (LongCat-Video-Avatar 1.6): it runs as its own process beside ComfyUI, not as a ComfyUI
+        node (none supports 1.6 yet); the app frees ComfyUI's memory before it starts a job."""
+        jid = q.get("id", "")
+        if not re.fullmatch(r"[0-9a-f]{8,32}", jid):
+            return self.send(400, "bad id")
+        d = os.path.join(TALK, jid)
+        running = talk_proc[0] is not None and talk_proc[0].poll() is None
+        if path == "/rm/talk/in" and self.command == "PUT":
+            name = q.get("name", "")
+            if name not in ("image.png", "audio.wav"):
+                return self.send(400, "bad name")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, name), "wb") as f:
+                f.write(data)
+            return self.send(200, "ok")
+        if path == "/rm/talk" and self.command == "POST":
+            if running:
+                return self.send(409, "another talking video is being made")
+            if not os.path.exists("/root/done_longcat"):
+                return self.send(409, "LongCat isn't installed on this card yet")
+            if not all(os.path.exists(os.path.join(d, n)) for n in ("image.png", "audio.wav")):
+                return self.send(400, "picture or voice missing")
+            with open(os.path.join(d, "job.json"), "wb") as f:
+                f.write(data)
+            with open(os.path.join(d, "status"), "w") as f:
+                f.write("starting")
+            env = {**os.environ, "PYTHONPATH": "/root/lcpkgs", "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
+            with open(os.path.join(d, "log"), "ab") as log:
+                talk_proc[0] = subprocess.Popen(["python3", "/root/longcat_run.py", d], stdin=subprocess.DEVNULL,
+                                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True, cwd=d,
+                                                env=env)
+            return self.send(200, "started")
+        if path == "/rm/talk" and self.command == "GET":
+            st = read(os.path.join(d, "status"), "").strip()
+            if not st:
+                return self.send(404, "no such job")
+            if st not in ("DONE",) and not st.startswith("ERROR") and not running:
+                st = "ERROR: the LongCat process stopped unexpectedly"
+            out = os.path.join(d, "out.mp4")
+            log = "\n".join(read(os.path.join(d, "log")).splitlines()[-30:]) if st.startswith("ERROR") else ""
+            return self.send(200, json.dumps({"status": st, "size": os.path.getsize(out) if os.path.exists(out) else 0,
+                                              "log": log}), "application/json")
+        if path == "/rm/talk/out":
+            with open(os.path.join(d, "out.mp4"), "rb") as f:
+                f.seek(int(q.get("offset", 0)))
+                return self.send(200, f.read(int(q.get("size", 8 << 20))), "application/octet-stream")
+        if path == "/rm/talk/stop" and self.command == "POST":
+            if running:
+                os.killpg(talk_proc[0].pid, signal.SIGKILL)
+            return self.send(200, "stopped")
+        return self.send(404, "unknown")
 
     do_GET = do_POST = do_PUT = do_DELETE = handle_any
 

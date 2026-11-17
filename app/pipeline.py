@@ -356,7 +356,7 @@ def worker():
             p["batch"] = {"n": batch[0], "of": batch[1]} if batch else None
             save(p)
             {"keyframes": do_keyframes, "animate": do_animate, "stitch": restitch, "t2v": do_t2v,
-             "animate_image": do_animate_image}[task](p, **kw)
+             "animate_image": do_animate_image, "talk": do_talk}[task](p, **kw)
             p = load(pid)
             if batch and _more_queued(pid):  # more of this batch to come: stay "queued" so the studio keeps waiting
                 p["status"] = "queued:" + task
@@ -1259,6 +1259,126 @@ def _animate_image(p, index, motion="", remote=None):
     p.setdefault("image_clips", {})[str(i)] = time.time()
     p["clips_version"] = time.time()
     log(p, f"picture {i + 1}: video done in {time.time() - t:.0f}s")
+
+
+# ---------------------------------------------------------------- talking videos (LongCat-Video-Avatar 1.6)
+
+TALK_MAX_SECONDS = 120
+TALK_AUDIO_EXT = (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".webm", ".mp4", ".mov", ".3gp", ".amr")
+
+
+def save_talk_audio(pid, index, name, data):
+    """The voice for picture <index>'s talking video: the upload is kept as it is (its sound goes into the final
+    video) and turned into the 16 kHz mono WAV LongCat reads, cut at TALK_MAX_SECONDS. Returns its length."""
+    p = load(pid)
+    i = int(index)
+    if not 0 <= i < len(p["plan"]["keyframes"]):
+        raise ValueError("no such picture")
+    if not data:
+        raise ValueError("empty upload")
+    if len(data) > 80 << 20:
+        raise ValueError("the voice file is over 80 MB; send a shorter clip")
+    ext = os.path.splitext(str(name or ""))[1].lower()
+    if ext not in TALK_AUDIO_EXT:
+        raise ValueError("send an audio file (mp3, wav, m4a, ogg, flac…) or a video with sound")
+    for old in glob.glob(pdir(pid, "clips", f"talk_src_{i:02d}.*")):
+        os.remove(old)
+    src = pdir(pid, "clips", f"talk_src_{i:02d}{ext}")
+    with open(src, "wb") as f:
+        f.write(data)
+    wav = pdir(pid, "clips", f"talk_{i:02d}.wav")
+    try:
+        run_ffmpeg(find_ffmpeg(load_config()["ffmpeg"]), ["-i", src, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                                                          "-t", str(TALK_MAX_SECONDS), wav])
+    except RuntimeError:
+        os.remove(src)
+        raise ValueError("couldn't read any sound in that file")
+    import wave
+    with wave.open(wav, "rb") as w:
+        seconds = w.getnframes() / w.getframerate()
+    if seconds < 1:
+        raise ValueError("the voice is under a second long")
+    return {"seconds": round(seconds, 1), "capped": seconds >= TALK_MAX_SECONDS - 0.05}
+
+
+def do_talk(p, index, prompt="", video_res=None):
+    """Make picture <index> speak the voice uploaded for it (save_talk_audio), on the rented card: LongCat-Video-
+    Avatar 1.6 (lip sync and body motion, 25 fps, any length). The result is the picture's video, like Make video."""
+    i = int(index)
+    src = pdir(p["id"], "keyframes", f"kf_{i:02d}.png")
+    wav = pdir(p["id"], "clips", f"talk_{i:02d}.wav")
+    if not os.path.exists(src):
+        raise RuntimeError(f"picture {i + 1} isn't generated yet")
+    if not os.path.exists(wav):
+        raise RuntimeError("add the voice first")
+    krea.check_minors(". ".join((p.get("idea", ""), prompt or "")))
+    if cloudgpu.state["status"] != "ready":
+        raise RuntimeError("talking videos run on the Fast GPU: connect a 48 GB+ card first")
+    if not cloudgpu.info().get("talk"):
+        raise RuntimeError(f"talking videos need a 48 GB+ Fast GPU card; the {cloudgpu.state['gpu']} is too small")
+    t = time.time()
+    while not cloudgpu.talk_ready():  # it downloads after the video engine (~50-65 GB)
+        if time.time() - t > 40 * 60 or cloudgpu.state["status"] != "ready":
+            raise RuntimeError("LongCat didn't finish downloading on the rented card; try again in a moment")
+        if int(time.time() - t) % 60 < 5:
+            log(p, f"picture {i + 1}: waiting for LongCat (talking videos) to finish downloading on the rented card")
+        check_cancel(p)
+        cloudgpu._check_extras()
+        time.sleep(5)
+    cfg = load_config()
+    ff = find_ffmpeg(cfg["ffmpeg"])
+    card = cloudgpu.info()
+    res = "720p" if video_res == "720p" and card.get("talk_720") else "480p"
+    import wave
+    with wave.open(wav, "rb") as w:
+        seconds = w.getnframes() / w.getframerate()
+    small = pdir(p["id"], "clips", f"talk_in_{i:02d}.png")  # LongCat works at 480p/720p: a big picture only slows the upload
+    run_ffmpeg(ff, ["-i", src, "-vf", "scale=1280:1280:force_original_aspect_ratio=decrease", small])
+    with open(small, "rb") as f:
+        image = f.read()
+    with open(wav, "rb") as f:
+        voice = f.read()
+    os.remove(small)
+    jid = os.urandom(8).hex()
+    with cloudgpu.using():
+        remote = cloudgpu.url()
+        comfy.Comfy(remote, remote=True).free()  # LongCat needs the card's memory: unload ComfyUI's models
+        last_engine[0] = None
+        log(p, f"picture {i + 1}: sending the picture and {seconds:.0f} s of voice to the rented {card['label']}")
+        cloudgpu.talk_start(jid, image, voice, {"prompt": prompt or "", "seconds": seconds, "res": res,
+                                                "seed": p["seed"] + 200 + i, "int8": cloudgpu.longcat_int8({"mem": card["mem"]})})
+        shown = ""
+        try:
+            while True:
+                if p["id"] in cancelled:
+                    raise Cancelled()
+                st = cloudgpu.talk_status(jid)
+                s = st["status"]
+                if s == "DONE":
+                    break
+                if s.startswith("ERROR"):
+                    print(st.get("log", ""))
+                    raise RuntimeError("LongCat: " + s[6:].strip())
+                if s != shown:
+                    shown = s
+                    log(p, f"picture {i + 1}: talking video · {s}")
+                time.sleep(10)
+        except BaseException:
+            cloudgpu.talk_stop(jid)
+            raise
+        log(p, f"picture {i + 1}: bringing the talking video back")
+        raw = pdir(p["id"], "clips", f"talk_raw_{i:02d}.mp4")
+        cloudgpu.talk_fetch(jid, st["size"], raw)
+    voice_src = (glob.glob(pdir(p["id"], "clips", f"talk_src_{i:02d}.*")) or [wav])[0]
+    vw, vh = video_size(cfg, {**p, "video_res": res})
+    run_ffmpeg(ff, ["-i", raw, "-i", voice_src, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                    "-vf", f"scale={vw}:{vh}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                           f"pad=ceil(iw/2)*2:ceil(ih/2)*2,setsar=1",
+                    *H264, pdir(p["id"], "clips", f"img_{i:02d}.mp4")])
+    os.remove(raw)
+    p.setdefault("image_clips", {})[str(i)] = time.time()
+    p["clips_version"] = time.time()
+    log(p, f"picture {i + 1}: talking video done in {(time.time() - t) / 60:.1f} min")
 
 
 def restitch(p):

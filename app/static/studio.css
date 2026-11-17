@@ -304,6 +304,7 @@ body.auth-page { background:var(--bg); }
   .st-drawer-content { display:flex; flex-direction:column; gap:10px; padding:12px 8px; max-height:calc(75dvh - 44px - env(safe-area-inset-bottom)); overflow-y:auto; overscroll-behavior:contain; }
   .st-drawer-content > * { flex:none; }
   .st-actions { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; }
+  .st-actions:has(#st-talk) { grid-template-columns:repeat(7,minmax(0,1fr)); }  /* + Make it talk: still one row */
   .st-actions > button svg,.st-actions > a svg { width:23px; height:23px; }
   .st-actions .st-ver { grid-column:1 / -1; }
   .st-version-label { flex-basis:100%; }

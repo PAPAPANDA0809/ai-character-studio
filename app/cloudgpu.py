@@ -42,8 +42,14 @@ OMNI_INT8 = "fasth3_omniref_8step_pruned_int8_convrot.safetensors"
 OMNI_BF16 = "fasth3_omniref_8step_pruned_bf16.safetensors"
 H3_REF = {H3_BF16: OMNI_BF16, H3_FULL: OMNI_INT8, H3_PRUNED: OMNI_INT8}
 FLUX2_MIN_MEM, FLUX2_DISK = 48, 60
+# Talking videos: LongCat-Video-Avatar 1.6 (cloud_longcat.py on the pod) on 48 GB+ cards. Below 80 GB its int8 model;
+# 720p only on 80 GB+. Disk: UMT5 encoder 22.7 + VAE 0.5 + LoRAs 5.0 + Whisper 3.1 + the avatar model (bf16 31.7 /
+# int8 15.9) + packages (Hugging Face, 17 Nov 2026).
+LONGCAT_MIN_MEM, LONGCAT_720_MEM = 48, 80
+LONGCAT_DISK = {False: 63.2 + 1, True: 47.4 + 1}  # by int8
+LONGCAT = os.path.join(APP_DIR, "cloud_longcat.py")
 # downloads that arrive after the card is ready, each switched on by /root/done_<name> on the pod
-EXTRAS = ("video", "qwen_hq", "qwen_turbo", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss")
+EXTRAS = ("video", "qwen_hq", "qwen_turbo", "ideogram", "flux2", "krea2", "krea2ref", "krea2_edit", "moss", "longcat")
 # file sizes in GB (Comfy-Org / comfyicu repos, 23 Oct 2026), for the container disk
 GB = {"krea2_turbo_bf16.safetensors": 24.48, "krea2_turbo_fp8_scaled.safetensors": 12.24,
       "qwen3vl_4b_bf16.safetensors": 8.27, "moss_image_sft_bf16.safetensors": 9.47, "qwen3.5_9b_bf16.safetensors": 17.98,
@@ -99,7 +105,14 @@ def disk_gb(card, video, h3_unet=""):
         total += GB[f["LTX_UNET"]] + GB[f["LTX_TE"]] + 1.71
     if card["mem"] >= FLUX2_MIN_MEM:
         total += FLUX2_DISK
+    if card["mem"] >= LONGCAT_MIN_MEM:
+        total += LONGCAT_DISK[longcat_int8(card)]
     return int(total * 1.1) + 1
+
+
+def longcat_int8(card):
+    """LongCat's int8 avatar model (16 GB) below 80 GB; full precision (32 GB) beside its 11 GB encoder above."""
+    return card["mem"] < 80
 
 
 def no_extras():
@@ -221,7 +234,8 @@ def _card_facts(s):
     if not card:
         return {}
     return {"mem": card["mem"], "speed": card["speed"], "flux2": card["mem"] >= FLUX2_MIN_MEM,
-            "h3_max": h3_max_seconds(card["mem"]) if s.get("video") == "h3" else None}
+            "h3_max": h3_max_seconds(card["mem"]) if s.get("video") == "h3" else None,
+            "talk": card["mem"] >= LONGCAT_MIN_MEM, "talk_720": card["mem"] >= LONGCAT_720_MEM}
 
 
 def options():
@@ -483,7 +497,12 @@ def _start_locked(card, cloud):
             dl = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
         # + the card's file plan (pod_files: the best precision its memory holds)
         plan_lines = "".join(f"{k}={v}\n" for k, v in files.items())
-        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nFLUX2={int(card['mem'] >= FLUX2_MIN_MEM)}\n{plan_lines}DL_B64={dl}\n".encode(), 1)
+        # + talking videos (LongCat-Video-Avatar) on 48 GB+ cards, its runner in LC_B64
+        with open(LONGCAT, "rb") as f:
+            lc = base64.b64encode(f.read().replace(b"\r\n", b"\n")).decode()
+        lc_lines = (f"LONGCAT={int(card['mem'] >= LONGCAT_MIN_MEM)}\nLC_INT8={int(longcat_int8(card))}\n"
+                    f"LC_B64={lc}\n")
+        script = script.replace(b"#!/bin/bash\n", f"#!/bin/bash\nVIDEO={video}\nH3_TE={h3_te}\nH3_UNET={h3_unet}\nH3_REF={H3_REF.get(h3_unet, '')}\nFLUX2={int(card['mem'] >= FLUX2_MIN_MEM)}\n{plan_lines}{lc_lines}DL_B64={dl}\n".encode(), 1)
         for _ in range(24):  # just after boot the gateway can still answer 404 for a while
             if state["status"] != "starting":
                 return
@@ -720,6 +739,68 @@ def _check_extras():
     extras = {k: bool(got.get(k)) for k in EXTRAS}
     if extras != state["extras"]:
         _set(extras=extras)
+
+
+def talk_ready():
+    """True while the rented card is ready and has LongCat-Video-Avatar installed."""
+    return state["status"] == "ready" and bool(state["extras"].get("longcat"))
+
+
+def _talk_call(method, path, data=None, timeout=120, headers=None):
+    """A talking-video request to the pod's agent, retried while the gateway hiccups (502/404 for a moment)."""
+    for attempt in range(6):
+        try:
+            code, body = _call(method, path, data, timeout=timeout, headers=headers)
+        except (urllib.error.URLError, OSError) as e:
+            code, body = 0, str(e).encode()
+        if code not in (0, 404, 502, 503, 504) or not state["pod"]:
+            return code, body
+        if code == 404 and body and b"no such job" in body:
+            return code, body
+        time.sleep(5)
+    return code, body
+
+
+def talk_start(jid, image_png, wav, job):
+    """Send the picture and voice track (raw, a few MB each) and start LongCat on them."""
+    for name, data in (("image.png", image_png), ("audio.wav", wav)):
+        code, body = _talk_call("PUT", f"/rm/talk/in?id={jid}&name={name}", data, timeout=300,
+                                headers={"Content-Type": "application/octet-stream"})
+        if code != 200:
+            raise RuntimeError(f"couldn't send the {name.split('.')[0]} to the rented card ({code}: {body[:200]!r})")
+    code, body = _talk_call("POST", f"/rm/talk?id={jid}", json.dumps(job).encode(),
+                            headers={"Content-Type": "application/json"})
+    if code != 200:
+        raise RuntimeError(f"the rented card didn't start the talking video ({code}: "
+                           f"{body.decode('utf-8', 'replace')[:200]})")
+
+
+def talk_status(jid):
+    """{"status", "size", "log"} of a job on the pod."""
+    code, body = _talk_call("GET", f"/rm/talk?id={jid}", timeout=30)
+    if code != 200:
+        raise RuntimeError(f"lost the talking video on the rented card ({code})")
+    return json.loads(body)
+
+
+def talk_fetch(jid, size, dest):
+    """Bring the finished video back in 8 MB pieces (one gateway answer can't be huge)."""
+    with open(dest + ".part", "wb") as f:
+        off = 0
+        while off < size:
+            code, body = _talk_call("GET", f"/rm/talk/out?id={jid}&offset={off}&size={CHUNK}", timeout=300)
+            if code != 200 or not body:
+                raise RuntimeError(f"couldn't download the talking video ({code})")
+            f.write(body)
+            off += len(body)
+    os.replace(dest + ".part", dest)
+
+
+def talk_stop(jid):
+    try:
+        _call("POST", f"/rm/talk/stop?id={jid}", b"", timeout=30)
+    except Exception:
+        pass
 
 
 def resume():

@@ -444,6 +444,7 @@ ICON.edit = '<path d="M15 5l4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/>';
 ICON.download = '<path d="M12 3v12m-5-5l5 5 5-5M4 16v4h16v-4"/>';
 ICON.fullscreen = '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>';
 ICON.delete = '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>';
+ICON.talk = '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>';
 const svgIcon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${ICON[k]}</svg>`;
 const TABS = [['create', 'Create'], ['library', 'Library'], ['projects', 'Projects']];
 let LIBRARY_VIEW = 'images';
@@ -1431,7 +1432,7 @@ function renderStudio() {
   const dl = (href, name, label) => `<a href="${href}" download="${esc(name)}"><button class="st-act"><span>⤓</span>${label}</button></a>`;
   const of_ = n > 1 ? ` ${i + 1}` : '';
   let acts = '';
-  if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') : '') + act('st-regen', '↻', made ? 'New version' : `Generate ${word}${of_}`) +
+  if (onPic) acts += (isImg && made ? act('st-vid', '▶', 'Make video') + act('st-talk', '🗣', 'Make it talk') : '') + act('st-regen', '↻', made ? 'New version' : `Generate ${word}${of_}`) +
     (made ? act('st-editmode', '✎', 'Edit image') : '') +
     (ENG && ENG.gpt_image ? act('st-gpt', '✧', 'Redo with GPT Image (~$0.05)') : '') +
     (made || STV ? dl(src, `${P.id}_${i + 1}${STV ? '_older' : ''}.png`, STV ? 'Download this version' : 'Download') +
@@ -1526,10 +1527,10 @@ function renderStudio() {
     </div></div><div class="msheet-back" id="st-back"></div>`;
 
   const toolbar = $('#st-actions');
-  ['#st-regen','#st-editmode','#st-vid','#st-reanim','#st-rescene'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
+  ['#st-regen','#st-editmode','#st-vid','#st-talk','#st-reanim','#st-rescene'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
   const download = $('.st-panel a[download]'); if (download) toolbar.appendChild(download);
   ['#st-fullscreen','#st-delpic'].forEach(id => { if ($(id)) toolbar.appendChild($(id)); });
-  const actionIcons = {'st-regen':'refresh','st-editmode':'edit','st-vid':'videos','st-reanim':'refresh','st-rescene':'refresh','st-fullscreen':'fullscreen','st-delpic':'delete'};
+  const actionIcons = {'st-regen':'refresh','st-editmode':'edit','st-vid':'videos','st-talk':'talk','st-reanim':'refresh','st-rescene':'refresh','st-fullscreen':'fullscreen','st-delpic':'delete'};
   toolbar.querySelectorAll(':scope > button, :scope > a > button').forEach(button => {
     const oldIcon = button.querySelector('span');
     const label = button.textContent.replace(oldIcon?.textContent || '', '').trim();
@@ -1643,6 +1644,7 @@ function renderStudio() {
   on('#st-gpt', async () => { if (confirm('Redo this picture with GPT Image 2.5? Costs about $0.05 at 1080p (up to $0.10 at 4K) on your OpenAI account.'))
     await run('keyframes', {indices: [i], engine: 'gpt-image'})(); });
   on('#st-vid', () => videoBox(async (motion, opts) => { setPanel(false); await run('animate_image', {index: i, motion, ...opts})(); }));
+  on('#st-talk', () => talkBox(i, async opts => { setPanel(false); await run('talk', {index: i, ...opts})(); }));
   $$('[data-pick]').forEach(b => b.onclick = () => again(() => { const [kind, j] = b.dataset.pick.split(':'); STK = kind; STI = +j; STV = null; STE = false; }));
   $$('[data-stv]').forEach(b => b.onclick = () => again(() => { STV = b.dataset.stv || null; STE = false; }));
   on('#st-cur', () => again(() => { STV = null; STE = false; }));
@@ -1882,7 +1884,7 @@ function gpuList() {  // pick a card: ✅ in stock / ❌ none now, its speed aga
   if (!GPUOPTS.length) return '<div class="progress" style="margin:0;border-color:var(--err)">⚠ Couldn\'t reach RunPod. Try again in a moment.</div>';
   return `<div class="gpus">${GPUOPTS.map(o => `<div class="gpu-row ${o.available ? '' : 'na'}">
       <div class="gpu-top"><span>${o.available ? '✅' : '❌'}</span><b>${esc(o.label)}</b>
-        <span class="gpu-sub">${o.mem} GB · <b class="gpu-x">${o.speed}×</b>${o.label === 'RTX 4090' ? ' (baseline)' : ''} · ${o.available ? esc(o.stock.toLowerCase()) + ' stock' : 'none free now'}${o.video ? ' · video: ' + esc(o.video) : ''}${o.mem >= 48 ? ' · + FLUX.2' : ''}</span></div>
+        <span class="gpu-sub">${o.mem} GB · <b class="gpu-x">${o.speed}×</b>${o.label === 'RTX 4090' ? ' (baseline)' : ''} · ${o.available ? esc(o.stock.toLowerCase()) + ' stock' : 'none free now'}${o.video ? ' · video: ' + esc(o.video) : ''}${o.mem >= 48 ? ' · + FLUX.2 · talking videos' : ''}</span></div>
       <div class="gpu-prices">${[['COMMUNITY', 'Community', o.community], ['SECURE', 'Secure', o.secure]].map(([c, name, pr]) => pr == null ? ''
         : `<button class="gpu-pick ${GPUPICK && GPUPICK.id === o.id && GPUPICK.cloud === c ? 'on' : ''}" data-gpu="${esc(o.id)}" data-cloud="${c}" ${o.available && !(c === 'COMMUNITY' && o.community_broken) ? '' : 'disabled'}>${c === 'COMMUNITY' && o.community_broken ? '❌ ' + name + ': faulty machine' : name + ' $' + pr.toFixed(2) + '/h'}</button>`).join('')}</div>
     </div>`).join('')}</div>
@@ -1936,6 +1938,42 @@ function videoBox(go) {  // Make video: the motion, and with an H3 card its size
   $('#lb').classList.add('on');
   $('#vd-motion').focus();
 }
+function talkBox(i, go) {  // Make it talk: a voice file, what the person does, and 480p/720p on 80 GB+ cards
+  const g = GPU || {}, ready = g.status === 'ready', big = ready && g.talk, inst = big && (g.extras || {}).longcat;
+  let res = '480p', voice = null;
+  const note = !ready ? 'Talking videos run on the Fast GPU (LongCat-Video-Avatar 1.6). Connect a 48 GB+ card first.'
+    : !big ? `The ${esc(g.label)} has too little memory for talking videos: they need a 48 GB+ card (L40S, RTX 6000 Ada, A100, RTX PRO 6000, H100…).`
+    : `LongCat-Video-Avatar on the ${esc(g.label)}: the picture speaks your voice track with lip sync and body motion, up to 2 minutes.` +
+      (inst ? '' : ' It is still downloading on the card; a video asked for now waits for it.');
+  $('#lb').innerHTML = `<div class="glass pad vdlg">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Make it talk</h2><button id="tk-x">✕</button></div>
+    <p class="vd-note" style="margin:0">${note}</p>
+    <label class="vd-len">Voice <input type="file" id="tk-file" accept="audio/*,video/*" ${big ? '' : 'disabled'}></label>
+    <p class="vd-note" id="tk-voice">A clean voice works best (no music behind it). Its sound becomes the video's sound.</p>
+    <textarea id="tk-prompt" rows="3" placeholder="What they do while talking (optional), e.g. she smiles and gestures with her hands" ${big ? '' : 'disabled'}></textarea>
+    ${g.talk_720 ? `<div class="vd-row"><button class="vd-res on" data-res="480p">480p · fast</button><button class="vd-res" data-res="720p">720p · sharp</button></div>` : ''}
+    <p class="vd-note">The first talking video on a card also loads the model (a few minutes). Progress shows above the picture.</p>
+    <button class="primary" id="tk-go" disabled>🗣 Make it talk</button></div>`;
+  const close = () => $('#lb').classList.remove('on');
+  $('#tk-x').onclick = close;
+  $$('.vd-res').forEach(b => b.onclick = () => { res = b.dataset.res; $$('.vd-res').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#tk-file').onchange = async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    voice = null; $('#tk-go').disabled = true;
+    $('#tk-voice').innerHTML = '<i class="spin"></i> Reading the voice…';
+    try {
+      const r = await fetch(`/api/projects/${P.id}/talk_audio?index=${i}&name=${encodeURIComponent(f.name)}`, {method: 'POST', body: f});
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+      voice = j;
+      $('#tk-voice').textContent = `${f.name} · ${j.seconds} s${j.capped ? ' (only the first 2 minutes are used)' : ''}`;
+      $('#tk-go').disabled = false;
+    } catch (err) { $('#tk-voice').textContent = '⚠ ' + err.message; }
+  };
+  $('#tk-go').onclick = () => { if (!voice) return; const prompt = $('#tk-prompt').value.trim(); close(); go({prompt, video_res: res}); };
+  $('#lb').classList.add('on');
+}
 function gpuEngines(g) {  // what the connected card gives; the extras download in the first minutes after it's ready
   const x = g.extras || {}, mark = on => on ? '✅' : '<i class="spin" style="width:10px;height:10px;vertical-align:-1px"></i>';
   return `<br>${mark(x.krea2)} Krea 2 Turbo${x.krea2 ? ' (pick it under Image engine)' : ' (downloading, ~18 GB)'}
@@ -1945,6 +1983,7 @@ function gpuEngines(g) {  // what the connected card gives; the extras download 
     <br>${mark(x.qwen_hq)} Qwen-Image 2.1 full quality${x.qwen_hq ? '' : ' (downloading; standard quality until then)'}
     <br>${mark(x.video)} Videos: <b style="color:var(--text)">${esc(g.video_label || 'LTX-2.5')}</b> with sound${x.video ? '' : ' (downloading; a video asked for now waits for it)'}
     <br>${mark(x.ideogram)} Ideogram 4.0${x.ideogram ? ' (pick it under Image engine)' : ' (downloading)'}
+    ${g.talk ? `<br>${mark(x.longcat)} Talking videos (LongCat-Video-Avatar 1.6)${x.longcat ? ': Make it talk on a picture' : ' (downloading after the video engine, ~50–65 GB)'}` : ''}
     ${g.flux2 ? `<br>${mark(x.flux2)} FLUX.2 [dev]${x.flux2 ? ' (pick it under Image engine)' : ' (downloading, ~54 GB)'}` : ''}`;
 }
 function renderGpu() {

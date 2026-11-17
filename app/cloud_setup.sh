@@ -62,6 +62,61 @@ extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
   touch "/root/done_$flag"
 }
 
+# Talking videos: LongCat-Video-Avatar 1.6 (Meituan, MIT), on 48 GB+ cards (LONGCAT=1). No ComfyUI node runs 1.6,
+# so it is Meituan's own code at a pinned commit, started per job by the agent (cloud_longcat.py, sent in LC_B64).
+# Its packages go to /root/lcpkgs (only that process sees them: it needs transformers 4.x and huggingface-hub 0.x,
+# ComfyUI the 5.x / 1.x ones). Weights at pinned revisions: the avatar model (int8 below 80 GB, LC_INT8=1), the
+# DMD + OPSD LoRAs, Whisper, and the UMT5 encoder / tokenizer / VAE from the base LongCat-Video (not its own model).
+longcat() {
+  local AV=$H/meituan-longcat/LongCat-Video-Avatar-1.6/resolve/acfc628244201fc53fb6fe8a8903c5bac9bdf68f
+  local BV=$H/meituan-longcat/LongCat-Video/resolve/03b55529b1d1d4045f5fbe14d65c8c6e8116b278
+  local D=/root/lcdl W=/root/longcat/weights files="" f pids=""
+  exec 3>> /root/longcat_setup.log
+  echo "$LC_B64" | base64 -d > /root/longcat_run.py
+  mkdir -p /root/longcat
+  [ -d /root/longcat/code ] || { git clone -q https://github.com/meituan-longcat/LongCat-Video /root/longcat/code &&
+    git -C /root/longcat/code checkout -q 58eb336edc5c8c63389838727e40b8c18434e54e; } >&3 2>&1 ||
+    { echo "LongCat code download failed" >&3; return 1; }
+  # pip's own resolution for Python 3.12 of LongCat's imports (17 Nov 2026), minus what ComfyUI's PKGS already has;
+  # its model code imports librosa at load time even though only the unused vocal separator calls it
+  local P="transformers==4.57.1 tokenizers==0.22.1 huggingface-hub==0.36.0 diffusers==0.35.1 importlib-metadata==10.2.0
+    zipp==4.1.2 loguru==0.7.3 ftfy==6.3.1 wcwidth==0.9.4 pyloudnorm==0.1.1 future==1.0.0 imageio-ffmpeg==0.6.0
+    imageio==2.38.2 librosa==0.11.0 audioread==3.1.0 decorator==5.3.1 lazy-loader==0.6 msgpack==1.2.4 numba==0.68.1
+    llvmlite==0.50.0 pooch==1.9.0 platformdirs==4.14.5 scikit-learn==1.9.1 joblib==1.6.0 cloudpickle==3.1.2
+    threadpoolctl==3.8.0 narwhals==2.29.0 lazy-importer==0.1.0 soundfile==0.14.0 cffi==2.1.1 pycparser==3.12
+    soxr==1.1.0" ok=""
+  for idx in https://pypi.org/simple https://mirrors.aliyun.com/pypi/simple https://pypi.org/simple; do
+    pip install -q --break-system-packages --no-deps --target /root/lcpkgs --timeout 15 --retries 8 --index-url $idx $P >&3 2>&1 && { ok=1; break; }
+  done
+  [ -n "$ok" ] || { echo "LongCat packages failed" >&3; return 1; }
+  if [ "$LC_INT8" = 1 ]; then
+    files="base_model_int8/config.json base_model_int8/quantization_config.json base_model_int8/quantized_model.safetensors.index.json"
+    for i in 1 2 3 4; do files="$files base_model_int8/quantized_model-0000$i-of-00004.safetensors"; done
+  else
+    files="base_model/config.json base_model/diffusion_pytorch_model.safetensors.index.json"
+    for i in 1 2 3 4 5 6; do files="$files base_model/diffusion_pytorch_model-0000$i-of-00006.safetensors"; done
+  fi
+  files="$files config.json model_index.json scheduler/scheduler_config.json loraA/lora.safetensors loraB/lora.safetensors
+    whisper-large-v3/config.json whisper-large-v3/model.safetensors whisper-large-v3/preprocessor_config.json"
+  local all=""
+  for f in $files; do
+    mkdir -p "$D/LongCat-Video-Avatar-1.6/$(dirname $f)"
+    get "$AV/$f" "$D/LongCat-Video-Avatar-1.6/$f" & pids="$pids $!"
+    all="$all $D/LongCat-Video-Avatar-1.6/$f"
+  done
+  for f in text_encoder/config.json text_encoder/model.safetensors.index.json tokenizer/special_tokens_map.json \
+      tokenizer/spiece.model tokenizer/tokenizer.json tokenizer/tokenizer_config.json vae/config.json \
+      vae/diffusion_pytorch_model.safetensors model_index.json \
+      $(for i in 1 2 3 4 5; do echo text_encoder/model-0000$i-of-00005.safetensors; done); do
+    mkdir -p "$D/LongCat-Video/$(dirname $f)"
+    get "$BV/$f" "$D/LongCat-Video/$f" & pids="$pids $!"
+    all="$all $D/LongCat-Video/$f"
+  done
+  wait $pids
+  for f in $all; do [ -s "$f" ] || { echo "LongCat download failed: $f" >&3; return 1; }; done
+  rm -rf $W && mkdir -p /root/longcat && mv $D $W && touch /root/done_longcat
+}
+
 # The user's order (21 Oct 2026, "Krea first then Qwen, rarely use the other"): Krea 2, then MOSS-Image and Krea's
 # character-picture / edit LoRAs start at once, beside Qwen-Image 2.1 (int8; READY as soon as it's in, so Qwen
 # pictures aren't held back). Then, in this order: full-quality Qwen, the video engine (MiniMax H3 or LTX-2.5),
@@ -108,6 +163,7 @@ extra() {  # extra <flag> <url> <models/subdir> [<url> <models/subdir>]...
       $L/text_encoders/${LTX_TE:-gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors} models/text_encoders \
       $L/vae/ltx-2.5-video-vae-bf16.safetensors models/vae $L/vae/ltx-2.5-audio-vae-bf16.safetensors models/vae
   fi
+  [ "$LONGCAT" = 1 ] && longcat
   extra ideogram $I/diffusion_models/ideogram4_int8_convrot.safetensors models/diffusion_models \
     $I/diffusion_models/ideogram4_unconditional_int8_convrot.safetensors models/diffusion_models \
     $I/text_encoders/qwen3vl_8b_fp8_scaled.safetensors models/text_encoders \

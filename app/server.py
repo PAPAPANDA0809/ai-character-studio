@@ -310,6 +310,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not data:
                     return self.send_json({"error": "empty upload"}, 400)
                 return self.send_json({"name": pipeline.save_character(u, q.get("name", ["character.png"])[0], data)})
+            if m := re.fullmatch(r"/api/projects/([\w\-]+)/talk_audio", path):  # raw audio bytes, ?index=&name=
+                if not self.owns(u, m.group(1)):
+                    return self.send_json({"error": "not found"}, 404)
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                return self.send_json(pipeline.save_talk_audio(m.group(1), q.get("index", ["0"])[0],
+                                                               q.get("name", [""])[0], data))
             if path == "/api/library/upload":  # raw image bytes, ?kind=pose|outfit&name=file.png
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
@@ -427,6 +434,10 @@ class Handler(BaseHTTPRequestHandler):
             if action == "animate_image":
                 pipeline.enqueue(pid, "animate_image", index=int(b.get("index", 0)), motion=b.get("motion", ""),
                                  seconds=b.get("seconds"), video_res=b.get("video_res"))
+                return self.send_json({"ok": True})
+            if action == "talk":  # after talk_audio: make the picture speak it on the rented card
+                pipeline.enqueue(pid, "talk", index=int(b.get("index", 0)), prompt=str(b.get("prompt") or "")[:1000],
+                                 video_res=b.get("video_res"))
                 return self.send_json({"ok": True})
             if action == "use_version":
                 return self.send_json(pipeline.use_version(pid, b.get("index", 0), b.get("name", "")))
